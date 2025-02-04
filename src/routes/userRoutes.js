@@ -31,6 +31,6 @@ router.delete('/delete-customer/:id', authMiddleware, tokenExpirationMiddleware.
 router.get('/all-users', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), userController.getAllUsersWithSessions);
 
 // Ruta para desactivar o bloquear una cuenta de usuario
-router.put('/deactivate-account/:id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), userController.deactivateAccount);
+router.put('/deactivate-account/:user_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), userController.deactivateAccount);
 
 module.exports = router;
