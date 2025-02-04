@@ -8,8 +8,8 @@ const sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, proces
   port: process.env.DB_PORT,
   dialect: 'mysql',
   dialectOptions: {
-    ssl: {
-      ca: fs.readFileSync(process.env.DB_SSL_CA) // Ruta al certificado CA desde variable de entorno
+    ssl: { 
+      ca: Buffer.from(process.env.DB_SSL_CA, 'utf-8') 
     }
   }
 });
