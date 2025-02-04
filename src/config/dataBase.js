@@ -8,9 +8,9 @@ const sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, proces
   port: process.env.DB_PORT,
   dialect: 'mysql',
   dialectOptions: {
-    ssl: { 
-      ca: Buffer.from(process.env.DB_SSL_CA, 'utf-8') 
-    }
+    ssl: process.env.DB_SSL_CA 
+      ? { ca: Buffer.from(process.env.DB_SSL_CA, 'utf-8') } 
+      : undefined
   }
 });
 
