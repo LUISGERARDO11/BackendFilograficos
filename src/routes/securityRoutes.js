@@ -15,7 +15,7 @@ router.get('/failed-attempts', authMiddleware, tokenExpirationMiddleware.verifyT
 
 // ** CONFIGURACIÓN DE BLOQUEO ** 
 // Ruta para desbloquear a un usuario bloqueado por múltiples intentos fallidos
-router.put('/unlock-user/:userId', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), securityController.adminUnlockUser);
+router.put('/unlock-user/:user_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), securityController.adminUnlockUser);
 
 // ** CONFIGURACIÓN DE SEGURIDAD **
 // Ruta para actualizar el tiempo de vida de los tokens

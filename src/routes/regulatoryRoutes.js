@@ -40,7 +40,7 @@ router.get('/document/:documentId', authMiddleware, tokenExpirationMiddleware.ve
 
 // ** CONSULTAS PÚBLICAS **
 // Ruta para obtener la versión vigente de un documento regulatorio (público)
-router.get('/:titulo', regulatoryController.getCurrentVersion);
+router.get('/:title', regulatoryController.getCurrentVersion);
 
 // Ruta para obtener todos los documentos regulatorios vigentes (público)
 router.get('/', regulatoryController.getAllCurrentVersions);
