@@ -11,11 +11,11 @@ async function startServer() {
     try {
         // Autenticar la conexión a la base de datos
         await sequelize.authenticate();
-        console.log('✅ Conexión a la base de datos establecida correctamente.');
+        console.log('Conexión a la base de datos establecida correctamente.');
 
         // Sincronizar los modelos con la base de datos
         await sequelize.sync({ alter: true }); // En lugar de { force: true }
-        console.log('✅ Modelos sincronizados con la base de datos.');
+        console.log('Modelos sincronizados con la base de datos.');
 
         // Iniciar el servidor
         app.listen(PORT, () => {
