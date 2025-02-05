@@ -13,9 +13,9 @@
 // Middleware para verificar el rol del usuario
 const roleMiddleware = (rolesPermitidos) => {
     return (req, res, next) => {
-      const { tipo_usuario } = req.user; // El middleware de autenticación debe haber agregado `req.user`
+      const { user_type } = req.user; // El middleware de autenticación debe haber agregado `req.user`
   
-      if (!rolesPermitidos.includes(tipo_usuario)) {
+      if (!rolesPermitidos.includes(user_type)) {
         return res
           .status(403)
           .json({ message: "Acceso prohibido. No tienes el rol adecuado." });

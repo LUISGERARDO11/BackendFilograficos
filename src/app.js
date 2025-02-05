@@ -63,15 +63,15 @@ app.get('/', (req, res) => {
 authUtils.loadPasswordList();
 
 // Rutas de la aplicación
-app.use('/auth', authRoutes);
-app.use('/company', companyRoutes);
-app.use('/email-templates', emailTemplateRoutes);
-app.use('/email-types', emailTypeRoutes);
-app.use('/password', passwordRoutes);
-app.use('/regulatory', regulatoryRoutes);
-app.use('/security', securityRoutes);
-app.use('/session', sessionRoutes);
-app.use('/users', userRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/company', companyRoutes);
+app.use('/api/email-templates', emailTemplateRoutes);
+app.use('/api/email-types', emailTypeRoutes);
+app.use('/api/password', passwordRoutes);
+app.use('/api/regulatory', regulatoryRoutes);
+app.use('/api/security', securityRoutes);
+app.use('/api/session', sessionRoutes);
+app.use('/api/users', userRoutes);
 
 // Middleware para manejar errores
 app.use(errorHandler);

@@ -311,13 +311,13 @@ exports.deactivateAccount = [
             // Actualizar el estado de la cuenta según la acción
             switch (action) {
                 case 'block':
-                    user.status = 'blocked';
+                    user.status = 'bloqueado';
                     break;
                 case 'suspend':
-                    user.status = 'suspended';
+                    user.status = 'bloqueado_permanente';
                     break;
                 case 'activate':
-                    user.status = 'active';
+                    user.status = 'activo';
                     break;
                 default:
                     return res.status(400).json({ message: 'Acción no reconocida' });
