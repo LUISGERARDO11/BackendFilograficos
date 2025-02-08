@@ -14,8 +14,11 @@ async function startServer() {
         console.log('Conexión a la base de datos establecida correctamente.');
 
         // Sincronizar los modelos con la base de datos
-        await sequelize.sync({ alter: true }); // En lugar de { force: true }
-        console.log('Modelos sincronizados con la base de datos.');
+        if (process.env.NODE_ENV !== 'production') {
+            sequelize.sync({ alter: true }) // Solo en desarrollo
+              .then(() => console.log('Base de datos sincronizada'))
+              .catch(error => console.error('Error al sincronizar:', error));
+        }
 
         // Iniciar el servidor
         app.listen(PORT, () => {
