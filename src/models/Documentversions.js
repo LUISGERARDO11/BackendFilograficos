@@ -31,15 +31,12 @@ const DocumentVersion = sequelize.define('DocumentVersion', {
   deleted: {
     type: DataTypes.BOOLEAN,
     defaultValue: false
-  },
-  created_at: {
-    type: DataTypes.DATE,
-    defaultValue: sequelize.literal('CURRENT_TIMESTAMP'),
-    allowNull: false
   }
 }, {
   tableName: 'documentversions',
-  timestamps: false
+  timestamps: true, // Sequelize manejará automáticamente created_at y updated_at
+  createdAt: 'created_at',
+  updatedAt: 'updated_at'
 });
 
 module.exports = DocumentVersion;

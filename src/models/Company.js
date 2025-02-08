@@ -35,20 +35,12 @@ const Company = sequelize.define('Company', {
   active: {
     type: DataTypes.BOOLEAN,
     defaultValue: true
-  },
-  created_at: {
-    type: DataTypes.DATE,
-    defaultValue: sequelize.literal('CURRENT_TIMESTAMP'),
-    allowNull: false
-  },
-  updated_at: {
-    type: DataTypes.DATE,
-    defaultValue: sequelize.literal('CURRENT_TIMESTAMP'),
-    allowNull: false
   }
 }, {
   tableName: 'company',
-  timestamps: false
+  timestamps: true, // Sequelize manejará automáticamente created_at y updated_at
+  createdAt: 'created_at',
+  updatedAt: 'updated_at'
 });
 
 module.exports = Company;

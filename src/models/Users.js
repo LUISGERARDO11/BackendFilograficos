@@ -21,7 +21,6 @@ const User = sequelize.define('User', {
   phone: {
     type: DataTypes.STRING(15),
     allowNull: false,
-    unique: true,
     validate: { is: /^[0-9+]+$/ }
   },
   user_type: {
@@ -37,20 +36,12 @@ const User = sequelize.define('User', {
     defaultValue: false
   },
   email_verification_token: DataTypes.STRING(255),
-  email_verification_expiration: DataTypes.DATE,
-  created_at: {
-    type: DataTypes.DATE,
-    defaultValue: sequelize.literal('CURRENT_TIMESTAMP'),
-    allowNull: false
-  },
-  updated_at: {
-    type: DataTypes.DATE,
-    defaultValue: sequelize.literal('CURRENT_TIMESTAMP'),
-    allowNull: false
-  }
+  email_verification_expiration: DataTypes.DATE
 }, {
   tableName: 'users',
-  timestamps: false,
+  timestamps: true, // Sequelize manejará automáticamente createdAt y updatedAt
+  createdAt: 'created_at',
+  updatedAt: 'updated_at'
 });
 
 module.exports = User;

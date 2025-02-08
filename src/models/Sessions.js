@@ -39,20 +39,12 @@ const Session = sequelize.define('Session', {
   revoked: {
     type: DataTypes.BOOLEAN,
     defaultValue: false
-  },
-  created_at: {
-    type: DataTypes.DATE,
-    defaultValue: sequelize.literal('CURRENT_TIMESTAMP'),
-    allowNull: false
-  },
-  updated_at: {
-    type: DataTypes.DATE,
-    defaultValue: sequelize.literal('CURRENT_TIMESTAMP'),
-    allowNull: false
   }
 }, {
   tableName: 'sessions',
-  timestamps: false
+  timestamps: true, // Sequelize manejará automáticamente created_at y updated_at
+  createdAt: 'created_at',
+  updatedAt: 'updated_at'
 });
 
 module.exports = Session;

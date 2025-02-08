@@ -57,20 +57,12 @@ const EmailTemplate = sequelize.define('EmailTemplate', {
       model: 'users', // Nombre de la tabla referenciada
       key: 'user_id'  // Columna referenciada
     }
-  },
-  created_at: {
-    type: DataTypes.DATE,
-    defaultValue: sequelize.literal('CURRENT_TIMESTAMP'), // Valor predeterminado
-    allowNull: false
-  },
-  updated_at: {
-    type: DataTypes.DATE,
-    defaultValue: sequelize.literal('CURRENT_TIMESTAMP'), // Valor predeterminado
-    allowNull: false
   }
 }, {
   tableName: 'emailtemplates', // Nombre de la tabla en la base de datos
-  timestamps: false // Deshabilitar timestamps automáticos de Sequelize
+  timestamps: true, // Sequelize manejará automáticamente created_at y updated_at
+  createdAt: 'created_at',
+  updatedAt: 'updated_at'
 });
 
 module.exports = EmailTemplate;
