@@ -42,7 +42,7 @@ app.use(generalLimiter);
 app.use(cookieParser());
 
 // Ruta para obtener un token CSRF
-app.get('/csrf-token', (req, res) => {
+app.get('/api/csrf-token', (req, res) => {
   const csrfToken = generateToken(req, res);
   res.json({ csrfToken });
 });
