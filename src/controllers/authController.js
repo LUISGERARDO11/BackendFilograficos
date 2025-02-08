@@ -1,5 +1,6 @@
 const { body, validationResult } = require('express-validator');
-const { User, Account, Config, Session, Twofactorconfig, PasswordStatus } = require('../models/Associations');
+const { User, Account, Session, Twofactorconfig, PasswordStatus } = require('../models/Associations')
+const Config = require('../models/Systemconfig');
 const authService = require('../services/authService');
 const emailService = require('../services/emailService');
 const loggerUtils = require('../utils/loggerUtils');
