@@ -40,7 +40,7 @@ app.use(generalLimiter);
 app.use(cookieParser());
 
 // Ruta para obtener un token CSRF
-app.get('/csrf-token', (req, res) => {
+app.get('/api/csrf-token', (req, res) => {
   const csrfToken = generateToken(req, res);
   res.json({ csrfToken });
 });
@@ -55,7 +55,7 @@ app.use(morgan('combined', {
 }));
 
 // Ruta de prueba
-app.get('/', (req, res) => {
+app.get('/api', (req, res) => {
   res.send('¡Hola Mundo!');
 });
 
