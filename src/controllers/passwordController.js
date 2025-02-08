@@ -114,6 +114,7 @@ exports.initiatePasswordRecovery = async (req, res) => {
             account_id: account.account_id,
             recovery_token: recoveryToken,
             token_expiration: expiration,
+            attempts:0,
             is_token_valid: true
         });
 

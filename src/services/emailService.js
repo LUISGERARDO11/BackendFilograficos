@@ -6,8 +6,7 @@ const nodemailer = require("nodemailer");
 const transporter = require('../config/transporter');
 
 // Importar modelos
-const EmailTemplate = require('../models/Emailtemplates');
-const EmailType = require('../models/Emailtypes');
+const { EmailType, EmailTemplate } = require('../models/Associations')
 
 // Importar utilidades
 const loggerUtils = require('../utils/loggerUtils');

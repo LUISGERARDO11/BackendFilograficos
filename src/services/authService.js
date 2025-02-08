@@ -4,12 +4,8 @@ const jwt = require("jsonwebtoken");
 const { Op } = require('sequelize');
 
 // Modelos
-const Account = require("../models/Account");
-const FailedAttempt = require("../models/Failedattempts");
-const User = require("../models/Users");
 const Config = require('../models/Systemconfig');
-const PasswordStatus = require('../models/Passwordstatus');
-
+const { Account, FailedAttempt, User, PasswordStatus } = require('../models/Associations')
 // Utilidades
 const authUtils = require("../utils/authUtils");
 const loggerUtils = require('../utils/loggerUtils');
