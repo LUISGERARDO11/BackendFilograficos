@@ -27,6 +27,8 @@ const userRoutes = require('./routes/userRoutes');
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 // Middleware para el manejo de JSON
 app.use(express.json());
 
@@ -40,7 +42,7 @@ app.use(generalLimiter);
 app.use(cookieParser());
 
 // Ruta para obtener un token CSRF
-app.get('/api/csrf-token', (req, res) => {
+app.get('/csrf-token', (req, res) => {
   const csrfToken = generateToken(req, res);
   res.json({ csrfToken });
 });
@@ -55,7 +57,7 @@ app.use(morgan('combined', {
 }));
 
 // Ruta de prueba
-app.get('/api', (req, res) => {
+app.get('/', (req, res) => {
   res.send('¡Hola Mundo!');
 });
 
