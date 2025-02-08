@@ -1,7 +1,5 @@
 const { sequelize } = require('../config/dataBase');
-const Account = require('../models/Account');
-const User = require('../models/user');
-const PasswordStatus = require('../models/Passwordstatus');
+const { User, Account,PasswordStatus } = require('../models/Associations')
 
 // Bloquear cuenta manualmente
 exports.lockAccount = async (user_id) => {

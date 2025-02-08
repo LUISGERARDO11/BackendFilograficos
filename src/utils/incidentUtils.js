@@ -1,6 +1,5 @@
 const { Op } = require('sequelize');
-const FailedAttempt = require("../models/Failedattempts");
-const User = require("../models/Users");
+const { User, FailedAttempt } = require('../models/Associations')
 
 exports.getFailedAttemptsData = async (periodo) => {
   try{

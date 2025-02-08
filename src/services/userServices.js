@@ -1,5 +1,5 @@
-const PasswordHistory = require("../models/Passwordhistory");
 const authService = require("../services/authService");
+const { PasswordHistory } = require('../models/Associations')
 
 exports.trackPasswordHistory = async (accountId, currentPasswordHash, newPassword) => {
   try {
