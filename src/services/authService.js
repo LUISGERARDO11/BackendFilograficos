@@ -32,7 +32,7 @@ exports.verifyPassword = async (password, hashedPassword) => {
 
 // Generar JWT
 exports.generateJWT = async (user) => {
-  const config = await Config.findOne({ where: { id: 1 } });
+  const config = await Config.findOne({ where: { config_id: 1 } });
   const jwtLifetime = config?.jwt_lifetime || 3600;
   
   return jwt.sign(
