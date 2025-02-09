@@ -1,3 +1,4 @@
+/* This code snippet is setting up a Node.js Express application. Here's a breakdown of what it does: */
 const express = require('express');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');

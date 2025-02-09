@@ -1,3 +1,5 @@
+/* The above code is a set of functions written in JavaScript using Express.js for managing email
+templates. Here is a summary of what each function does: */
 const { body, validationResult } = require('express-validator');
 const { EmailTemplate, EmailType } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');

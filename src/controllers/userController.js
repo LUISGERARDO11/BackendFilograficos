@@ -1,3 +1,6 @@
+/* The above code is a set of functions related to user profile management, account deletion, and user
+administration in a Node.js application using Express and Sequelize ORM. Here is a summary of the
+functionalities: */
 const { body, validationResult } = require('express-validator');
 const { User, Account, Address, Session, PasswordHistory } = require('../models/Associations');
 const FailedAttempt = require('../models/Failedattempts'); 

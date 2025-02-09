@@ -1,8 +1,7 @@
+/* This code snippet is a set of services for sending different types of emails in a Node.js
+application. Here's a breakdown of what each part of the code is doing: */
 require("dotenv").config();
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
 const ejs = require('ejs');
-const nodemailer = require("nodemailer");
 const transporter = require('../config/transporter');
 
 // Importar modelos

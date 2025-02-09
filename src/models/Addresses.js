@@ -1,3 +1,5 @@
+/* This code snippet is defining a Sequelize model for an "Address" entity in a Node.js application.
+Here's a breakdown of what each part of the code is doing: */
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
 

@@ -1,3 +1,5 @@
+/* This JavaScript code snippet is configuring and exporting the Cloudinary SDK for use in a Node.js
+application. Here's a breakdown of what each part is doing: */
 require('dotenv').config();
 const cloudinary = require('cloudinary').v2;
 

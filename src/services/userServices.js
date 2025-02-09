@@ -1,3 +1,5 @@
+/* This JavaScript code defines a function named `trackPasswordHistory` that is responsible for
+tracking password history for a given account. Here's a breakdown of what the function does: */
 const authService = require("../services/authService");
 const { PasswordHistory } = require('../models/Associations')
 

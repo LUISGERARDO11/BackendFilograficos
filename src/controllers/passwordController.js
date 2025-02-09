@@ -1,3 +1,5 @@
+/* The above code is a JavaScript file that contains several functions related to password management
+in a web application. Here is a summary of what each function does: */
 const { body, validationResult } = require('express-validator');
 const { User, Account, Session, PasswordStatus, PasswordHistory, PasswordRecovery } = require('../models/Associations');
 const authService = require('../services/authService');

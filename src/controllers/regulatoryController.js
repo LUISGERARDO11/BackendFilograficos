@@ -1,3 +1,5 @@
+/* The above code is a set of controller functions for managing regulatory documents and their
+versions. Here is a summary of what each function does: */
 const { RegulatoryDocument, DocumentVersion } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');

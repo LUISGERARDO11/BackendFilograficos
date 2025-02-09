@@ -1,3 +1,5 @@
+/* This code snippet is defining a Sequelize model for an `EmailTemplate` entity. Here's a breakdown of
+what the code is doing: */
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
 

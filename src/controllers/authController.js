@@ -1,3 +1,6 @@
+/* The above code is a Node.js application that handles user registration, email verification, login,
+logout, and two-factor authentication (2FA) using OTP (One-Time Password). Here is a summary of the
+main functionalities: */
 const { body, validationResult } = require('express-validator');
 const { User, Account, Session, Twofactorconfig, PasswordStatus } = require('../models/Associations')
 const Config = require('../models/Systemconfig');

@@ -1,3 +1,6 @@
+/* This code snippet is setting up a router in a Node.js application using Express framework. It
+defines several routes related to security features of the application. Here's a breakdown of what
+the code is doing: */
 const express = require('express');
 const router = express.Router();
 

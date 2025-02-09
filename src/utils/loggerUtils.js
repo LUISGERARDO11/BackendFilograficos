@@ -1,3 +1,5 @@
+/* This JavaScript code defines a module that exports three functions for logging different types of
+activities using a logger object. Here's a breakdown of what each function does: */
 const logger = require('../config/logger');
 
 // Función para registrar actividad del usuario

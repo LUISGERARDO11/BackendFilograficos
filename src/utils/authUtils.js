@@ -1,3 +1,5 @@
+/* This code snippet is a module written in JavaScript that provides several functions related to
+password management and security. Here is a breakdown of what each part of the code does: */
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");

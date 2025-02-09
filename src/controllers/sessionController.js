@@ -1,3 +1,5 @@
+/* The provided code snippet is a JavaScript module that includes functions related to authentication
+and token management. Here is a breakdown of what the code does: */
 
 const jwt = require('jsonwebtoken');
 const { User, Session, Config } = require('../models/Associations');

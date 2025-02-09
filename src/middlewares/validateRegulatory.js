@@ -1,3 +1,5 @@
+/* This code snippet is setting up a validation middleware function using the `express-validator`
+library in a Node.js application. Let me break it down for you: */
 const { body, validationResult } = require('express-validator');
 
 const validateRegulatory = [

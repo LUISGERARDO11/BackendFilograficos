@@ -1,3 +1,7 @@
+/**
+ * The code establishes a connection to a MySQL database using Sequelize and tests the connection for
+ * success.
+ */
 require('dotenv').config();
 const { Sequelize } = require('sequelize');
 const fs = require('fs');

@@ -1,3 +1,6 @@
+/* This code snippet is setting up routes for a Node.js application using Express framework. It defines
+various routes for handling different operations related to a company entity. Here's a breakdown of
+what the code is doing: */
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');

@@ -1,3 +1,5 @@
+/* This JavaScript code snippet is a module that provides various authentication-related
+functionalities for a Node.js application. Here is a breakdown of what each function does: */
 require("dotenv").config();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");

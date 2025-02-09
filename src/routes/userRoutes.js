@@ -1,3 +1,5 @@
+/* This JavaScript code is setting up a router using Express.js for handling various routes related to
+user management in a web application. Here's a breakdown of what the code is doing: */
 const express = require('express');
 const router = express.Router();
 

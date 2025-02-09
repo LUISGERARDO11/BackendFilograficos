@@ -1,3 +1,5 @@
+/* This code snippet is defining a Sequelize model for a table named `DocumentVersion` in a database.
+Here's a breakdown of what each part of the code is doing: */
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
 

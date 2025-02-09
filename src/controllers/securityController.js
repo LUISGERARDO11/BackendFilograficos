@@ -1,3 +1,5 @@
+/* This JavaScript code snippet defines several functions related to security configurations and user
+management in a web application. Here is a breakdown of what each function does: */
 const { body, validationResult } = require('express-validator');
 const incidentUtils = require('../utils/incidentUtils');
 const loggerUtils = require('../utils/loggerUtils');

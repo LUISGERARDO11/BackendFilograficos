@@ -1,3 +1,6 @@
+/* This JavaScript code is setting up a router using Express.js, a popular Node.js web application
+framework. The router defines various routes for handling different HTTP requests related to
+regulatory documents. Here's a breakdown of what the code is doing: */
 const express = require('express');
 const router = express.Router();
 

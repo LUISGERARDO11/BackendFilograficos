@@ -1,3 +1,5 @@
+/* This code snippet is setting up a logger using the Winston library in Node.js. Here's a breakdown of
+what it does: */
 const { createLogger, format, transports } = require('winston');
 require('dotenv').config();
 

@@ -1,3 +1,5 @@
+/* This code snippet is setting up a router in a Node.js application using Express framework. Here's a
+breakdown of what each part of the code is doing: */
 const express = require('express');
 const router = express.Router();
 

@@ -1,3 +1,5 @@
+/* The above code is a Node.js module that defines several controller functions for managing email
+types in an application. Here is a summary of what each function does: */
 const { body, validationResult } = require('express-validator');
 const EmailType = require('../models/Emailtypes');
 const loggerUtils = require('../utils/loggerUtils');

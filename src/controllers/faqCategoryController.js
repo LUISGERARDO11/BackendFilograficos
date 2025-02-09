@@ -1,3 +1,5 @@
+/* This JavaScript code snippet defines a set of functions related to managing FAQ categories in an
+application. Here's a breakdown of what each part of the code does: */
 const { body, validationResult } = require('express-validator');
 const { FaqCategory } = require('../models/Associations')
 const loggerUtils = require('../utils/loggerUtils');

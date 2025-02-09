@@ -1,3 +1,5 @@
+/* This code snippet is setting up CSRF (Cross-Site Request Forgery) protection for a Node.js
+application using the `csrf-csrf` library. Here's a breakdown of what the code is doing: */
 const { doubleCsrf } = require('csrf-csrf');
 require('dotenv').config();
 

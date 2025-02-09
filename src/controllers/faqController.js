@@ -1,3 +1,5 @@
+/* This JavaScript code defines a set of functions related to managing frequently asked questions
+(FAQs) in an application. Here is a breakdown of what each function does: */
 const { body, validationResult } = require('express-validator');
 const { Faq, FaqCategory } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');

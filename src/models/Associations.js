@@ -1,3 +1,5 @@
+/* This code snippet is setting up associations between different models in a Node.js application using
+Sequelize, which is an ORM for Node.js. */
 const User = require('./Users');
 const Account = require('./Account');
 const TwoFactorConfig = require('./Twofactorconfig');

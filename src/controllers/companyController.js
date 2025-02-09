@@ -1,3 +1,5 @@
+/* The above code is a set of controller functions for managing company information in a Node.js
+application. Here is a summary of what each function does: */
 const cloudinaryService = require('../services/cloudinaryService');
 const Company = require('../models/Company');
 const { body, validationResult } = require('express-validator');

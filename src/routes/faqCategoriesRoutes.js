@@ -1,3 +1,5 @@
+/* This JavaScript code is setting up routes for handling CRUD operations related to FAQ categories
+using Express.js. Here's a breakdown of what each part does: */
 const express = require('express');
 const router = express.Router();
 

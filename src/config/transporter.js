@@ -1,3 +1,5 @@
+/* This JavaScript code snippet is setting up a configuration for sending emails using the Nodemailer
+library with SMTP transport. Here's a breakdown of what each part of the code is doing: */
 const nodemailer = require('nodemailer');
 require('dotenv').config(); // Asegúrate de que las variables de entorno estén cargadas
 

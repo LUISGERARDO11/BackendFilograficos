@@ -1,3 +1,5 @@
+/* This code snippet is defining a Sequelize model named `SystemConfig` that represents a table in a
+database. Here's a breakdown of what the code is doing: */
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
 

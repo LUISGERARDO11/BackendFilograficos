@@ -1,3 +1,5 @@
+/* This code snippet is a middleware function in JavaScript that is used to verify the expiration of a
+JSON Web Token (JWT) in a web application. Here's a breakdown of what the code is doing: */
 const jwt = require("jsonwebtoken");
 const Session = require("../models/Sessions");
 require('dotenv').config();
