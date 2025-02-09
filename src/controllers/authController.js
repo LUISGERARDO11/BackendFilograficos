@@ -222,7 +222,7 @@ exports.login = [
 
             // Buscar el tiempo de vida de la sesión
             const config = await Config.findOne();
-            const sesionLifetime = config ? config.sesion_lifetime * 1000 : 3600000; // 1 hora por defecto
+            const sesionLifetime = config ? config.session_lifetime * 1000 : 3600000; // 1 hora por defecto
 
             // Guardar la sesión
             const newSession = await Session.create({
@@ -418,7 +418,7 @@ exports.verifyOTPMFA = async (req, res) => {
 
         // Configurar tiempo de sesión
         const config = await Config.findOne();
-        const sesionLifetime = config ? config.sesion_lifetime * 1000 : 3600000;
+        const sesionLifetime = config ? config.session_lifetime * 1000 : 3600000;
 
         // Crear nueva sesión
         const newSession = await Session.create({
