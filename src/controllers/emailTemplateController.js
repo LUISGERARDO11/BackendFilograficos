@@ -99,16 +99,16 @@ exports.getEmailTemplateById = async (req, res) => {
 
 // Actualizar plantilla
 exports.updateEmailTemplate = [
-  body('name').optional().isString().trim().notEmpty(),
-  body('email_type_id').optional().isInt(),
-  body('subject').optional().isString().trim().notEmpty(),
-  body('html_content').optional().isString().trim().notEmpty(),
-  body('text_content').optional().isString().trim().notEmpty(),
-  body('variables').optional().isArray(),
+  body('name').optional().isString().trim().notEmpty().withMessage('El nombre no puede estar vacío.'),
+  body('email_type_id').optional().isInt().withMessage('El ID del tipo de email debe ser un número entero.'),
+  body('subject').optional().isString().trim().notEmpty().withMessage('El asunto no puede estar vacío.'),
+  body('html_content').optional().isString().trim().notEmpty().withMessage('El contenido HTML no puede estar vacío.'),
+  body('text_content').optional().isString().trim().notEmpty().withMessage('El contenido de texto no puede estar vacío.'),
+  body('variables').optional().isArray().withMessage('Las variables deben ser un arreglo.'),
 
   async (req, res) => {
     const { templateId } = req.params;
-    const updates = req.body;
+    const { name, email_type_id, subject, html_content, text_content, variables } = req.body;
 
     try {
       const template = await EmailTemplate.findByPk(templateId);
@@ -116,17 +116,23 @@ exports.updateEmailTemplate = [
         return res.status(404).json({ message: 'Plantilla no encontrada' });
       }
 
-      // Actualizar campos
-      const updatedTemplate = await template.update({
-        ...updates,
-        updated_by: req.user.user_id
-      });
+      // Actualizar campos individualmente si existen en el body
+      if (name !== undefined) template.name = name;
+      if (email_type_id !== undefined) template.email_type_id = email_type_id;
+      if (subject !== undefined) template.subject = subject;
+      if (html_content !== undefined) template.html_content = html_content;
+      if (text_content !== undefined) template.text_content = text_content;
+      if (variables !== undefined) template.variables = variables;
+      
+      template.updated_by = req.user.user_id;
 
-      loggerUtils.logUserActivity(req.user.user_id, 'update', `Plantilla actualizada: ${updatedTemplate.name}`);
-      res.status(200).json({ message: 'Plantilla actualizada', template: updatedTemplate });
+      await template.save();
+
+      loggerUtils.logUserActivity(req.user.user_id, 'update', `Plantilla actualizada: ${template.name}`);
+      res.status(200).json({ message: 'Plantilla actualizada', template });
     } catch (error) {
       loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error al actualizar plantilla', error: error.message });
+      res.status(500).json({ message: 'Error al actualizar la plantilla', error: error.message });
     }
   }
 ];
