@@ -69,10 +69,16 @@ exports.register = [
 
             // Obtener el tiempo de vida del token de verificación desde la base de datos
             const config = await Config.findOne();
-            const verificationLifetime = config ? config.verificacion_correo_lifetime * 1000 : 24 * 60 * 60 * 1000; // 24 horas por defecto
+            const verificationLifetime = config?.email_verification_lifetime 
+                ? config.email_verification_lifetime * 1000 
+                : 24 * 60 * 60 * 1000; // 24 horas por defecto
 
-            // Guardar el token y la fecha de expiración en el usuario
-            newUser.email_verification_token = verificationToken;
+            // Verifica que el tiempo de vida sea un número válido
+            if (isNaN(verificationLifetime)) {
+                throw new Error("El tiempo de vida del token de verificación es inválido");
+            }
+
+            // Asigna la fecha de expiración correctamente
             newUser.email_verification_expiration = new Date(Date.now() + verificationLifetime);
             await newUser.save();
 
