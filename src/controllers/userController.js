@@ -2,6 +2,7 @@ const { body, validationResult } = require('express-validator');
 const { User, Account, Address, Session, PasswordHistory } = require('../models/Associations');
 const FailedAttempt = require('../models/Failedattempts'); 
 const loggerUtils = require('../utils/loggerUtils');
+const sequelize = require('../config/dataBase');
 require('dotenv').config();
 
 //** GESTION DE PERFIL DE USUARIOS  **
