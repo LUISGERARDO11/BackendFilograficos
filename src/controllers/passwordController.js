@@ -1,5 +1,5 @@
 const { body, validationResult } = require('express-validator');
-const { User, Account, Session, Passwordstatus, Passwordhistory, Passwordrecovery } = require('../models/Associations');
+const { User, Account, Session, PasswordStatus, PasswordHistory, PasswordRecovery } = require('../models/Associations');
 const authService = require('../services/authService');
 const userService = require('../services/userServices');
 const emailService = require('../services/emailService');
@@ -53,13 +53,13 @@ exports.changePassword = [
             await account.save();
 
             // Actualizar el estado de la contraseña
-            await Passwordstatus.update(
+            await PasswordStatus.update(
                 { last_change_date: new Date() },
                 { where: { account_id: account.account_id } }
             );
 
             // Registrar la nueva contraseña en el historial
-            await Passwordhistory.create({
+            await PasswordHistory.create({
                 account_id: account.account_id,
                 password_hash: newHashedPassword,
                 change_date: new Date()
@@ -116,7 +116,7 @@ exports.initiatePasswordRecovery = async (req, res) => {
         loggerUtils.logUserActivity(user.user_id, 'iniciar recuperacion', 'paso 3');
 
         // Guardar el token en la tabla PasswordRecovery
-        await Passwordrecovery.create({
+        await PasswordRecovery.create({
             account_id: account.account_id,
             recovery_token: recoveryToken,
             token_expiration: expiration,
@@ -153,7 +153,7 @@ exports.verifyOTP = async (req, res) => {
         }
 
         // Buscar el token de recuperación
-        const recovery = await Passwordrecovery.findOne({
+        const recovery = await PasswordRecovery.findOne({
             where: {
                 account_id: account.account_id,
                 recovery_token: otp,
@@ -222,7 +222,7 @@ exports.resetPassword = [
             await account.save();
 
             // Registrar la nueva contraseña en el historial
-            await Passwordhistory.create({
+            await PasswordHistory.create({
                 account_id: account.account_id,
                 password_hash: newHashedPassword,
                 change_date: new Date()
