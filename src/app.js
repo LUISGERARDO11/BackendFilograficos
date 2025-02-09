@@ -24,6 +24,7 @@ const regulatoryRoutes = require('./routes/regulatoryRoutes');
 const securityRoutes = require('./routes/securityRoutes');
 const sessionRoutes = require('./routes/sessionRoutes');
 const userRoutes = require('./routes/userRoutes');
+const faqCategoriesRoutes = require('./routes/faqCategoriesRoutes');
 
 const app = express();
 
@@ -74,6 +75,7 @@ app.use('/api/regulatory', regulatoryRoutes);
 app.use('/api/security', securityRoutes);
 app.use('/api/session', sessionRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/faq-categories', faqCategoriesRoutes);
 
 // Middleware para manejar errores
 app.use(errorHandler);
