@@ -11,6 +11,8 @@ const EmailType = require('./Emailtypes');
 const EmailTemplate = require('./Emailtemplates');
 const RegulatoryDocument = require('./Regulatorydocuments');
 const DocumentVersion = require('./Documentversions');
+const FaqCategory = require('./Faqcategory');
+const Faq = require('./Faq')
 
 // User Associations
 User.hasOne(Account, { foreignKey: 'user_id' });
@@ -50,6 +52,10 @@ EmailTemplate.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
 EmailTemplate.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 EmailType.belongsTo(User, { foreignKey: 'created_by' });
 
+// FAQ Associations
+FaqCategory.hasMany(Faq, { foreignKey: 'category_id', as: 'faqs' });
+Faq.belongsTo(FaqCategory, { foreignKey: 'category_id', as: 'category' });
+
 module.exports = {
   User,
   Account,
@@ -63,5 +69,7 @@ module.exports = {
   EmailType,
   EmailTemplate,
   RegulatoryDocument,
-  DocumentVersion
+  DocumentVersion,
+  FaqCategory,
+  Faq
 };

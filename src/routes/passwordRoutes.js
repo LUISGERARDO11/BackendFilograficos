@@ -16,7 +16,7 @@ router.post('/check-password', authLimiter, passwordController.checkPassword);
 router.put('/change-password', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, passwordController.changePassword );
 
 // Iniciar el proceso de recuperación de contraseña
-router.post('/initiate-password-recovery', authLimiter, passwordController.initiatePasswordRecovery);
+router.post('/initiate-password-recovery', passwordController.initiatePasswordRecovery);
 
 // Verificar el código OTP para recuperación de contraseña
 router.post('/verify-otp', authLimiter, passwordController.verifyOTP);

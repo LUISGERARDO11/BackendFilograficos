@@ -99,15 +99,21 @@ exports.initiatePasswordRecovery = async (req, res) => {
             return res.status(404).json({ message: 'Usuario no encontrado.' });
         }
 
+        loggerUtils.logUserActivity(user.user_id, 'iniciar recuperacion', 'paso 1');
+
         // Buscar la cuenta asociada al usuario
         const account = await Account.findOne({ where: { user_id: user.user_id } });
         if (!account) {
             return res.status(404).json({ message: 'Cuenta no encontrada.' });
         }
 
+        loggerUtils.logUserActivity(user.user_id, 'iniciar recuperacion', 'paso 2');
+
         // Generar un token de recuperación
         const recoveryToken = authUtils.generateOTP();
         const expiration = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
+
+        loggerUtils.logUserActivity(user.user_id, 'iniciar recuperacion', 'paso 3');
 
         // Guardar el token en la tabla PasswordRecovery
         await Passwordrecovery.create({
@@ -117,6 +123,8 @@ exports.initiatePasswordRecovery = async (req, res) => {
             attempts:0,
             is_token_valid: true
         });
+
+        loggerUtils.logUserActivity(user.user_id, 'iniciar recuperacion', 'paso 4');
 
         // Enviar el token por correo electrónico
         await emailService.sendOTPEmail(user.email, recoveryToken);
