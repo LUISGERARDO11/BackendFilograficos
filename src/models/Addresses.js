@@ -24,7 +24,7 @@ const Address = sequelize.define('Address', {
   postal_code: DataTypes.STRING(10),
   is_primary: {
     type: DataTypes.BOOLEAN,
-    defaultValue: false
+    defaultValue: true
   }
 }, {
   tableName: 'addresses',

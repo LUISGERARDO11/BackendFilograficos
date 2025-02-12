@@ -59,6 +59,56 @@ exports.updateProfile = [
     }
 ];
 
+//Añadir una dirección al usuario 
+exports.addAddress = [
+    // Validar y sanitizar entradas
+    body('street').isString().trim().notEmpty().withMessage('La calle es obligatoria.'),
+    body('city').isString().trim().notEmpty().withMessage('La ciudad es obligatoria.'),
+    body('state').isString().trim().notEmpty().withMessage('El estado es obligatorio.'),
+    body('postal_code').isString().trim().notEmpty().withMessage('El código postal es obligatorio.'),
+
+    async (req, res) => {
+        const userId = req.user.user_id; // Se obtiene del middleware de autenticación
+
+        // Validar entradas
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        try {
+            // Verificar si el usuario ya tiene una dirección
+            const existingAddress = await Address.findOne({ where: { user_id: userId } });
+
+            if (existingAddress) {
+                // Si ya tiene una dirección, actualizarla en lugar de crear una nueva
+                await existingAddress.update({
+                    street: req.body.street,
+                    city: req.body.city,
+                    state: req.body.state,
+                    postal_code: req.body.postal_code
+                });
+
+                return res.status(200).json({ message: 'Dirección actualizada exitosamente', address: existingAddress });
+            }
+
+            // Si el usuario no tiene dirección, crear una nueva
+            const newAddress = await Address.create({
+                user_id: userId,
+                street: req.body.street,
+                city: req.body.city,
+                state: req.body.state,
+                postal_code: req.body.postal_code,
+                is_primary: true // Siempre será la dirección principal
+            });
+
+            res.status(201).json({ message: 'Dirección agregada exitosamente', address: newAddress });
+        } catch (error) {
+            res.status(500).json({ message: 'Error al agregar la dirección', error: error.message });
+        }
+    }
+];
+
 // Actualizar solo la dirección del usuario
 exports.updateUserProfile = [
     // Validar y sanitizar entradas

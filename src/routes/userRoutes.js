@@ -18,6 +18,9 @@ router.get('/profile', authMiddleware, tokenExpirationMiddleware.verifyTokenExpi
 // Ruta para actualizar el perfil del usuario (nombre, dirección, teléfono)
 router.put('/profile', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, userController.updateProfile);
 
+// Ruta para agregar o actualizar la dirección del usuario
+router.post('/add-address', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, userController.addAddress);
+
 // Ruta para actualizar solo la dirección del usuario
 router.put('/change-address', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, userController.updateUserProfile);
 
