@@ -76,7 +76,7 @@ exports.getFaqCategoryById = async (req, res) => {
 exports.getAllFaqCategories = async (req, res) => {
   try {
     const faqCategories = await FaqCategory.findAll({
-      where: { status: active }
+      where: { status: true }
     });
 
     // Registrar el acceso a la información
