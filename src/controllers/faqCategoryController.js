@@ -76,7 +76,7 @@ exports.getFaqCategoryById = async (req, res) => {
 exports.getAllFaqCategories = async (req, res) => {
   try {
     const faqCategories = await FaqCategory.findAll({
-      where: { status: true }
+      where: { status: "active" }
     });
 
     // Registrar el acceso a la información
@@ -133,7 +133,7 @@ exports.deleteFaqCategory = async (req, res) => {
   try {
     // Buscar y marcar como inactivo (eliminación lógica)
     const [updatedRows] = await FaqCategory.update(
-      { status: inactive },
+      { status: "inactive" },
       {
         where: { category_id: id },
         returning: true
