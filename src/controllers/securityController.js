@@ -4,7 +4,8 @@ const { body, validationResult } = require('express-validator');
 const incidentUtils = require('../utils/incidentUtils');
 const loggerUtils = require('../utils/loggerUtils');
 const { sequelize } = require('../config/dataBase');
-const { User,FailedAttempt, Config } = require('../models/Associations');
+const { User,FailedAttempt } = require('../models/Associations');
+const Config = require('../models/Systemconfig');
 
 // Obtener historial de intentos fallidos
 exports.getFailedLoginAttempts = async (req, res) => {
@@ -164,7 +165,7 @@ exports.adminUnlockUser = async (req, res) => {
 // Obtener configuración del sistema
 exports.getConfig = async (req, res) => {
     try {
-      const config = await SystemConfig.findOne();
+      const config = await Config.findOne();
   
       if (!config) {
         return res.status(404).json({ message: "No se encontró ninguna configuración." });
