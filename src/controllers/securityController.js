@@ -118,7 +118,12 @@ exports.updateTokenLifetime = [
 
 // Desbloquear usuario como administrador
 exports.adminUnlockUser = async (req, res) => {
+  if (!sequelize || typeof sequelize.transaction !== 'function') {
+    return res.status(500).json({ message: 'Error interno: conexión a la base de datos no disponible' });
+  }
+  
   const transaction = await sequelize.transaction();
+  
   try {
     const { user_id } = req.params;
 
