@@ -56,30 +56,30 @@ exports.getAllFaqs = async (req, res) => {
       include: [{
         model: FaqCategory,
         as: 'category',
+        where: { status: 'active' }, // Filtrar solo categorías activas
         attributes: ['category_id', 'name', 'description']
       }]
     });
 
     // Agrupar preguntas por categoría
     const groupedFaqs = faqs.reduce((acc, faq) => {
-      const { id, name, description } = faq.category || {};
-      if (!id) return acc; // Si la categoría es nula o no tiene ID, ignorar
+      const { category_id, name, description } = faq.category;
       
-      if (!acc[id]) {
-        acc[id] = {
-          id,
+      if (!acc[category_id]) {
+        acc[category_id] = {
+          id: category_id,
           name,
           description,
           faqs: []
         };
       }
       
-      acc[id].faqs.push({
+      acc[category_id].faqs.push({
         id: faq.faq_id,
         question: faq.question,
         answer: faq.answer,
-        createdAt: faq.createdAt,
-        updatedAt: faq.updatedAt
+        createdAt: faq.created_at,
+        updatedAt: faq.updated_at
       });
       return acc;
     }, {});
