@@ -115,6 +115,37 @@ exports.getFaqById = async (req, res) => {
   }
 };
 
+// Buscar preguntas frecuentes por término de búsqueda
+exports.searchFaqs = async (req, res) => {
+  const searchQuery = req.query.q?.toString().trim().toLowerCase();
+
+  if (!searchQuery) {
+    return res.status(400).json({ message: 'Debe proporcionar un término de búsqueda' });
+  }
+
+  try {
+    const faqs = await Faq.findAll({
+      where: {
+        status: 'active',
+        [Op.or]: [
+          { question: { [Op.iLike]: `%${searchQuery}%` } },
+          { answer: { [Op.iLike]: `%${searchQuery}%` } }
+        ]
+      },
+      include: [{
+        model: FaqCategory,
+        as: 'category',
+        attributes: ['name', 'description']
+      }]
+    });
+
+    res.status(200).json(faqs);
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al buscar preguntas frecuentes', error: error.message });
+  }
+};
+
 // Actualizar una pregunta frecuente
 exports.updateFaq = [
     body('category_id').optional().isInt().withMessage('El ID de la categoría debe ser un número entero.'),

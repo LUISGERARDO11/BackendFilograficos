@@ -32,6 +32,12 @@ router.get(
   faqController.getFaqById
 );
 
+// Buscar preguntas frecuentes
+router.get(
+  '/search',
+  faqController.searchFaqs
+);
+
 // Actualizar una pregunta frecuente
 router.put(
   '/:id',
