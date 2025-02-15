@@ -33,7 +33,7 @@ exports.getFailedAttemptsData = async (periodo) => {
       },
       include: [{
         model: User, // Relacionamos cada intento con su usuario correspondiente
-        attributes: ['name', 'email', 'status', 'user_type'], // Seleccionamos solo estos campos del usuario
+        attributes: ['user_id','name', 'email', 'status', 'user_type'], // Seleccionamos solo estos campos del usuario
         required: true // Se excluyen registros sin usuario asociado
       }],
       attributes: [
