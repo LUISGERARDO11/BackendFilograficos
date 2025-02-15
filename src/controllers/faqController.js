@@ -56,11 +56,35 @@ exports.getAllFaqs = async (req, res) => {
       include: [{
         model: FaqCategory,
         as: 'category',
-        attributes: ['name', 'description']
+        attributes: ['id', 'name', 'description']
       }]
     });
 
-    res.status(200).json(faqs);
+    // Agrupar preguntas por categoría
+    const groupedFaqs = faqs.reduce((acc, faq) => {
+      const { id, name, description } = faq.category || {};
+      if (!id) return acc; // Si la categoría es nula o no tiene ID, ignorar
+      
+      if (!acc[id]) {
+        acc[id] = {
+          id,
+          name,
+          description,
+          faqs: []
+        };
+      }
+      
+      acc[id].faqs.push({
+        id: faq.id,
+        question: faq.question,
+        answer: faq.answer,
+        createdAt: faq.createdAt,
+        updatedAt: faq.updatedAt
+      });
+      return acc;
+    }, {});
+
+    res.status(200).json(Object.values(groupedFaqs));
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener preguntas frecuentes', error: error.message });
