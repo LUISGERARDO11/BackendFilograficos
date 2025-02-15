@@ -119,35 +119,24 @@ exports.updateTokenLifetime = [
 
 // Desbloquear usuario como administrador
 exports.adminUnlockUser = async (req, res) => {
-  if (!sequelize || typeof sequelize.transaction !== 'function') {
-    return res.status(500).json({ message: 'Error interno: conexión a la base de datos no disponible' });
-  }
-  
-  const transaction = await sequelize.transaction();
-  
   try {
     const { user_id } = req.params;
 
-    const user = await User.findByPk(user_id, { transaction });
+    const user = await User.findByPk(user_id);
     if (!user) {
-      await transaction.rollback();
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
     if (user.status !== 'bloqueado_permanente') {
-      await transaction.rollback();
       return res.status(400).json({ message: 'Usuario no bloqueado permanentemente' });
     }
 
-    await user.update({ status: 'activo' }, { transaction });
-    
+    await user.update({ status: 'activo' });
     await FailedAttempt.update(
       { is_resolved: true },
-      { where: { user_id }, transaction }
+      { where: { user_id } }
     );
 
-    await transaction.commit();
-    
     loggerUtils.logUserActivity(
       req.user.user_id,
       'admin_unlock',
@@ -156,7 +145,6 @@ exports.adminUnlockUser = async (req, res) => {
 
     res.status(200).json({ message: 'Usuario desbloqueado exitosamente' });
   } catch (error) {
-    await transaction.rollback();
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error desbloqueando usuario', error: error.message });
   }
