@@ -51,7 +51,7 @@ exports.getFailedAttemptsData = async (periodo) => {
 
     // Procesamos los resultados para estructurarlos en un formato más amigable
     const processed = result.map(item => ({
-      user_id: item['User.user_id'], // ID del usuario
+      user_id: item['User.user_id'] || item.user_id, // ID del usuario
       nombre: item['User.name'], // Nombre del usuario
       email: item['User.email'], // Correo electrónico del usuario
       estado: item['User.status'], // Estado del usuario (activo, inactivo, etc.)
