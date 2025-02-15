@@ -56,7 +56,7 @@ exports.getAllFaqs = async (req, res) => {
       include: [{
         model: FaqCategory,
         as: 'category',
-        attributes: ['id', 'name', 'description']
+        attributes: ['category_id', 'name', 'description']
       }]
     });
 
@@ -75,7 +75,7 @@ exports.getAllFaqs = async (req, res) => {
       }
       
       acc[id].faqs.push({
-        id: faq.id,
+        id: faq.faq_id,
         question: faq.question,
         answer: faq.answer,
         createdAt: faq.createdAt,
