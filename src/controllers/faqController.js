@@ -78,6 +78,7 @@ exports.getAllFaqs = async (req, res) => {
         id: faq.faq_id,
         question: faq.question,
         answer: faq.answer,
+        category_id:category_id,
         createdAt: faq.created_at,
         updatedAt: faq.updated_at
       });
