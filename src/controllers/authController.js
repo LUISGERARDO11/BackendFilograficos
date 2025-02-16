@@ -347,7 +347,7 @@ exports.sendOtpMfa = async (req, res) => {
         const expiration = new Date(Date.now() + otpLifetime);
 
         // Crear o actualizar la configuración 2FA
-        const [twofactorconfig] = await Twofactorconfig.findOrCreate({
+        const [twofactorconfig] = await TwoFactorConfig.findOrCreate({
             where: { account_id: account.account_id },
             defaults: {
                 mfa_type: 'OTP',
