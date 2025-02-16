@@ -397,14 +397,21 @@ exports.verifyOTPMFA = async (req, res) => {
             where: { account_id: account.account_id }
         });
 
+        // Verificar si la configuración 2FA existe y es válida
         if (!twoFactorConfig || !twoFactorConfig.is_valid || new Date() > twoFactorConfig.code_expires) {
             return res.status(400).json({ message: 'El código OTP ha expirado o es inválido.' });
         }
 
-        // Verificar código (comparación insensible a mayúsculas/minúsculas y sin espacios)
+        // Verificar si el código OTP está definido
+        if (!twoFactorConfig.code) {
+            return res.status(400).json({ message: 'El código OTP no está configurado.' });
+        }
+
+        // Normalizar el código OTP ingresado y almacenado
         const inputOtp = otp.trim().toUpperCase(); // Normalizar el código OTP ingresado
         const storedOtp = twoFactorConfig.code.trim().toUpperCase(); // Normalizar el código OTP almacenado
 
+        // Verificar código
         if (inputOtp !== storedOtp) {
             const newAttempts = twoFactorConfig.attempts + 1;
             const remainingAttempts = 3 - newAttempts;
@@ -461,6 +468,7 @@ exports.verifyOTPMFA = async (req, res) => {
         });
 
     } catch (error) {
+        console.error('Error en verifyOTPMFA:', error);
         res.status(500).json({ message: 'Error al verificar el OTP.', error: error.message });
     }
 };
