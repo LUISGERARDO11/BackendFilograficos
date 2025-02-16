@@ -401,8 +401,11 @@ exports.verifyOTPMFA = async (req, res) => {
             return res.status(400).json({ message: 'El código OTP ha expirado o es inválido.' });
         }
 
-        // Verificar código
-        if (otp !== twoFactorConfig.code) {
+        // Verificar código (comparación insensible a mayúsculas/minúsculas y sin espacios)
+        const inputOtp = otp.trim().toUpperCase(); // Normalizar el código OTP ingresado
+        const storedOtp = twoFactorConfig.code.trim().toUpperCase(); // Normalizar el código OTP almacenado
+
+        if (inputOtp !== storedOtp) {
             const newAttempts = twoFactorConfig.attempts + 1;
             const remainingAttempts = 3 - newAttempts;
             
