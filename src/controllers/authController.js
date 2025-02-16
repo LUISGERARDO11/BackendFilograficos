@@ -2,7 +2,7 @@
 logout, and two-factor authentication (2FA) using OTP (One-Time Password). Here is a summary of the
 main functionalities: */
 const { body, validationResult } = require('express-validator');
-const { User, Account, Session, Twofactorconfig, PasswordStatus } = require('../models/Associations')
+const { User, Account, Session, TwoFactorConfig, PasswordStatus } = require('../models/Associations')
 const Config = require('../models/Systemconfig');
 const authService = require('../services/authService');
 const emailService = require('../services/emailService');
@@ -217,12 +217,13 @@ exports.login = [
                 return res.status(403).json({ message: 'Límite de sesiones activas alcanzado (2 sesiones permitidas para administradores).' });
             }
 
-            // Si MFA está habilitado, no autenticamos completamente aún
-            if (account.mfa_enabled) {
+            const mfaConfig = await TwoFactorConfig.findOne({ where: { account_id: account.account_id } });
+
+            if (mfaConfig && mfaConfig.enabled) {
                 return res.status(200).json({
-                    message: 'MFA requerido. Introduce tu código MFA.',
+                    message: 'MFA requerido. Se ha enviado un código de autenticación.',
                     mfaRequired: true,
-                    userId: user.user_id // Enviar el userId para que el frontend lo use en la solicitud MFA
+                    userId: user.user_id
                 });
             }
 
