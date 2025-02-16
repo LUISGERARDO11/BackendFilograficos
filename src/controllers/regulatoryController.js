@@ -2,11 +2,9 @@
 versions. Here is a summary of what each function does: */
 const { RegulatoryDocument, DocumentVersion } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
-const { Op } = require('sequelize');
 
 // Crear nuevo documento regulatorio
 exports.createRegulatoryDocument = async (req, res) => {
-  const transaction = await sequelize.transaction();
   try {
     const { title, content, effective_date } = req.body;
     
@@ -15,8 +13,7 @@ exports.createRegulatoryDocument = async (req, res) => {
       where: { 
         title,
         deleted: false
-      },
-      transaction
+      }
     });
 
     if (existingDoc) {
@@ -24,16 +21,14 @@ exports.createRegulatoryDocument = async (req, res) => {
       await DocumentVersion.update(
         { active: false },
         { 
-          where: { document_id: existingDoc.document_id, active: true },
-          transaction
+          where: { document_id: existingDoc.document_id, active: true }
         }
       );
 
       // Crear nueva versión
       const lastVersion = await DocumentVersion.findOne({
         where: { document_id: existingDoc.document_id },
-        order: [['version', 'DESC']],
-        transaction
+        order: [['version', 'DESC']]
       });
 
       const newVersion = parseFloat(lastVersion.version) + 1.0;
@@ -44,15 +39,13 @@ exports.createRegulatoryDocument = async (req, res) => {
         content,
         active: true,
         deleted: false
-      }, { transaction });
+      });
 
       // Actualizar documento principal
       await existingDoc.update({
         current_version: newVersion.toFixed(1),
         effective_date: effective_date || new Date()
-      }, { transaction });
-
-      await transaction.commit();
+      });
       
       loggerUtils.logUserActivity(req.user.user_id, 'update', 
         `Documento actualizado a versión ${newVersion.toFixed(1)}`);
@@ -69,7 +62,7 @@ exports.createRegulatoryDocument = async (req, res) => {
       current_version: '1.0',
       effective_date: effective_date || new Date(),
       deleted: false
-    }, { transaction });
+    });
 
     await DocumentVersion.create({
       document_id: newDoc.document_id,
@@ -77,9 +70,7 @@ exports.createRegulatoryDocument = async (req, res) => {
       content,
       active: true,
       deleted: false
-    }, { transaction });
-
-    await transaction.commit();
+    });
     
     loggerUtils.logUserActivity(req.user.user_id, 'create', 
       `Documento creado: ${title}, versión 1.0`);
@@ -90,7 +81,6 @@ exports.createRegulatoryDocument = async (req, res) => {
     });
 
   } catch (error) {
-    await transaction.rollback();
     loggerUtils.logCriticalError(error);
     res.status(500).json({ 
       message: 'Error procesando documento',
@@ -130,21 +120,19 @@ exports.deleteRegulatoryDocument = async (req, res) => {
 
 // Eliminar versión específica
 exports.deleteRegulatoryDocumentVersion = async (req, res) => {
-  const transaction = await sequelize.transaction();
   try {
     const { document_id, version_id } = req.params;
 
     // Marcar versión como eliminada
-    const version = await DocumentVersion.findByPk(version_id, { transaction });
+    const version = await DocumentVersion.findByPk(version_id);
     if (!version) {
-      await transaction.rollback();
       return res.status(404).json({ message: 'Versión no encontrada' });
     }
 
     await version.update({ 
       deleted: true,
       active: false
-    }, { transaction });
+    });
 
     // Buscar última versión válida
     const lastValidVersion = await DocumentVersion.findOne({
@@ -152,27 +140,22 @@ exports.deleteRegulatoryDocumentVersion = async (req, res) => {
         document_id,
         deleted: false
       },
-      order: [['version', 'DESC']],
-      transaction
+      order: [['version', 'DESC']]
     });
 
     if (!lastValidVersion) {
-      await transaction.rollback();
       return res.status(400).json({ message: 'No hay versiones válidas' });
     }
 
     // Activar última versión
-    await lastValidVersion.update({ active: true }, { transaction });
+    await lastValidVersion.update({ active: true });
     
     // Actualizar documento principal
     await RegulatoryDocument.update({
       current_version: lastValidVersion.version
     }, {
-      where: { document_id },
-      transaction
+      where: { document_id }
     });
-
-    await transaction.commit();
     
     loggerUtils.logUserActivity(req.user.user_id, 'delete', 
       `Versión ${version.version} eliminada. Nueva versión activa: ${lastValidVersion.version}`);
@@ -182,7 +165,6 @@ exports.deleteRegulatoryDocumentVersion = async (req, res) => {
     });
 
   } catch (error) {
-    await transaction.rollback();
     loggerUtils.logCriticalError(error);
     res.status(500).json({ 
       message: 'Error eliminando versión',
@@ -193,7 +175,6 @@ exports.deleteRegulatoryDocumentVersion = async (req, res) => {
 
 // Actualizar documento (nueva versión)
 exports.updateRegulatoryDocument = async (req, res) => {
-  const transaction = await sequelize.transaction();
   try {
     const { document_id } = req.params;
     const { content, effective_date } = req.body;
@@ -203,23 +184,20 @@ exports.updateRegulatoryDocument = async (req, res) => {
       where: { 
         document_id,
         active: true
-      },
-      transaction
+      }
     });
 
     if (!currentVersion) {
-      await transaction.rollback();
       return res.status(404).json({ message: 'Versión activa no encontrada' });
     }
 
     // Desactivar versión actual
-    await currentVersion.update({ active: false }, { transaction });
+    await currentVersion.update({ active: false });
 
     // Calcular nueva versión
     const lastVersion = await DocumentVersion.findOne({
       where: { document_id },
-      order: [['version', 'DESC']],
-      transaction
+      order: [['version', 'DESC']]
     });
 
     const newVersion = (parseFloat(lastVersion.version) + 1.0).toFixed(1);
@@ -231,18 +209,15 @@ exports.updateRegulatoryDocument = async (req, res) => {
       content,
       active: true,
       deleted: false
-    }, { transaction });
+    });
 
     // Actualizar documento principal
     await RegulatoryDocument.update({
       current_version: newVersion,
       effective_date: effective_date || new Date()
     }, {
-      where: { document_id },
-      transaction
+      where: { document_id }
     });
-
-    await transaction.commit();
     
     loggerUtils.logUserActivity(req.user.user_id, 'update', 
       `Documento actualizado a versión ${newVersion}`);
@@ -253,7 +228,6 @@ exports.updateRegulatoryDocument = async (req, res) => {
     });
 
   } catch (error) {
-    await transaction.rollback();
     loggerUtils.logCriticalError(error);
     res.status(500).json({ 
       message: 'Error actualizando documento',
@@ -359,48 +333,48 @@ exports.getVersionHistory = async (req, res) => {
 
 // Obtener documento por ID con todas sus versiones
 exports.getDocumentById = async (req, res) => {
-    try {
-      const { document_id } = req.params;
-  
-      const document = await RegulatoryDocument.findByPk(document_id, {
-        include: [{
-          model: DocumentVersion,
-          attributes: ['version_id', 'version', 'content', 'created_at', 'active', 'deleted']
-        }]
-      });
-  
-      if (!document) {
-        return res.status(404).json({ message: 'Documento regulatorio no encontrado.' });
-      }
-  
-      // Registrar acceso
-      loggerUtils.logUserActivity(req.user?.user_id || 'anon', 'view', 
-        `Documento con ID ${document_id} consultado`);
-  
-      // Mapear respuesta
-      const response = {
-        document_id: document.document_id,
-        title: document.title,
-        current_version: document.current_version,
-        effective_date: document.effective_date,
-        versions: document.DocumentVersions.map(version => ({
-          version_id: version.version_id,
-          version: version.version,
-          content: version.content,
-          created_at: version.created_at,
-          status: version.deleted ? 'Eliminado' : (version.active ? 'Vigente' : 'Histórico')
-        }))
-      };
-  
-      res.status(200).json(response);
-  
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({ 
-        message: 'Error obteniendo documento',
-        error: error.message
-      });
+  try {
+    const { document_id } = req.params;
+
+    const document = await RegulatoryDocument.findByPk(document_id, {
+      include: [{
+        model: DocumentVersion,
+        attributes: ['version_id', 'version', 'content', 'created_at', 'active', 'deleted']
+      }]
+    });
+
+    if (!document) {
+      return res.status(404).json({ message: 'Documento regulatorio no encontrado.' });
     }
+
+    // Registrar acceso
+    loggerUtils.logUserActivity(req.user?.user_id || 'anon', 'view', 
+      `Documento con ID ${document_id} consultado`);
+
+    // Mapear respuesta
+    const response = {
+      document_id: document.document_id,
+      title: document.title,
+      current_version: document.current_version,
+      effective_date: document.effective_date,
+      versions: document.DocumentVersions.map(version => ({
+        version_id: version.version_id,
+        version: version.version,
+        content: version.content,
+        created_at: version.created_at,
+        status: version.deleted ? 'Eliminado' : (version.active ? 'Vigente' : 'Histórico')
+      }))
+    };
+
+    res.status(200).json(response);
+
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ 
+      message: 'Error obteniendo documento',
+      error: error.message
+    });
+  }
 };
 
 // Restaurar documento
@@ -434,23 +408,20 @@ exports.restoreRegulatoryDocument = async (req, res) => {
 
 // Restaurar versión específica
 exports.restoreRegulatoryDocumentVersion = async (req, res) => {
-  const transaction = await sequelize.transaction();
   try {
     const { version_id } = req.params;
 
-    const version = await DocumentVersion.findByPk(version_id, { transaction });
+    const version = await DocumentVersion.findByPk(version_id);
     if (!version) {
-      await transaction.rollback();
       return res.status(404).json({ message: 'Versión no encontrada' });
     }
 
-    await version.update({ deleted: false }, { transaction });
+    await version.update({ deleted: false });
 
     // Si es la última versión, activarla
     const latestVersion = await DocumentVersion.findOne({
       where: { document_id: version.document_id },
-      order: [['version', 'DESC']],
-      transaction
+      order: [['version', 'DESC']]
     });
 
     if (latestVersion.version_id === version.version_id) {
@@ -460,22 +431,18 @@ exports.restoreRegulatoryDocumentVersion = async (req, res) => {
           where: { 
             document_id: version.document_id,
             active: true
-          },
-          transaction
+          }
         }
       );
       
-      await version.update({ active: true }, { transaction });
+      await version.update({ active: true });
       
       await RegulatoryDocument.update({
         current_version: version.version
       }, {
-        where: { document_id: version.document_id },
-        transaction
+        where: { document_id: version.document_id }
       });
     }
-
-    await transaction.commit();
     
     loggerUtils.logUserActivity(req.user.user_id, 'restore', 
       `Versión ${version.version} restaurada`);
@@ -486,7 +453,6 @@ exports.restoreRegulatoryDocumentVersion = async (req, res) => {
     });
 
   } catch (error) {
-    await transaction.rollback();
     loggerUtils.logCriticalError(error);
     res.status(500).json({ 
       message: 'Error restaurando versión',
