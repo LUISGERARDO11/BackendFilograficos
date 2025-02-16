@@ -393,7 +393,7 @@ exports.verifyOTPMFA = async (req, res) => {
         }
 
         // Obtener configuración 2FA
-        const twoFactorConfig = await Twofactorconfig.findOne({
+        const twoFactorConfig = await TwoFactorConfig.findOne({
             where: { account_id: account.account_id }
         });
 
