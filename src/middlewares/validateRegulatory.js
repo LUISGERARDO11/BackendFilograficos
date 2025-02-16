@@ -4,7 +4,7 @@ const { body, validationResult } = require('express-validator');
 
 const validateRegulatory = [
   // Validar el título
-  body('titulo')
+  body('title')
     .isString().withMessage('El título debe ser un texto válido.')
     .trim()
     .notEmpty().withMessage('El título es obligatorio.')
@@ -12,12 +12,12 @@ const validateRegulatory = [
     .withMessage('El título debe ser válido (Política de privacidad, Términos y condiciones, Deslinde legal).'),
   
   // Validar el contenido (sin escape para preservar el Markdown)
-  body('contenido')
+  body('content')
     .isString().withMessage('El contenido debe ser un texto válido.')
     .notEmpty().withMessage('El contenido es obligatorio.'),
 
   // Validar la fecha de vigencia
-  body('fecha_vigencia')
+  body('effective_date')
     .optional()
     .isISO8601().withMessage('La fecha de vigencia debe ser una fecha válida (ISO 8601).'),
 
