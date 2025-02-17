@@ -15,6 +15,8 @@ const RegulatoryDocument = require('./Regulatorydocuments');
 const DocumentVersion = require('./Documentversions');
 const FaqCategory = require('./Faqcategory');
 const Faq = require('./Faq')
+const SupportInquiry = require('./SupportInquiry');
+
 
 // User Associations
 User.hasOne(Account, { foreignKey: 'user_id' });
@@ -58,6 +60,10 @@ EmailType.belongsTo(User, { foreignKey: 'created_by' });
 FaqCategory.hasMany(Faq, { foreignKey: 'category_id', as: 'faqs' });
 Faq.belongsTo(FaqCategory, { foreignKey: 'category_id', as: 'category' });
 
+// Relación entre User y SupportInquiry
+User.hasMany(SupportInquiry, { foreignKey: 'user_id' });
+SupportInquiry.belongsTo(User, { foreignKey: 'user_id' });
+
 module.exports = {
   User,
   Account,
@@ -73,5 +79,6 @@ module.exports = {
   RegulatoryDocument,
   DocumentVersion,
   FaqCategory,
-  Faq
+  Faq,
+  SupportInquiry
 };

@@ -27,6 +27,7 @@ const sessionRoutes = require('./routes/sessionRoutes');
 const userRoutes = require('./routes/userRoutes');
 const faqCategoriesRoutes = require('./routes/faqCategoriesRoutes');
 const faqRoutes = require('./routes/faqRoutes');
+const supportInquiryRoutes = require('./routes/supportInquiryRoutes');
 
 const app = express();
 
@@ -79,6 +80,7 @@ app.use('/api/session', sessionRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/faq-categories', faqCategoriesRoutes);
 app.use('/api/faq', faqRoutes);
+app.use('/api/support-inquiry', supportInquiryRoutes);
 
 // Middleware para manejar errores
 app.use(errorHandler);
