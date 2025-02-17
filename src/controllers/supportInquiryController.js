@@ -1,5 +1,5 @@
 const { body, param, validationResult } = require('express-validator');
-const { SupportInquiry } = require('../models/Associations');
+const { SupportInquiry, User  } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 
 // Middleware de validación
@@ -20,7 +20,14 @@ exports.createConsultation = [
     }
     try {
       const { user_name, user_email, subject, message } = req.body;
+      
+      // Buscar el usuario en la base de datos por su email
+      const existingUser = await User.findOne({ where: { email: user_email } });
+      const userId = existingUser ? existingUser.user_id : null;
+
+      // Crear la consulta en SupportInquiry
       const newConsultation = await SupportInquiry.create({
+        user_id: userId,
         user_name,
         user_email,
         subject,
@@ -28,7 +35,7 @@ exports.createConsultation = [
         status: 'pending'
       });
       
-      loggerUtils.logUserActivity(req.user?.user_id || 'system', 'create', `Nueva consulta creada: ${newConsultation.id}`);
+      loggerUtils.logUserActivity(req.user?.user_id || 'system', 'create', `Nueva consulta creada: ${newConsultation.inquiry_id}`);
       res.status(201).json({ message: 'Consulta creada exitosamente.', consultation: newConsultation });
     } catch (error) {
       loggerUtils.logCriticalError(error);
