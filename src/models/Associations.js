@@ -15,7 +15,7 @@ const RegulatoryDocument = require('./Regulatorydocuments');
 const DocumentVersion = require('./Documentversions');
 const FaqCategory = require('./Faqcategory');
 const Faq = require('./Faq')
-const SupportInquiry = require('./SupportInquiry');
+const SupportInquiry = require('./Supportinquiry');
 
 
 // User Associations
