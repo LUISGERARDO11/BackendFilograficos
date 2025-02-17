@@ -1,5 +1,6 @@
 const { body, param, validationResult } = require('express-validator');
 const { SupportInquiry, User  } = require('../models/Associations');
+const emailService = require('../services/emailService');
 const loggerUtils = require('../utils/loggerUtils');
 
 // Middleware de validación
@@ -18,9 +19,13 @@ exports.createConsultation = [
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
+
     try {
       const { user_name, user_email, subject, message } = req.body;
-      
+
+      // Enviar el correo antes de guardar en la BD
+      await emailService.sendUserSupportEmail(user_email, user_name, subject, message);
+
       // Buscar el usuario en la base de datos por su email
       const existingUser = await User.findOne({ where: { email: user_email } });
       const userId = existingUser ? existingUser.user_id : null;
@@ -34,12 +39,13 @@ exports.createConsultation = [
         message,
         status: 'pending'
       });
-      
+
       loggerUtils.logUserActivity(req.user?.user_id || 'system', 'create', `Nueva consulta creada: ${newConsultation.inquiry_id}`);
       res.status(201).json({ message: 'Consulta creada exitosamente.', consultation: newConsultation });
+
     } catch (error) {
       loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error al crear la consulta', error: error.message });
+      res.status(500).json({ message: 'Error al procesar la consulta', error: error.message });
     }
   }
 ];

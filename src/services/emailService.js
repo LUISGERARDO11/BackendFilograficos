@@ -130,3 +130,41 @@ exports.sendPasswordChangeNotification = async (destinatario) => {
     throw new Error("Error enviando notificación: " + error.message);
   }
 };
+
+// Enviar el correo con la información del usuario al correo de contacto de la empresa
+exports.sendUserSupportEmail = async (userEmail, userName, subject, message) => {
+  try {
+    // Obtener la plantilla desde la base de datos
+    const template = await getEmailTemplate('support_inquiry_notification');
+
+    // Correo de contacto de la empresa (de .env o configuración)
+    const companyEmail = process.env.COMPANY_EMAIL || "soporte@empresa.com";
+
+    // Datos para renderizar la plantilla
+    const data = {
+      user_email: userEmail, 
+      user_name: userName,
+      subject,
+      message
+    };
+
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: companyEmail,
+      subject: `${template.subject} ${subject}`, // Concatenamos el asunto de la plantilla con el del usuario
+      html: ejs.render(template.html_content, data),
+      text: ejs.render(template.text_content, data)
+    };
+
+    // Enviar el correo
+    await transporter.sendMail(mailOptions);
+
+    // Registrar en logs
+    loggerUtils.logUserActivity(null, 'send_user_support_email', `Correo enviado desde ${userEmail} a ${companyEmail}`);
+    console.log("Correo de soporte enviado");
+
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    throw new Error("Error enviando correo de soporte: " + error.message);
+  }
+};
