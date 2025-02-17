@@ -4,8 +4,8 @@ const loggerUtils = require('../utils/loggerUtils');
 
 // Middleware de validación
 const validateConsultation = [
-  body('name').trim().notEmpty().withMessage('El nombre es obligatorio').escape(),
-  body('email').isEmail().withMessage('Debe ser un correo válido').normalizeEmail(),
+  body('user_name').trim().notEmpty().withMessage('El nombre es obligatorio').escape(),
+  body('user_email').isEmail().withMessage('Debe ser un correo válido').normalizeEmail(),
   body('subject').trim().notEmpty().withMessage('El asunto es obligatorio').escape(),
   body('message').trim().notEmpty().withMessage('El mensaje es obligatorio').escape(),
 ];
@@ -19,10 +19,10 @@ exports.createConsultation = [
       return res.status(400).json({ errors: errors.array() });
     }
     try {
-      const { name, email, subject, message } = req.body;
+      const { user_name, user_email, subject, message } = req.body;
       const newConsultation = await SupportInquiry.create({
-        name,
-        email,
+        user_name,
+        user_email,
         subject,
         message,
         status: 'pending'
@@ -41,7 +41,7 @@ exports.createConsultation = [
 exports.getAllConsultations = async (req, res) => {
   try {
     const consultations = await SupportInquiry.findAll({
-      attributes: ['id', 'name', 'email', 'subject', 'status', 'createdAt', 'updatedAt'],
+      attributes: ['id', 'user_name', 'user_email', 'subject', 'status', 'createdAt', 'updatedAt'],
       order: [['createdAt', 'DESC']]
     });
     res.status(200).json({ consultations });

@@ -1,5 +1,5 @@
 const { Op } = require("sequelize");
-const SupportInquiry = require("../models/SupportInquiry");
+const SupportInquiry = require("../models/Supportinquiry");
 
 /**
  * Obtener todas las consultas realizadas por un usuario registrado
