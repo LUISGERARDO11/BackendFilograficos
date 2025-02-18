@@ -1,5 +1,5 @@
 const { body, param, validationResult } = require('express-validator');
-const { SupportInquiry, User, sequelize  } = require('../models/Associations');
+const { SupportInquiry, User  } = require('../models/Associations');
 const emailService = require('../services/emailService');
 const loggerUtils = require('../utils/loggerUtils');
 const axios = require('axios');
@@ -73,25 +73,15 @@ exports.createConsultation = [
 // Obtener el número total de consultas por cada estado
 exports.getConsultationCountsByStatus = async (req, res) => {
   try {
-    // Consulta SQL pura para contar consultas por estado
-    const query = `
-      SELECT status, COUNT(*) AS count
-      FROM support_inquiries
-      GROUP BY status;
-    `;
-
-    // Ejecutar la consulta
-    const [counts] = await sequelize.query(query, {
-      type: sequelize.QueryTypes.SELECT,
+    const counts = await SupportInquiry.findAll({
+      attributes: [
+        'status',
+        [SupportInquiry.sequelize.fn('COUNT', SupportInquiry.sequelize.col('status')), 'count']
+      ],
+      group: ['status']
     });
 
-    // Formatear la respuesta
-    const formattedCounts = counts.map(row => ({
-      status: row.status,
-      count: parseInt(row.count, 10), // Asegurar que el conteo sea un número
-    }));
-
-    res.status(200).json({ consultationCounts: formattedCounts });
+    res.status(200).json({ consultationCounts: counts });
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ 
