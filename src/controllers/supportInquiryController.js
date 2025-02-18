@@ -2,6 +2,8 @@ const { body, param, validationResult } = require('express-validator');
 const { SupportInquiry, User  } = require('../models/Associations');
 const emailService = require('../services/emailService');
 const loggerUtils = require('../utils/loggerUtils');
+const axios = require('axios');
+require('dotenv').config();
 
 // Middleware de validación
 const validateConsultation = [
@@ -9,6 +11,7 @@ const validateConsultation = [
   body('user_email').isEmail().withMessage('Debe ser un correo válido').normalizeEmail(),
   body('subject').trim().notEmpty().withMessage('El asunto es obligatorio').escape(),
   body('message').trim().notEmpty().withMessage('El mensaje es obligatorio').escape(),
+  body('recaptchaToken').not().isEmpty().withMessage('Se requiere el token de reCAPTCHA'), // Validación del token de reCAPTCHA
 ];
 
 // Crear una nueva consulta
@@ -20,34 +23,51 @@ exports.createConsultation = [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    try {
-      const { user_name, user_email, subject, message } = req.body;
+    const { user_name, user_email, subject, message, recaptchaToken } = req.body;
 
-      // Enviar el correo antes de guardar en la BD
+    try {
+      // 1. Verificar el token de reCAPTCHA con la API de Google
+      const recaptchaSecretKey = process.env.RECAPTCHA_SECRET_KEY;
+      const recaptchaResponse = await axios.post(`https://www.google.com/recaptcha/api/siteverify`, null, {
+        params: {
+          secret: recaptchaSecretKey,
+          response: recaptchaToken,
+        },
+      });
+
+      const { success, score } = recaptchaResponse.data;
+      if (!success || score < 0.5) {
+        return res.status(400).json({ message: 'Fallo en la verificación de reCAPTCHA' });
+      }
+
+      // 2. Enviar el correo antes de guardar en la BD
       await emailService.sendUserSupportEmail(user_email, user_name, subject, message);
 
-      // Buscar el usuario en la base de datos por su email
+      // 3. Buscar el usuario en la base de datos por su email
       const existingUser = await User.findOne({ where: { email: user_email } });
       const userId = existingUser ? existingUser.user_id : null;
 
-      // Crear la consulta en SupportInquiry
+      // 4. Crear la consulta en SupportInquiry
       const newConsultation = await SupportInquiry.create({
         user_id: userId,
         user_name,
         user_email,
         subject,
         message,
-        status: 'pending'
+        status: 'pending',
       });
 
+      // 5. Registrar la actividad
       loggerUtils.logUserActivity(req.user?.user_id || 'system', 'create', `Nueva consulta creada: ${newConsultation.inquiry_id}`);
-      res.status(201).json({ message: 'Consulta creada exitosamente.', consultation: newConsultation });
 
+      // 6. Respuesta exitosa
+      res.status(201).json({ message: 'Consulta creada exitosamente.', consultation: newConsultation });
     } catch (error) {
+      // 7. Manejo de errores
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error al procesar la consulta', error: error.message });
     }
-  }
+  },
 ];
 
 // Obtener todas las consultas ordenadas por fecha más reciente
