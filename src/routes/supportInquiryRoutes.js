@@ -17,6 +17,9 @@ router.post('/', supportInquiryController.createConsultation);
 // Obtener todas las consultas de soporte (requiere autenticación y rol de administrador)
 router.get('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), supportInquiryController.getAllConsultations);
 
+// Obtener el número total de consultas por cada estado (requiere autenticación y rol de administrador)
+router.get('/counts-by-status', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), supportInquiryController.getConsultationCountsByStatus);
+
 // Obtener una consulta específica por ID (requiere autenticación)
 router.get('/:id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), supportInquiryController.getConsultationById);
 

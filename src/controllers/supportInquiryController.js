@@ -70,6 +70,24 @@ exports.createConsultation = [
   },
 ];
 
+// Obtener el número total de consultas por cada estado
+exports.getConsultationCountsByStatus = async (req, res) => {
+  try {
+    const counts = await SupportInquiry.findAll({
+      attributes: [
+        'status',
+        [Sequelize.fn('COUNT', Sequelize.col('status')), 'count']
+      ],
+      group: ['status']
+    });
+
+    res.status(200).json({ consultationCounts: counts });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener el número de consultas por estado', error: error.message });
+  }
+};
+
 // Obtener todas las consultas ordenadas por fecha más reciente
 exports.getAllConsultations = async (req, res) => {
   try {

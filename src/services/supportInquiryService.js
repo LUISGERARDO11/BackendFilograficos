@@ -81,6 +81,7 @@ exports.getSortedInquiries = async (order = "DESC") => {
 /**
  * Obtener el número total de consultas por cada estado
  */
+//va a ir el controller direcamente
 exports.countInquiriesByStatus = async () => {
   return await SupportInquiry.findAll({
     attributes: ["status", [sequelize.fn("COUNT", sequelize.col("status")), "count"]],
