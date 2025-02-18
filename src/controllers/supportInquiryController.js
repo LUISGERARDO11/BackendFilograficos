@@ -96,8 +96,8 @@ exports.getConsultationCountsByStatus = async (req, res) => {
 exports.getAllConsultations = async (req, res) => {
   try {
     const consultations = await SupportInquiry.findAll({
-      attributes: ['inquiry_id', 'user_name', 'user_email', 'subject', 'status', 'createdAt', 'updatedAt'],
-      order: [['createdAt', 'DESC']]
+      attributes: ['inquiry_id', 'user_name', 'user_email', 'subject', 'status', 'created_at', 'updated_at'],
+      order: [['created_at', 'DESC']]
     });
     res.status(200).json({ consultations });
   } catch (error) {
