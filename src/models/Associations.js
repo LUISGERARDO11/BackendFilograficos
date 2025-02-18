@@ -1,5 +1,6 @@
 /* This code snippet is setting up associations between different models in a Node.js application using
 Sequelize, which is an ORM for Node.js. */
+const sequelize = require('../config/dataBase');
 const User = require('./Users');
 const Account = require('./Account');
 const TwoFactorConfig = require('./Twofactorconfig');
@@ -65,6 +66,7 @@ User.hasMany(SupportInquiry, { foreignKey: 'user_id' });
 SupportInquiry.belongsTo(User, { foreignKey: 'user_id' });
 
 module.exports = {
+  sequelize,
   User,
   Account,
   TwoFactorConfig,
