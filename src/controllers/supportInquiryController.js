@@ -1,4 +1,5 @@
 const { body, param, validationResult } = require('express-validator');
+const { sequelize } = require('../config/dataBase'); 
 const { SupportInquiry, User  } = require('../models/Associations');
 const emailService = require('../services/emailService');
 const loggerUtils = require('../utils/loggerUtils');
@@ -76,7 +77,7 @@ exports.getConsultationCountsByStatus = async (req, res) => {
     const counts = await SupportInquiry.findAll({
       attributes: [
         'status',
-        [Sequelize.fn('COUNT', Sequelize.col('status')), 'count']
+        [sequelize.fn('COUNT', sequelize.col('status')), 'count']
       ],
       group: ['status']
     });
@@ -84,7 +85,10 @@ exports.getConsultationCountsByStatus = async (req, res) => {
     res.status(200).json({ consultationCounts: counts });
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al obtener el número de consultas por estado', error: error.message });
+    res.status(500).json({ 
+      message: 'Error al obtener el número de consultas por estado',
+      error: error.message 
+    });
   }
 };
 
@@ -92,7 +96,7 @@ exports.getConsultationCountsByStatus = async (req, res) => {
 exports.getAllConsultations = async (req, res) => {
   try {
     const consultations = await SupportInquiry.findAll({
-      attributes: ['id', 'user_name', 'user_email', 'subject', 'status', 'createdAt', 'updatedAt'],
+      attributes: ['inquiry_id', 'user_name', 'user_email', 'subject', 'status', 'createdAt', 'updatedAt'],
       order: [['createdAt', 'DESC']]
     });
     res.status(200).json({ consultations });
