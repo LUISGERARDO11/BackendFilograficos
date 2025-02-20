@@ -105,6 +105,40 @@ exports.getAllConsultations = async (req, res) => {
   }
 };
 
+// Obtener todas las consultas ordenadas por fecha más reciente (con o sin paginación)
+exports.getAllConsultationsForPagination = async (req, res) => {
+  try {
+    const { page: pageParam, pageSize: pageSizeParam } = req.query;
+    const page = parseInt(pageParam) || 1;
+    const pageSize = parseInt(pageSizeParam) || 10;
+
+    // Validación de parámetros
+    if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
+      return res.status(400).json({ 
+        message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' 
+      });
+    }
+
+    const { count, rows: consultations } = await SupportInquiry.findAndCountAll({
+      attributes: ['inquiry_id','user_id', 'user_name', 'user_email', 'subject', 'status', 'response_channel','created_at', 'updated_at'],
+      order: [['created_at', 'DESC']],
+      limit: pageSize,
+      offset: (page - 1) * pageSize
+    });
+
+    res.status(200).json({ 
+      consultations,
+      total: count,
+      page,
+      pageSize
+    });
+
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener las consultas', error: error.message });
+  }
+};
+
 // Obtener detalles de una consulta específica por ID
 exports.getConsultationById = [
   param('id').isInt().withMessage('El ID debe ser un número entero').toInt(),
