@@ -91,22 +91,8 @@ exports.getConsultationCountsByStatus = async (req, res) => {
   }
 };
 
-// Obtener todas las consultas ordenadas por fecha más reciente
-exports.getAllConsultations = async (req, res) => {
-  try {
-    const consultations = await SupportInquiry.findAll({
-      attributes: ['inquiry_id','user_id', 'user_name', 'user_email', 'subject', 'status', 'response_channel','created_at', 'updated_at'],
-      order: [['created_at', 'DESC']]
-    });
-    res.status(200).json({ consultations });
-  } catch (error) {
-    loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al obtener las consultas', error: error.message });
-  }
-};
-
 // Obtener todas las consultas ordenadas por fecha más reciente (con o sin paginación)
-exports.getAllConsultationsForPagination = async (req, res) => {
+exports.getAllConsultations = async (req, res) => {
   try {
     const { page: pageParam, pageSize: pageSizeParam } = req.query;
     const page = parseInt(pageParam) || 1;
