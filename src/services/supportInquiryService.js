@@ -68,6 +68,18 @@ exports.getInquiriesWithoutUser = async (page = 1, pageSize = 10) => {
 };
 
 /**
+ * Obtener consultas donde user_id no sea null (usuarios registrados)
+ */
+exports.getInquiriesWithUser = async (page = 1, pageSize = 10) => {
+  const offset = (page - 1) * pageSize;
+  return await SupportInquiry.findAndCountAll({
+    where: { user_id: { [Op.not]: null } }, // Filtra usuarios registrados
+    limit: pageSize,
+    offset: offset,
+  });
+};
+
+/**
  * Obtener consultas que fueron actualizadas recientemente
  */
 exports.getInquiriesByUpdatedDate = async (startDate, endDate, page = 1, pageSize = 10) => {
@@ -111,8 +123,10 @@ exports.getFilteredInquiries = async (filters, page = 1, pageSize = 10) => {
     };
   }
 
-  if (filters.user_id === null || filters.user_id === "null") {
-    whereClause.user_id = null;
+  if (filters.user_id === "null") {
+    whereClause.user_id = null; // Usuarios no registrados
+  } else if (filters.user_id === "registered") {
+    whereClause.user_id = { [Op.not]: null }; // Usuarios registrados
   }
 
   // Obtener las consultas filtradas y paginadas

@@ -256,7 +256,7 @@ exports.getFilteredConsultations = async (req, res) => {
       contact_channel: !!contact_channel,
       response_channel: !!response_channel,
       dateRange: !!startDate && !!endDate,
-      user_id: user_id === "null" || user_id === null,
+      user_id: user_id === "null" || user_id === "registered",
     };
 
     // Contar cuántos filtros se han proporcionado
@@ -275,7 +275,11 @@ exports.getFilteredConsultations = async (req, res) => {
       } else if (filtersProvided.dateRange) {
         result = await supportService.getInquiriesByDateRange(startDate, endDate, page, pageSize);
       } else if (filtersProvided.user_id) {
-        result = await supportService.getInquiriesWithoutUser(page, pageSize);
+        if (user_id === "null") {
+          result = await supportService.getInquiriesWithoutUser(page, pageSize);
+        } else if (user_id === "registered") {
+          result = await supportService.getInquiriesWithUser(page, pageSize);
+        }
       }
     } else if (filterCount > 1) {
       // Si se proporcionan múltiples filtros, usar el método combinado
@@ -285,7 +289,7 @@ exports.getFilteredConsultations = async (req, res) => {
         response_channel,
         startDate,
         endDate,
-        user_id: user_id === "null" ? null : user_id,
+        user_id,
       };
       result = await supportService.getFilteredInquiries(filters, page, pageSize);
     } else {
