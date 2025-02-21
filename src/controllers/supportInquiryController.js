@@ -1,6 +1,7 @@
 const { body, param, validationResult } = require('express-validator');
 const { SupportInquiry, User  } = require('../models/Associations');
 const emailService = require('../services/emailService');
+const supportService = require('../services/supportInquiryService');
 const loggerUtils = require('../utils/loggerUtils');
 const axios = require('axios');
 require('dotenv').config();
@@ -223,4 +224,88 @@ exports.updateConsultationResponseChannel = [
         res.status(500).json({ message: 'Error al actualizar el canal de contacto', error: error.message });
       }
     }
-  ];
+];
+
+// Obtener consultas filtradas según los parámetros proporcionados
+exports.getFilteredConsultations = async (req, res) => {
+  try {
+    const {
+      status,
+      contact_channel,
+      response_channel,
+      startDate,
+      endDate,
+      user_id,
+      page: pageParam,
+      pageSize: pageSizeParam,
+    } = req.query;
+
+    const page = parseInt(pageParam) || 1;
+    const pageSize = parseInt(pageSizeParam) || 10;
+
+    // Validación de parámetros de paginación
+    if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
+      return res.status(400).json({
+        message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos.',
+      });
+    }
+
+    // Determinar qué filtros se han proporcionado
+    const filtersProvided = {
+      status: !!status,
+      contact_channel: !!contact_channel,
+      response_channel: !!response_channel,
+      dateRange: !!startDate && !!endDate,
+      user_id: user_id === "null" || user_id === null,
+    };
+
+    // Contar cuántos filtros se han proporcionado
+    const filterCount = Object.values(filtersProvided).filter(Boolean).length;
+
+    let result;
+
+    // Si solo se proporciona un filtro, usar el método específico del servicio
+    if (filterCount === 1) {
+      if (filtersProvided.status) {
+        result = await supportService.getInquiriesByStatus(status, page, pageSize);
+      } else if (filtersProvided.contact_channel) {
+        result = await supportService.getInquiriesByContactChannel(contact_channel, page, pageSize);
+      } else if (filtersProvided.response_channel) {
+        result = await supportService.getInquiriesByResponseChannel(response_channel, page, pageSize);
+      } else if (filtersProvided.dateRange) {
+        result = await supportService.getInquiriesByDateRange(startDate, endDate, page, pageSize);
+      } else if (filtersProvided.user_id) {
+        result = await supportService.getInquiriesWithoutUser(page, pageSize);
+      }
+    } else if (filterCount > 1) {
+      // Si se proporcionan múltiples filtros, usar el método combinado
+      const filters = {
+        status,
+        contact_channel,
+        response_channel,
+        startDate,
+        endDate,
+        user_id: user_id === "null" ? null : user_id,
+      };
+      result = await supportService.getFilteredInquiries(filters, page, pageSize);
+    } else {
+      // Si no se proporcionan filtros, devolver todas las consultas paginadas
+      result = await supportService.getAllConsultationsForPagination(page, pageSize);
+    }
+
+    // Respuesta exitosa
+    res.status(200).json({
+      consultations: result.rows,
+      total: result.count,
+      page,
+      pageSize,
+    });
+  } catch (error) {
+    // Manejo de errores
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({
+      message: 'Error al obtener las consultas filtradas.',
+      error: error.message,
+    });
+  }
+};
