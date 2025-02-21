@@ -141,41 +141,89 @@ exports.initiatePasswordRecovery = async (req, res) => {
 exports.verifyOTP = async (req, res) => {
     const { email, otp } = req.body;
 
+    console.log(`Iniciando verificación de OTP para el email: ${email}`);
+
     try {
         // Buscar al usuario por su correo
         const user = await User.findOne({ where: { email } });
         if (!user) {
+            console.log(`Usuario con email ${email} no encontrado.`);
             return res.status(404).json({ message: 'Usuario no encontrado.' });
         }
+
+        console.log(`Usuario encontrado: ${user.user_id}`);
 
         // Buscar la cuenta asociada al usuario
         const account = await Account.findOne({ where: { user_id: user.user_id } });
         if (!account) {
+            console.log(`Cuenta para el usuario ${user.user_id} no encontrada.`);
             return res.status(404).json({ message: 'Cuenta no encontrada.' });
         }
+
+        console.log(`Cuenta encontrada: ${account.account_id}`);
 
         // Buscar el token de recuperación
         const recovery = await PasswordRecovery.findOne({
             where: {
                 account_id: account.account_id,
                 recovery_token: otp,
-                is_token_valid: true,
-                token_expiration: { [Op.gt]: new Date() }
+                is_token_valid: true
             }
         });
 
         if (!recovery) {
-            return res.status(400).json({ message: 'El código OTP no es válido o ha expirado.' });
+            console.log(`Token de recuperación no válido para la cuenta ${account.account_id}.`);
+            return res.status(400).json({ message: 'El código OTP no es válido.' });
         }
 
+        console.log(`Token de recuperación encontrado: ${recovery.recovery_id}`);
+
+        // Validar manualmente la fecha de expiración del token
+        if (recovery.token_expiration < new Date()) {
+            console.log(`Token de recuperación expirado para la cuenta ${account.account_id}.`);
+            return res.status(400).json({ message: 'El código OTP ha expirado.' });
+        }
+
+        // Verificar si el OTP ingresado es correcto
+        if (otp !== recovery.recovery_token) {
+            // Incrementar el contador de intentos fallidos
+            recovery.attempts += 1;
+            await recovery.save();
+
+            console.log(`Intento fallido #${recovery.attempts} para la cuenta ${account.account_id}.`);
+
+            // Si los intentos fallidos son 3 o más, invalidar el token
+            if (recovery.attempts >= 3) {
+                recovery.is_token_valid = false;
+                await recovery.save();
+
+                console.log(`Límite de intentos alcanzado. Token invalidado para la cuenta ${account.account_id}.`);
+
+                return res.status(400).json({
+                    message: 'Has alcanzado el límite de intentos fallidos. Solicita un nuevo código OTP.'
+                });
+            }
+
+            return res.status(400).json({
+                message: `Código OTP incorrecto. Intentos restantes: ${3 - recovery.attempts}.`
+            });
+        }
+
+        console.log(`OTP verificado correctamente para la cuenta ${account.account_id}.`);
+
         // Invalidar el token después de su uso
-        await recovery.update({ is_token_valid: false });
+        recovery.is_token_valid = false;
+        recovery.attempts = 0; // Reiniciar intentos
+        await recovery.save();
+
+        console.log(`Token invalidado y contador de intentos reiniciado para la cuenta ${account.account_id}.`);
 
         res.status(200).json({ 
             message: 'OTP verificado correctamente. Puedes proceder a cambiar tu contraseña.',
             status: 'success'
         });
     } catch (error) {
+        console.error(`Error al verificar el código OTP: ${error.message}`);
         res.status(500).json({ message: 'Error al verificar el código OTP.', error: error.message });
     }
 };

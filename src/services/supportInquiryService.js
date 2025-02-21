@@ -1,6 +1,7 @@
 const { Op } = require("sequelize");
 const SupportInquiry = require("../models/Supportinquiry");
 
+//barra de busqueda
 /**
  * Obtener todas las consultas realizadas por un usuario registrado
  */
@@ -15,6 +16,8 @@ exports.getInquiriesByEmail = async (email) => {
   return await SupportInquiry.findAll({ where: { user_email: email } });
 };
 
+
+//filtros 
 /**
  * Filtrar consultas por estado
  */
