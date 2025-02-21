@@ -23,6 +23,9 @@ router.get('/counts-by-status', authMiddleware, tokenExpirationMiddleware.verify
 // Obtener una consulta específica por ID (requiere autenticación)
 router.get('/:id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), supportInquiryController.getConsultationById);
 
+// Obtener una consulta específica por ID (requiere autenticación)
+router.get('/filtered', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), supportInquiryController.getFilteredConsultations);
+
 // Actualizar el estado de una consulta por ID (requiere autenticación y rol de administrador)
 router.put('/update-status/:id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), supportInquiryController.updateConsultationStatus);
 
