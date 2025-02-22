@@ -11,11 +11,6 @@ const validateRegulatory = [
     .isIn(['Política de privacidad', 'Términos y condiciones', 'Deslinde legal'])
     .withMessage('El título debe ser válido (Política de privacidad, Términos y condiciones, Deslinde legal).'),
   
-  // Validar el contenido (sin escape para preservar el Markdown)
-  body('content')
-    .isString().withMessage('El contenido debe ser un texto válido.')
-    .notEmpty().withMessage('El contenido es obligatorio.'),
-
   // Validar la fecha de vigencia
   body('effective_date')
     .optional()

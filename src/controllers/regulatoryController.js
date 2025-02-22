@@ -2,15 +2,81 @@
 versions. Here is a summary of what each function does: */
 const { RegulatoryDocument, DocumentVersion } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
+const mammoth = require('mammoth');
+const fs = require('fs');
+const sanitizeHtml = require('sanitize-html');
+const he = require('he');
+
+// Función para detectar contenido sospechoso
+function isSuspiciousContent(content) {
+  const suspiciousPatterns = [
+    /<!DOCTYPE html>/i,
+    /<html.*?>/i,
+    /<script.*?>.*?<\/script>/i,
+    /<meta.*?>/i,
+    /<style.*?>.*?<\/style>/i,
+    /<iframe.*?>.*?<\/iframe>/i,
+    /<object.*?>.*?<\/object>/i,
+    /<embed.*?>.*?<\/embed>/i,
+    /<link.*?>/i,
+  ];
+
+  return suspiciousPatterns.some((pattern) => pattern.test(content));
+}
 
 // Crear nuevo documento regulatorio
 exports.createRegulatoryDocument = async (req, res) => {
   try {
-    const { title, content, effective_date } = req.body;
-    
+    const { title, effective_date } = req.body;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se ha subido ningún archivo' });
+    }
+
+    const filePath = req.file.path;
+    const fileName = req.file.originalname;
+
+    if (!fileName.endsWith('.docx')) {
+      fs.unlink(filePath, (err) => {
+        if (err) console.error('Error al eliminar el archivo no válido:', err);
+      });
+      return res.status(400).json({ error: 'Solo se permiten archivos de tipo .docx' });
+    }
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(400).json({ error: 'El archivo subido no existe' });
+    }
+
+    // Convertir el archivo .docx a HTML
+    const result = await mammoth.convertToHtml({ path: filePath });
+    let originalContent = result.value;
+    let iteration = 0;
+    let previousContent = '';
+    let contentsContentSuspicious = false;
+
+    // Ciclo para limpiar y verificar contenido
+    do {
+      iteration++;
+      previousContent = originalContent;
+      contentsContentSuspicious = isSuspiciousContent(originalContent);
+      if (contentsContentSuspicious) {
+        break;
+      }
+
+      originalContent = sanitizeHtml(originalContent, {
+        allowedTags: [],
+        allowedAttributes: {},
+      });
+      originalContent = he.decode(originalContent);
+    } while (iteration < 10);
+
+    if (contentsContentSuspicious) {
+      return res.status(400).json({ error: 'El contenido del archivo es sospechoso.' });
+    }
+
     // Buscar documento existente
     const existingDoc = await RegulatoryDocument.findOne({
-      where: { 
+      where: {
         title,
         deleted: false
       }
@@ -20,7 +86,7 @@ exports.createRegulatoryDocument = async (req, res) => {
       // Desactivar versión actual
       await DocumentVersion.update(
         { active: false },
-        { 
+        {
           where: { document_id: existingDoc.document_id, active: true }
         }
       );
@@ -32,11 +98,11 @@ exports.createRegulatoryDocument = async (req, res) => {
       });
 
       const newVersion = parseFloat(lastVersion.version) + 1.0;
-      
+
       const newVersionEntry = await DocumentVersion.create({
         document_id: existingDoc.document_id,
         version: newVersion.toFixed(1),
-        content,
+        content: originalContent,
         active: true,
         deleted: false
       });
@@ -46,10 +112,10 @@ exports.createRegulatoryDocument = async (req, res) => {
         current_version: newVersion.toFixed(1),
         effective_date: effective_date || new Date()
       });
-      
-      loggerUtils.logUserActivity(req.user.user_id, 'update', 
+
+      loggerUtils.logUserActivity(req.user.user_id, 'update',
         `Documento actualizado a versión ${newVersion.toFixed(1)}`);
-      
+
       return res.status(200).json({
         message: `Documento actualizado a versión ${newVersion.toFixed(1)}`,
         document: existingDoc
@@ -67,14 +133,14 @@ exports.createRegulatoryDocument = async (req, res) => {
     await DocumentVersion.create({
       document_id: newDoc.document_id,
       version: '1.0',
-      content,
+      content: originalContent,
       active: true,
       deleted: false
     });
-    
-    loggerUtils.logUserActivity(req.user.user_id, 'create', 
+
+    loggerUtils.logUserActivity(req.user.user_id, 'create',
       `Documento creado: ${title}, versión 1.0`);
-    
+
     return res.status(201).json({
       message: 'Documento creado exitosamente',
       document: newDoc
@@ -82,10 +148,17 @@ exports.createRegulatoryDocument = async (req, res) => {
 
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Error procesando documento',
       error: error.message
     });
+  } finally {
+    // Eliminar el archivo temporal después de procesarlo
+    if (req.file && req.file.path) {
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error('Error al eliminar el archivo temporal:', err);
+      });
+    }
   }
 };
 
