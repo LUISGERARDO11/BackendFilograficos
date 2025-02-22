@@ -368,10 +368,13 @@ exports.getVersionHistory = async (req, res) => {
   try {
     const { document_id } = req.params;
 
+    // Buscar el documento con sus versiones no eliminadas y ordenadas
     const document = await RegulatoryDocument.findByPk(document_id, {
       include: [{
         model: DocumentVersion,
-        attributes: ['version_id', 'version', 'content', 'created_at', 'deleted']
+        where: { deleted: false }, // Solo versiones no eliminadas
+        attributes: ['version_id', 'version', 'content', 'created_at'],
+        order: [['created_at', 'DESC']] // Ordenar por fecha de creación (más reciente primero)
       }]
     });
 
