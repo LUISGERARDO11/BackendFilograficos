@@ -20,3 +20,22 @@ const uploadToCloudinary = (fileBuffer) => {
 module.exports = {
     uploadToCloudinary
 };
+
+
+// Función para subir archivos a Cloudinary
+exports.uploadFilesToCloudinary = async (fileBuffer, options = {}) => {
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader
+      .upload_stream(
+        { resource_type: 'raw', ...options }, // Especifica que es un archivo binario
+        (error, result) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(result.secure_url); // Devuelve la URL segura del archivo subido
+          }
+        }
+      )
+      .end(fileBuffer);
+  });
+};

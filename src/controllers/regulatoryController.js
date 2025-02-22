@@ -34,7 +34,7 @@ exports.createRegulatoryDocument = async (req, res) => {
     }
 
     // Subir el archivo a Cloudinary
-    const fileUrl = await cloudinaryService.uploadToCloudinary(req.file.buffer, {
+    const fileUrl = await cloudinaryService.uploadFilesToCloudinary(req.file.buffer, {
       resource_type: 'raw', // Especifica que es un archivo no binario (como .docx)
     });
 
