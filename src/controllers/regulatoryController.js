@@ -1,5 +1,6 @@
 /* The above code is a set of controller functions for managing regulatory documents and their
 versions. Here is a summary of what each function does: */
+const axios = require('axios'); // Importar axios para descargar el archivo
 const cloudinaryService = require('../services/cloudinaryService');
 const { RegulatoryDocument, DocumentVersion } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
@@ -33,19 +34,23 @@ exports.createRegulatoryDocument = async (req, res) => {
       return res.status(400).json({ error: 'No se ha subido ningún archivo' });
     }
 
-    // Subir el archivo a Cloudinary
+    // 1. Subir el archivo a Cloudinary
     const fileUrl = await cloudinaryService.uploadFilesToCloudinary(req.file.buffer, {
       resource_type: 'raw', // Especifica que es un archivo no binario (como .docx)
     });
 
-    // Convertir el archivo .docx a HTML
-    const result = await mammoth.extractRawText({ path: fileUrl });
+    // 2. Descargar el archivo desde Cloudinary (en memoria)
+    const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+    const fileBuffer = Buffer.from(response.data, 'binary');
+
+    // 3. Convertir el archivo .docx a HTML usando mammoth
+    const result = await mammoth.extractRawText({ buffer: fileBuffer }); // Usar buffer en lugar de path
     let originalContent = result.value;
     let iteration = 0;
     let previousContent = '';
     let contentsContentSuspicious = false;
 
-    // Ciclo para limpiar y verificar contenido
+    // 4. Ciclo para limpiar y verificar contenido
     do {
       iteration++;
       previousContent = originalContent;
@@ -65,7 +70,7 @@ exports.createRegulatoryDocument = async (req, res) => {
       return res.status(400).json({ error: 'El contenido del archivo es sospechoso.' });
     }
 
-    // Buscar documento existente
+    // 5. Buscar documento existente
     const existingDoc = await RegulatoryDocument.findOne({
       where: {
         title,
