@@ -17,13 +17,8 @@ const uploadToCloudinary = (fileBuffer) => {
     });
 };
 
-module.exports = {
-    uploadToCloudinary
-};
-
-
 // Función para subir archivos a Cloudinary
-exports.uploadFilesToCloudinary = async (fileBuffer, options = {}) => {
+const uploadFilesToCloudinary = (fileBuffer, options = {}) => {
   return new Promise((resolve, reject) => {
     cloudinary.uploader
       .upload_stream(
@@ -38,4 +33,9 @@ exports.uploadFilesToCloudinary = async (fileBuffer, options = {}) => {
       )
       .end(fileBuffer);
   });
+};
+
+module.exports = {
+    uploadToCloudinary,
+    uploadFilesToCloudinary
 };
