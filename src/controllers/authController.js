@@ -269,58 +269,58 @@ exports.login = [
 // Cerrar sesión del usuario (elimina el token de la sesión actual)
 exports.logout = async (req, res) => {
     const token = req.cookies.token; // Obtener el token de la cookie
-
+  
     if (!token) {
-        return res.status(401).json({ 
-            message: "No se proporcionó un token. Ya estás cerrado sesión o nunca iniciaste sesión." 
-        });
+      return res.status(401).json({ 
+        message: "No se proporcionó un token. Ya estás cerrado sesión o nunca iniciaste sesión." 
+      });
     }
-
+  
     try {
-        // Obtener el ID del usuario autenticado del middleware
-        const userId = req.user ? req.user.user_id : null;
-
-        if (!userId) {
-            return res.status(400).json({ message: "Usuario no autenticado." });
-        }
-
-        // Buscar la sesión correspondiente al token actual
-        const session = await Session.findOne({ 
-            where: { 
-                user_id: userId, 
-                token: token 
-            } 
-        });
-
-        if (!session) {
-            return res.status(404).json({ message: 'Sesión no encontrada.' });
-        }
-
-        // Validar si la sesión ya fue cerrada/revocada
-        if (session.revoked) {
-            return res.status(400).json({ message: 'La sesión ya fue cerrada anteriormente.' });
-        }
-
-        // Marcar la sesión como revocada
-        session.revoked = true;
-        await session.save();
-
-        // Limpiar la cookie del token para cerrar la sesión del usuario
-        res.clearCookie('token', {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'None',
-        });
-
-        // Responder con un mensaje de éxito
-        res.status(200).json({ message: 'Sesión cerrada exitosamente.' });
+      // Obtener el ID del usuario autenticado del middleware
+      const userId = req.user ? req.user.user_id : null;
+  
+      if (!userId) {
+        return res.status(400).json({ message: "Usuario no autenticado." });
+      }
+  
+      // Buscar la sesión correspondiente al token actual
+      const session = await Session.findOne({ 
+        where: { 
+          user_id: userId, 
+          token: token 
+        } 
+      });
+  
+      if (!session) {
+        return res.status(404).json({ message: 'Sesión no encontrada.' });
+      }
+  
+      // Validar si la sesión ya fue cerrada/revocada
+      if (session.revoked) {
+        return res.status(400).json({ message: 'La sesión ya fue cerrada anteriormente.' });
+      }
+  
+      // Marcar la sesión como revocada
+      session.revoked = true;
+      await session.save();
+  
+      // Limpiar la cookie del token para cerrar la sesión del usuario
+      res.clearCookie('token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'None',
+      });
+  
+      // Responder con un mensaje de éxito
+      res.status(200).json({ message: 'Sesión cerrada exitosamente.' });
     } catch (error) {
-        return res.status(500).json({ 
-            message: 'Error al cerrar sesión', 
-            error: error.message 
-        });
+      return res.status(500).json({ 
+        message: 'Error al cerrar sesión', 
+        error: error.message 
+      });
     }
-};
+  };
 
 //** SEGURIDAD Y AUTENTICACIÓN MULTIFACTOR **
 // Inicia el proceso para autenticacion en dos pasos
