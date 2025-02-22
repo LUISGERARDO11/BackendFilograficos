@@ -296,7 +296,12 @@ exports.getFilteredConsultations = async (req, res) => {
       result = await supportService.getFilteredInquiries(filters, page, pageSize);
     } else {
       // Si no se proporcionan filtros, devolver todas las consultas paginadas
-      result = await supportService.getAllConsultationsForPagination(page, pageSize);
+      result = await SupportInquiry.findAndCountAll({
+        attributes: ['inquiry_id', 'user_id', 'user_name', 'user_email', 'subject', 'status', 'response_channel', 'created_at', 'updated_at'],
+        order: [['created_at', 'DESC']],
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+      });
     }
 
     // Respuesta exitosa
