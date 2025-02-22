@@ -368,6 +368,41 @@ exports.getAllCurrentVersions = async (req, res) => {
   }
 };
 
+// Obtener versión vigente de un documento por ID
+exports.getCurrentVersionById = async (req, res) => {
+  try {
+    const { document_id } = req.params;
+
+    const document = await RegulatoryDocument.findOne({
+      where: { 
+        document_id,
+        deleted: false
+      },
+      include: [{
+        model: DocumentVersion,
+        where: { active: true },
+        attributes: ['version_id', 'version', 'content', 'created_at']
+      }]
+    });
+
+    if (!document) {
+      return res.status(404).json({ message: 'Documento no encontrado' });
+    }
+
+    loggerUtils.logUserActivity(req.user?.user_id || 'anon', 'view', 
+      `Versión vigente de documento ${document_id} consultada`);
+    
+    res.status(200).json(document);
+
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ 
+      message: 'Error obteniendo versión vigente',
+      error: error.message
+    });
+  }
+};
+
 // Obtener versión vigente de un documento
 exports.getCurrentVersion = async (req, res) => {
   try {

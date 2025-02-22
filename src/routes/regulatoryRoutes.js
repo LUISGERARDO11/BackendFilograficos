@@ -43,6 +43,9 @@ router.put('/restore-version/:document_id/:version_id', authMiddleware, tokenExp
 // Ruta para obtener el historial de versiones de un documento
 router.get('/version-history/:document_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), regulatoryController.getVersionHistory);
 
+// Ruta para obtener la version actual de un documento regulatorio
+router.get('/current-version/:document_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), regulatoryController.getCurrentVersionById);
+
 // Ruta para obtener un documento regulatorio por su ID
 router.get('/document/:document_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), regulatoryController.getDocumentById);
 
