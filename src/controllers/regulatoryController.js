@@ -1,9 +1,9 @@
 /* The above code is a set of controller functions for managing regulatory documents and their
 versions. Here is a summary of what each function does: */
+const cloudinaryService = require('../services/cloudinaryService');
 const { RegulatoryDocument, DocumentVersion } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const mammoth = require('mammoth');
-const fs = require('fs');
 const sanitizeHtml = require('sanitize-html');
 const he = require('he');
 
@@ -33,22 +33,13 @@ exports.createRegulatoryDocument = async (req, res) => {
       return res.status(400).json({ error: 'No se ha subido ningún archivo' });
     }
 
-    const filePath = req.file.path;
-    const fileName = req.file.originalname;
-
-    if (!fileName.endsWith('.docx')) {
-      fs.unlink(filePath, (err) => {
-        if (err) console.error('Error al eliminar el archivo no válido:', err);
-      });
-      return res.status(400).json({ error: 'Solo se permiten archivos de tipo .docx' });
-    }
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(400).json({ error: 'El archivo subido no existe' });
-    }
+    // Subir el archivo a Cloudinary
+    const fileUrl = await cloudinaryService.uploadToCloudinary(req.file.buffer, {
+      resource_type: 'raw', // Especifica que es un archivo no binario (como .docx)
+    });
 
     // Convertir el archivo .docx a HTML
-    const result = await mammoth.convertToHtml({ path: filePath });
+    const result = await mammoth.extractRawText({ path: fileUrl });
     let originalContent = result.value;
     let iteration = 0;
     let previousContent = '';
@@ -152,13 +143,6 @@ exports.createRegulatoryDocument = async (req, res) => {
       message: 'Error procesando documento',
       error: error.message
     });
-  } finally {
-    // Eliminar el archivo temporal después de procesarlo
-    if (req.file && req.file.path) {
-      fs.unlink(req.file.path, (err) => {
-        if (err) console.error('Error al eliminar el archivo temporal:', err);
-      });
-    }
   }
 };
 

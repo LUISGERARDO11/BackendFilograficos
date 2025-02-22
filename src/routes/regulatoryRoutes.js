@@ -3,7 +3,7 @@ framework. The router defines various routes for handling different HTTP request
 regulatory documents. Here's a breakdown of what the code is doing: */
 const express = require('express');
 const router = express.Router();
-const upload = require('../config/multerConfig');
+const multer = require('multer');
 
 // Importar controladores
 const regulatoryController = require('../controllers/regulatoryController');
@@ -14,9 +14,13 @@ const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 const validateRegulatoryDocument = require('../middlewares/validateRegulatory');
 
+// Configuración de multer para almacenamiento en memoria
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
 // ** CREACIÓN Y ACTUALIZACIÓN **
 // Ruta para crear un nuevo documento regulatorio
-router.post('/create', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']),  upload.single('file'), validateRegulatoryDocument, regulatoryController.createRegulatoryDocument);
+router.post('/create', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), upload.single('file'), validateRegulatoryDocument, regulatoryController.createRegulatoryDocument);
 
 // Ruta para actualizar un documento regulatorio (nueva versión)
 router.put('/update/:document_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), regulatoryController.updateRegulatoryDocument);
