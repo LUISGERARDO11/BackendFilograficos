@@ -23,7 +23,7 @@ const upload = multer({ storage: storage });
 router.post('/create', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), upload.single('file'), validateRegulatoryDocument, regulatoryController.createRegulatoryDocument);
 
 // Ruta para actualizar un documento regulatorio (nueva versión)
-router.put('/update/:document_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), regulatoryController.updateRegulatoryDocument);
+router.put('/update/:document_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']),upload.single('file'), regulatoryController.updateRegulatoryDocument);
 
 // ** ELIMINACIÓN (LÓGICA) **
 // Ruta para eliminar lógicamente un documento regulatorio

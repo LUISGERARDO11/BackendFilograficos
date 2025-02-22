@@ -239,9 +239,49 @@ exports.deleteRegulatoryDocumentVersion = async (req, res) => {
 exports.updateRegulatoryDocument = async (req, res) => {
   try {
     const { document_id } = req.params;
-    const { content, effective_date } = req.body;
+    const { effective_date } = req.body;
 
-    // Obtener versión actual
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se ha subido ningún archivo' });
+    }
+
+    // 1. Subir el archivo a Cloudinary
+    const fileUrl = await cloudinaryService.uploadFilesToCloudinary(req.file.buffer, {
+      resource_type: 'raw', // Especifica que es un archivo no binario (como .docx)
+    });
+
+    // 2. Descargar el archivo desde Cloudinary (en memoria)
+    const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+    const fileBuffer = Buffer.from(response.data, 'binary');
+
+    // 3. Convertir el archivo .docx a HTML usando mammoth
+    const result = await mammoth.extractRawText({ buffer: fileBuffer }); // Usar buffer en lugar de path
+    let originalContent = result.value;
+    let iteration = 0;
+    let previousContent = '';
+    let contentsContentSuspicious = false;
+
+    // 4. Ciclo para limpiar y verificar contenido
+    do {
+      iteration++;
+      previousContent = originalContent;
+      contentsContentSuspicious = isSuspiciousContent(originalContent);
+      if (contentsContentSuspicious) {
+        break;
+      }
+
+      originalContent = sanitizeHtml(originalContent, {
+        allowedTags: [],
+        allowedAttributes: {},
+      });
+      originalContent = he.decode(originalContent);
+    } while (iteration < 10);
+
+    if (contentsContentSuspicious) {
+      return res.status(400).json({ error: 'El contenido del archivo es sospechoso.' });
+    }
+
+    // 5. Obtener versión actual
     const currentVersion = await DocumentVersion.findOne({
       where: { 
         document_id,
@@ -253,10 +293,10 @@ exports.updateRegulatoryDocument = async (req, res) => {
       return res.status(404).json({ message: 'Versión activa no encontrada' });
     }
 
-    // Desactivar versión actual
+    // 6. Desactivar versión actual
     await currentVersion.update({ active: false });
 
-    // Calcular nueva versión
+    // 7. Calcular nueva versión
     const lastVersion = await DocumentVersion.findOne({
       where: { document_id },
       order: [['version', 'DESC']]
@@ -264,16 +304,16 @@ exports.updateRegulatoryDocument = async (req, res) => {
 
     const newVersion = (parseFloat(lastVersion.version) + 1.0).toFixed(1);
 
-    // Crear nueva versión
+    // 8. Crear nueva versión
     const newVersionEntry = await DocumentVersion.create({
       document_id,
       version: newVersion,
-      content,
+      content: originalContent,
       active: true,
       deleted: false
     });
 
-    // Actualizar documento principal
+    // 9. Actualizar documento principal
     await RegulatoryDocument.update({
       current_version: newVersion,
       effective_date: effective_date || new Date()
