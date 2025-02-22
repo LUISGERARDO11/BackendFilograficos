@@ -229,6 +229,8 @@ exports.updateConsultationResponseChannel = [
 // Obtener consultas filtradas según los parámetros proporcionados
 exports.getFilteredConsultations = async (req, res) => {
   try {
+    console.log('Query Params:', req.query);
+    
     const {
       status,
       contact_channel,
