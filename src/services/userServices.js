@@ -3,16 +3,16 @@ tracking password history for a given account. Here's a breakdown of what the fu
 const authService = require("../services/authService");
 const { PasswordHistory } = require('../models/Associations')
 
-exports.trackPasswordHistory = async (accountId, currentPasswordHash, newPassword) => {
+exports.trackPasswordHistory = async (accountId, newPassword) => {
   try {
-    // 1. Verificar contraseña anterior
+    // 1. Obtener todas las contraseñas históricas del usuario
     const historyRecords = await PasswordHistory.findAll({
       where: { account_id: accountId },
-      attributes: ['password_hash', 'change_date'],
+      attributes: ['password_hash'],
       order: [['change_date', 'DESC']]
     });
 
-    // Verificar contra todas las contraseñas históricas
+    // 2. Verificar si la nueva contraseña coincide con alguna de las contraseñas históricas
     for (const record of historyRecords) {
       const isMatch = await authService.verifyPassword(
         newPassword,
@@ -20,21 +20,12 @@ exports.trackPasswordHistory = async (accountId, currentPasswordHash, newPasswor
       );
       
       if (isMatch) {
-        return {
-          success: false,
-          message: "No puedes reutilizar una contraseña anterior"
-        };
+        return false; // La contraseña ya ha sido utilizada
       }
     }
 
-    // 2. Registrar nueva entrada en el historial
-    await PasswordHistory.create({
-      account_id: accountId,
-      password_hash: currentPasswordHash,
-      change_date: new Date()
-    });
-
-    return { success: true };
+    // 3. Si no se encontró coincidencia, la contraseña es válida
+    return true;
 
   } catch (error) {
     console.error('Error en trackPasswordHistory:', error);
