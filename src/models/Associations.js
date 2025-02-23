@@ -14,11 +14,16 @@ const EmailTemplate = require('./Emailtemplates');
 const RegulatoryDocument = require('./Regulatorydocuments');
 const DocumentVersion = require('./Documentversions');
 const FaqCategory = require('./Faqcategory');
-const Faq = require('./Faq')
+const Faq = require('./Faq');
 const SupportInquiry = require('./Supportinquiry');
+const Order = require('./Order');
+const OrderHistory = require('./OrderHistory');
+const Payment = require('./Payment');
+const Banner = require('./Banner');
+const BackupLog = require('./BackupLog');
+const RestorationLog = require('./RestorationLog');
 
-
-// User Associations
+// Relaciones de Usuarios
 User.hasOne(Account, { foreignKey: 'user_id' });
 Account.belongsTo(User, { foreignKey: 'user_id' });
 
@@ -31,7 +36,22 @@ Session.belongsTo(User, { foreignKey: 'user_id' });
 User.hasMany(FailedAttempt, { foreignKey: 'user_id' });
 FailedAttempt.belongsTo(User, { foreignKey: 'user_id' });
 
-// Account Associations
+User.hasMany(SupportInquiry, { foreignKey: 'user_id' });
+SupportInquiry.belongsTo(User, { foreignKey: 'user_id' });
+
+User.hasMany(Order, { foreignKey: 'user_id' });
+Order.belongsTo(User, { foreignKey: 'user_id' });
+
+User.hasMany(OrderHistory, { foreignKey: 'user_id' });
+OrderHistory.belongsTo(User, { foreignKey: 'user_id' });
+
+User.hasMany(BackupLog, { foreignKey: 'performed_by' });
+BackupLog.belongsTo(User, { foreignKey: 'performed_by' });
+
+User.hasMany(RestorationLog, { foreignKey: 'performed_by' });
+RestorationLog.belongsTo(User, { foreignKey: 'performed_by' });
+
+// Relaciones de Cuentas
 Account.hasMany(TwoFactorConfig, { foreignKey: 'account_id' });
 TwoFactorConfig.belongsTo(Account, { foreignKey: 'account_id' });
 
@@ -44,11 +64,11 @@ PasswordRecovery.belongsTo(Account, { foreignKey: 'account_id' });
 Account.hasMany(PasswordHistory, { foreignKey: 'account_id' });
 PasswordHistory.belongsTo(Account, { foreignKey: 'account_id' });
 
-// Document Associations
+// Relaciones de Documentos
 RegulatoryDocument.hasMany(DocumentVersion, { foreignKey: 'document_id' });
 DocumentVersion.belongsTo(RegulatoryDocument, { foreignKey: 'document_id' });
 
-// Email Associations
+// Relaciones de Correos Electrónicos
 EmailType.hasMany(EmailTemplate, { foreignKey: 'email_type_id' });
 EmailTemplate.belongsTo(EmailType, { foreignKey: 'email_type_id' });
 
@@ -56,14 +76,22 @@ EmailTemplate.belongsTo(User, { foreignKey: 'created_by', as: 'Creator' });
 EmailTemplate.belongsTo(User, { foreignKey: 'updated_by', as: 'Updater' });
 EmailType.belongsTo(User, { foreignKey: 'created_by' });
 
-// FAQ Associations
+// Relaciones de FAQs
 FaqCategory.hasMany(Faq, { foreignKey: 'category_id', as: 'faqs' });
 Faq.belongsTo(FaqCategory, { foreignKey: 'category_id', as: 'category' });
 
-// Relación entre User y SupportInquiry
-User.hasMany(SupportInquiry, { foreignKey: 'user_id' });
-SupportInquiry.belongsTo(User, { foreignKey: 'user_id' });
+// Relaciones de Pedidos y Pagos
+Order.hasOne(Payment, { foreignKey: 'order_id' });
+Payment.belongsTo(Order, { foreignKey: 'order_id' });
 
+Order.hasOne(OrderHistory, { foreignKey: 'order_id' });
+OrderHistory.belongsTo(Order, { foreignKey: 'order_id' });
+
+// Relaciones de Respaldo y Restauración
+BackupLog.hasMany(RestorationLog, { foreignKey: 'backup_id' });
+RestorationLog.belongsTo(BackupLog, { foreignKey: 'backup_id' });
+
+// Exportación de Modelos
 module.exports = {
   User,
   Account,
@@ -80,5 +108,11 @@ module.exports = {
   DocumentVersion,
   FaqCategory,
   Faq,
-  SupportInquiry
+  SupportInquiry,
+  Order,
+  OrderHistory,
+  Payment,
+  Banner,
+  BackupLog,
+  RestorationLog
 };
