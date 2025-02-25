@@ -32,3 +32,4 @@ const ProductImage = sequelize.define('ProductImage', {
 });
 
 module.exports = ProductImage;
+
