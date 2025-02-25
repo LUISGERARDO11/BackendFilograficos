@@ -23,6 +23,19 @@ const Banner = require('./Banner');
 const BackupLog = require('./BackupLog');
 const RestorationLog = require('./RestorationLog');
 
+const Collaborator = require('./Collaborator');
+const Category = require('./Category');
+const Product = require('./Product');
+const ProductAttribute = require('./ProductAttribute');
+const ProductAttributeValue = require('./ProductAttributeValue');
+const ProductImage = require('./ProductImage');
+const PriceHistory = require('./PriceHistory');
+const CustomizationOption = require('./CustomizationOption');
+const Customization = require('./Customization');
+const ShippingOption = require('./ShippingOption');
+const DeliveryPoint = require('./DeliveryPoint');
+const Cart = require('./Cart');
+
 // Relaciones de Usuarios
 User.hasOne(Account, { foreignKey: 'user_id' });
 Account.belongsTo(User, { foreignKey: 'user_id' });
@@ -91,6 +104,41 @@ OrderHistory.belongsTo(Order, { foreignKey: 'order_id' });
 BackupLog.hasMany(RestorationLog, { foreignKey: 'backup_id' });
 RestorationLog.belongsTo(BackupLog, { foreignKey: 'backup_id' });
 
+// Relaciones de Productos
+Product.hasMany(ProductAttribute, { foreignKey: 'id_producto' });
+ProductAttribute.belongsTo(Product, { foreignKey: 'id_producto' });
+
+Product.hasMany(ProductAttributeValue, { foreignKey: 'id_producto' });
+ProductAttributeValue.belongsTo(Product, { foreignKey: 'id_producto' });
+
+Product.hasMany(ProductImage, { foreignKey: 'id_producto' });
+ProductImage.belongsTo(Product, { foreignKey: 'id_producto' });
+
+Product.hasMany(PriceHistory, { foreignKey: 'id_producto' });
+PriceHistory.belongsTo(Product, { foreignKey: 'id_producto' });
+
+Product.hasMany(Customization, { foreignKey: 'id_producto' });
+Customization.belongsTo(Product, { foreignKey: 'id_producto' });
+
+Product.hasMany(CustomizationOption, { foreignKey: 'id_producto' });
+CustomizationOption.belongsTo(Product, { foreignKey: 'id_producto' });
+
+Product.hasMany(ShippingOption, { foreignKey: 'id_producto' });
+ShippingOption.belongsTo(Product, { foreignKey: 'id_producto' });
+
+// Relaciones de Personalización
+CustomizationOption.hasMany(Customization, { foreignKey: 'id_opcion' });
+Customization.belongsTo(CustomizationOption, { foreignKey: 'id_opcion' });
+
+// Relaciones de Opciones de Envío
+ShippingOption.hasMany(DeliveryPoint, { foreignKey: 'id_opcion_envio' });
+DeliveryPoint.belongsTo(ShippingOption, { foreignKey: 'id_opcion_envio' });
+
+// Relaciones de Carrito
+Cart.hasMany(Product, { foreignKey: 'id_carrito' });
+Product.belongsTo(Cart, { foreignKey: 'id_carrito' });
+
+
 // Exportación de Modelos
 module.exports = {
   User,
@@ -114,5 +162,18 @@ module.exports = {
   Payment,
   Banner,
   BackupLog,
-  RestorationLog
+  RestorationLog,
+
+  Collaborator,
+  Category,
+  Product,
+  ProductAttribute,
+  ProductAttributeValue,
+  ProductImage,
+  PriceHistory,
+  CustomizationOption,
+  Customization,
+  ShippingOption,
+  DeliveryPoint,
+  Cart
 };
