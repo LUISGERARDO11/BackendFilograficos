@@ -35,14 +35,15 @@ const Customization = require('./Customization');
 const ShippingOption = require('./ShippingOption');
 const DeliveryPoint = require('./DeliveryPoint');
 const Cart = require('./Cart');
-const CartDetail = require('./CartDetail'); // Asegúrate de que la ruta sea correcta
-const OrderDetail = require('./OrderDetail'); // Asegúrate de que la ruta sea correcta
-const Promotion = require('./Promotion'); // Asegúrate de que la ruta sea correcta
+const CartDetail = require('./CartDetail');
+const OrderDetail = require('./OrderDetail');
+const Promotion = require('./Promotion');
 const CouponUsage = require('./CouponUsage');
 const PromotionProduct = require('./PromotionProduct');
 const PromotionCategory = require('./PromotionCategory');
-const Review = require('./Review'); // Asegúrate de que la ruta sea correcta
-
+const Review = require('./Review');
+const PushSubscription = require('./PushSubscription');
+const NotificationLog = require('./NotificationLog');
 
 // Relaciones de Usuarios
 User.hasOne(Account, { foreignKey: 'user_id' });
@@ -138,6 +139,10 @@ ShippingOption.belongsTo(Product, { foreignKey: 'id_producto' });
 CustomizationOption.hasMany(Customization, { foreignKey: 'id_opcion' });
 Customization.belongsTo(CustomizationOption, { foreignKey: 'id_opcion' });
 
+// Nueva relación entre Order y Customization
+Order.hasMany(Customization, { foreignKey: 'order_id' });
+Customization.belongsTo(Order, { foreignKey: 'order_id' });
+
 // Relaciones de Opciones de Envío
 ShippingOption.hasMany(DeliveryPoint, { foreignKey: 'id_opcion_envio' });
 DeliveryPoint.belongsTo(ShippingOption, { foreignKey: 'id_opcion_envio' });
@@ -203,6 +208,14 @@ Review.belongsTo(User, { foreignKey: 'user_id' });
 Product.hasMany(Review, { foreignKey: 'product_id' });
 Review.belongsTo(Product, { foreignKey: 'product_id' });
 
+// Relaciones de Push Subscriptions
+User.hasMany(PushSubscription, { foreignKey: 'user_id' });
+PushSubscription.belongsTo(User, { foreignKey: 'user_id' });
+
+// Relaciones de Notification Log
+User.hasMany(NotificationLog, { foreignKey: 'user_id' });
+NotificationLog.belongsTo(User, { foreignKey: 'user_id' });
+
 // Exportación de Modelos
 module.exports = {
   User,
@@ -246,4 +259,6 @@ module.exports = {
   PromotionProduct,
   PromotionCategory,
   Review,
+  PushSubscription,
+  NotificationLog 
 };

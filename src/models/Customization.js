@@ -16,6 +16,14 @@ const Customization = sequelize.define('Customization', {
       key: 'product_id'
     }
   },
+  order_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true, // Permitimos NULL porque no todas las personalizaciones estarán vinculadas a un pedido desde el inicio
+    references: {
+      model: 'orders',
+      key: 'order_id'
+    }
+  },
   option_type: {
     type: DataTypes.ENUM('text', 'image', 'file'),
     allowNull: false
@@ -31,6 +39,16 @@ const Customization = sequelize.define('Customization', {
   comments: {
     type: DataTypes.STRING(100),
     allowNull: true
+  },
+  status: {
+    type: DataTypes.ENUM('initial', 'revised', 'approved', 'rejected'),
+    defaultValue: 'initial',
+    allowNull: false
+  },
+  revision_count: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    allowNull: false
   }
 }, {
   tableName: 'customizations',

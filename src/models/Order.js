@@ -35,6 +35,11 @@ const Order = sequelize.define('Order', {
   order_status: {
     type: DataTypes.ENUM('pending', 'processing', 'shipped', 'delivered'), // Estado del pedido
     defaultValue: 'pending'
+  },
+  is_urgent: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false
   }
 }, {
   tableName: 'orders', // Nombre de la tabla en la base de datos

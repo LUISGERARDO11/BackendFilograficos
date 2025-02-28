@@ -1,8 +1,8 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
 
-const Cart = sequelize.define('Cart', {
-  cart_id: {
+const PushSubscription = sequelize.define('PushSubscription', {
+  subscription_id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
     autoIncrement: true,
@@ -12,13 +12,20 @@ const Cart = sequelize.define('Cart', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'users', 
+      model: 'users',
       key: 'user_id'
     }
   },
-  status: {
-    type: DataTypes.ENUM('active', 'abandoned', 'completed'),
-    defaultValue: 'active',
+  endpoint: {
+    type: DataTypes.STRING(255),
+    allowNull: false
+  },
+  p256dh: {
+    type: DataTypes.STRING(255),
+    allowNull: false
+  },
+  auth: {
+    type: DataTypes.STRING(255),
     allowNull: false
   },
   created_at: {
@@ -32,10 +39,10 @@ const Cart = sequelize.define('Cart', {
     defaultValue: DataTypes.NOW
   }
 }, {
-  tableName: 'carts',
+  tableName: 'push_subscriptions',
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at'
 });
 
-module.exports = Cart;
+module.exports = PushSubscription;

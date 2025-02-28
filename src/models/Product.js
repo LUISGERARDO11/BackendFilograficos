@@ -56,6 +56,11 @@ const Product = sequelize.define('Product', {
     defaultValue: 0,
     allowNull: false
   },
+  stock_threshold: {
+    type: DataTypes.INTEGER,
+    defaultValue: 10,
+    allowNull: false
+  },
   average_rating: {
     type: DataTypes.DECIMAL(3, 2),
     defaultValue: 0
