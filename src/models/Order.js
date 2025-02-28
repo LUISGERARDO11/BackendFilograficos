@@ -17,12 +17,8 @@ const Order = sequelize.define('Order', {
     }
   },
   total: {
-    type: DataTypes.DECIMAL(10, 2), // Total original sin descuento
+    type: DataTypes.DECIMAL(10, 2), // Total original
     allowNull: false
-  },
-  discount_applied: {
-    type: DataTypes.DECIMAL(10, 2), // Descuento aplicado
-    defaultValue: 0.00
   },
   shipping_cost: {
     type: DataTypes.DECIMAL(10, 2), // Costo de envío

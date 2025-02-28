@@ -35,6 +35,14 @@ const Customization = require('./Customization');
 const ShippingOption = require('./ShippingOption');
 const DeliveryPoint = require('./DeliveryPoint');
 const Cart = require('./Cart');
+const CartDetail = require('./CartDetail'); // Asegúrate de que la ruta sea correcta
+const OrderDetail = require('./OrderDetail'); // Asegúrate de que la ruta sea correcta
+const Promotion = require('./Promotion'); // Asegúrate de que la ruta sea correcta
+const CouponUsage = require('./CouponUsage');
+const PromotionProduct = require('./PromotionProduct');
+const PromotionCategory = require('./PromotionCategory');
+const Review = require('./Review'); // Asegúrate de que la ruta sea correcta
+
 
 // Relaciones de Usuarios
 User.hasOne(Account, { foreignKey: 'user_id' });
@@ -138,6 +146,62 @@ DeliveryPoint.belongsTo(ShippingOption, { foreignKey: 'id_opcion_envio' });
 Cart.hasMany(Product, { foreignKey: 'id_carrito' });
 Product.belongsTo(Cart, { foreignKey: 'id_carrito' });
 
+// Relaciones del Carrito
+Cart.hasMany(CartDetail, { foreignKey: 'cart_id' });
+CartDetail.belongsTo(Cart, { foreignKey: 'cart_id' });
+
+// Relaciones de Productos con DetalleCarrito
+Product.hasMany(CartDetail, { foreignKey: 'product_id' });
+CartDetail.belongsTo(Product, { foreignKey: 'product_id' });
+
+// Relaciones de Pedidos
+Order.hasMany(OrderDetail, { foreignKey: 'order_id' });
+OrderDetail.belongsTo(Order, { foreignKey: 'order_id' });
+
+// Relaciones de Productos con Detalle de Pedidos
+Product.hasMany(OrderDetail, { foreignKey: 'product_id' });
+OrderDetail.belongsTo(Product, { foreignKey: 'product_id' });
+
+// Relaciones de Promociones
+Product.hasMany(Promotion, { foreignKey: 'product_id' });
+Promotion.belongsTo(Product, { foreignKey: 'product_id' });
+
+Category.hasMany(Promotion, { foreignKey: 'category_id' });
+Promotion.belongsTo(Category, { foreignKey: 'category_id' });
+
+User.hasMany(Promotion, { foreignKey: 'created_by' });
+Promotion.belongsTo(User, { foreignKey: 'created_by' });
+
+// Relaciones de CouponUsage
+Promotion.hasMany(CouponUsage, { foreignKey: 'promotion_id' });
+CouponUsage.belongsTo(Promotion, { foreignKey: 'promotion_id' });
+
+User.hasMany(CouponUsage, { foreignKey: 'user_id' });
+CouponUsage.belongsTo(User, { foreignKey: 'user_id' });
+
+Order.hasMany(CouponUsage, { foreignKey: 'order_id' });
+CouponUsage.belongsTo(Order, { foreignKey: 'order_id' });
+
+// Relaciones de PromotionProduct
+Promotion.hasMany(PromotionProduct, { foreignKey: 'promotion_id' });
+PromotionProduct.belongsTo(Promotion, { foreignKey: 'promotion_id' });
+
+Product.hasMany(PromotionProduct, { foreignKey: 'product_id' });
+PromotionProduct.belongsTo(Product, { foreignKey: 'product_id' });
+
+// Relaciones de PromotionCategory
+Promotion.hasMany(PromotionCategory, { foreignKey: 'promotion_id' });
+PromotionCategory.belongsTo(Promotion, { foreignKey: 'promotion_id' });
+
+Category.hasMany(PromotionCategory, { foreignKey: 'category_id' });
+PromotionCategory.belongsTo(Category, { foreignKey: 'category_id' });
+
+// Relaciones de Reseñas
+User.hasMany(Review, { foreignKey: 'user_id' });
+Review.belongsTo(User, { foreignKey: 'user_id' });
+
+Product.hasMany(Review, { foreignKey: 'product_id' });
+Review.belongsTo(Product, { foreignKey: 'product_id' });
 
 // Exportación de Modelos
 module.exports = {
@@ -163,7 +227,7 @@ module.exports = {
   Banner,
   BackupLog,
   RestorationLog,
-
+  OrderDetail,
   Collaborator,
   Category,
   Product,
@@ -175,5 +239,11 @@ module.exports = {
   Customization,
   ShippingOption,
   DeliveryPoint,
-  Cart
+  Cart,
+  CartDetail,
+  Promotion,
+  CouponUsage,
+  PromotionProduct,
+  PromotionCategory,
+  Review,
 };
