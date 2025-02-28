@@ -41,7 +41,7 @@ exports.changePassword = [
             }
 
             // Verificar si la nueva contraseña es diferente a las anteriores
-            const isNewPasswordValid = await authService.isNewPasswordValid(account.account_id, newPassword);
+            const isNewPasswordValid = await userService.trackPasswordHistory(account.account_id, newPassword);
             if (!isNewPasswordValid) {
                 loggerUtils.logUserActivity(userId, 'password_change_failed', 'La nueva contraseña no puede ser igual a las anteriores');
                 return res.status(400).json({ message: 'La nueva contraseña no puede ser igual a las anteriores' });
@@ -76,7 +76,7 @@ exports.changePassword = [
             // Enviar notificación de cambio de contraseña
             const user = await User.findByPk(userId);
             if (user) {
-                await authService.sendPasswordChangeNotification(user.email);
+                await emailService.sendPasswordChangeNotification(user.email);
             }
 
             // Registrar el cambio de contraseña exitoso
