@@ -216,6 +216,10 @@ PushSubscription.belongsTo(User, { foreignKey: 'user_id' });
 User.hasMany(NotificationLog, { foreignKey: 'user_id' });
 NotificationLog.belongsTo(User, { foreignKey: 'user_id' });
 
+// Asociaciones directas para CategoryAttributes
+CategoryAttributes.belongsTo(Category, { foreignKey: 'category_id', as: 'category' });
+CategoryAttributes.belongsTo(ProductAttribute, { foreignKey: 'attribute_id', as: 'attribute' });
+
 // Many-to-many relationship between Category and ProductAttribute
 Category.belongsToMany(ProductAttribute, {through: CategoryAttributes, foreignKey: 'category_id', otherKey: 'attribute_id' });
 

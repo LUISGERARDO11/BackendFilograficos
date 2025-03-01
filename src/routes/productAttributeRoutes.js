@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 // Importar controladores
-const productAtributeController = require('../controllers/productAtributeController');
+const productAttributeController = require('../controllers/productAttributeController');
 
 // Importar middlewares
 const authMiddleware = require('../middlewares/authMiddleware');
@@ -17,7 +17,7 @@ router.get(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  productAtributeController.getAttributeCountByCategory
+  productAttributeController.getAttributeCountByCategory
 );
 
 // Obtener todos los atributos de acuerdo a una categoría (requiere autenticación y rol de administrador)
@@ -26,7 +26,7 @@ router.get(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  productAtributeController.getAttributesByCategory
+  productAttributeController.getAttributesByCategory
 );
 
 // Crear un nuevo atributo (requiere autenticación y rol de administrador)
@@ -35,7 +35,7 @@ router.post(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  productAtributeController.createAttribute
+  productAttributeController.createAttribute
 );
 
 // Actualizar un atributo existente (requiere autenticación y rol de administrador)
@@ -44,7 +44,7 @@ router.put(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  productAtributeController.updateAttribute
+  productAttributeController.updateAttribute
 );
 
 // Eliminar lógicamente un atributo (requiere autenticación y rol de administrador)
@@ -53,7 +53,7 @@ router.delete(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  productAtributeController.deleteAttribute
+  productAttributeController.deleteAttribute
 );
 
 module.exports = router;
