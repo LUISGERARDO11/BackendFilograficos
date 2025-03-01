@@ -14,11 +14,12 @@ exports.getAttributeCountByCategory = async (req, res) => {
       include: [{
         model: Category,
         as: 'category',
-        attributes: ['name']
+        attributes: ['category_id', 'name']
       }]
     });
 
     const result = counts.map(count => ({
+      category_id: count.category_id,
       category_name: count.category.name,
       attribute_count: count.get('count')
     }));
