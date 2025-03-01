@@ -8,6 +8,7 @@ exports.createCollaborator = [
   body('collaborator_type').isIn(['individual', 'marca']).withMessage('Tipo inválido, debe ser "individual" o "marca".'),
   body('email').isEmail().withMessage('Debe ser un correo válido.'),
   body('phone').optional().isString().isLength({ min: 8, max: 15 }).withMessage('El teléfono debe tener entre 8 y 15 caracteres.'),
+  body('contact').optional().isString().withMessage('El contacto debe ser un texto válido.'),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -16,7 +17,7 @@ exports.createCollaborator = [
     }
 
     try {
-      const { name, collaborator_type, email, phone, logo } = req.body;
+      const { name, collaborator_type,contact, email, phone, logo } = req.body;
 
       // Verificar si el correo ya existe
       const existingCollaborator = await Collaborator.findOne({ where: { email } });
@@ -25,7 +26,7 @@ exports.createCollaborator = [
       }
 
       const newCollaborator = await Collaborator.create({
-        name, collaborator_type, email, phone, logo, active: true
+        name, collaborator_type, contact,email, phone, logo, active: true
       });
 
       loggerUtils.logUserActivity(req.user.user_id, 'create', `Colaborador creado: ${name}`);
