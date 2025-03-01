@@ -7,7 +7,7 @@ const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 
 //Importar controladores
-const categoryController = require('../controllers/category.controller');
+const categoryController = require('../controllers/categoryController');
 
 // Rutas CRUD para Categorías
 
