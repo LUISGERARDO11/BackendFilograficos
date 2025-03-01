@@ -44,6 +44,20 @@ exports.getAllCategories = async (req, res) => {
   }
 };
 
+// Obtener una categoría por su ID
+exports.getCategoryById = async (req, res) => {
+  try {
+    const category = await Category.findByPk(req.params.id); // Buscamos por ID
+    if (!category) {
+      return res.status(404).json({ message: 'Categoría no encontrada.' });
+    }
+    res.status(200).json(category);
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener la categoría', error: error.message });
+  }
+};
+
 // Eliminar categoría (física)
 exports.deleteCategory = async (req, res) => {
   try {
@@ -61,3 +75,37 @@ exports.deleteCategory = async (req, res) => {
     res.status(500).json({ message: 'Error al eliminar categoría', error: error.message });
   }
 };
+
+// Actualizar categoría por ID
+exports.updateCategory = [
+  body('name').optional().isString().trim(),
+  body('description').optional().isString(),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      const category = await Category.findByPk(req.params.id);
+      if (!category) {
+        return res.status(404).json({ message: 'Categoría no encontrada.' });
+      }
+
+      const { name, description } = req.body;
+
+      // Actualizar los campos de la categoría si se pasan
+      if (name) category.name = name;
+      if (description) category.description = description;
+
+      await category.save(); // Guardamos los cambios
+      loggerUtils.logUserActivity(req.user.user_id, 'update', `Categoría actualizada: ${category.name}`);
+      res.status(200).json({ message: 'Categoría actualizada correctamente.', category });
+
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al actualizar la categoría', error: error.message });
+    }
+  }
+];
