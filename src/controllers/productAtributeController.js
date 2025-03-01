@@ -30,34 +30,56 @@ exports.getAttributeCountByCategory = async (req, res) => {
   }
 };
 
-// Obtener todos los atributos de acuerdo a una categoría
+// Obtener todos los atributos de acuerdo a una categoría (con paginación)
 exports.getAttributesByCategory = async (req, res) => {
-  const { category_id } = req.params;
-
-  try {
-    const attributes = await CategoryAttributes.findAll({
-      where: { category_id },
-      include: [{
-        model: ProductAttribute,
-        as: 'attribute',
-        where: { is_deleted: false },
-        attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values']
-      }]
-    });
-
-    const result = attributes.map(attr => ({
-      attribute_id: attr.attribute.attribute_id,
-      attribute_name: attr.attribute.attribute_name,
-      data_type: attr.attribute.data_type,
-      allowed_values: attr.attribute.allowed_values
-    }));
-
-    res.status(200).json(result);
-  } catch (error) {
-    loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al obtener los atributos por categoría', error: error.message });
-  }
-};
+    const { category_id } = req.params;
+    const { page: pageParam, pageSize: pageSizeParam } = req.query;
+    
+    // Configuración de paginación
+    const page = parseInt(pageParam) || 1;
+    const pageSize = parseInt(pageSizeParam) || 10;
+  
+    try {
+      // Validación de parámetros de paginación
+      if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
+        return res.status(400).json({ 
+          message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' 
+        });
+      }
+  
+      // Consulta con paginación usando findAndCountAll
+      const { count, rows: attributes } = await CategoryAttributes.findAndCountAll({
+        where: { category_id },
+        include: [{
+          model: ProductAttribute,
+          as: 'attribute',
+          where: { is_deleted: false },
+          attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values']
+        }],
+        limit: pageSize,
+        offset: (page - 1) * pageSize
+      });
+  
+      // Mapear los resultados para el formato deseado
+      const result = attributes.map(attr => ({
+        attribute_id: attr.attribute.attribute_id,
+        attribute_name: attr.attribute.attribute_name,
+        data_type: attr.attribute.data_type,
+        allowed_values: attr.attribute.allowed_values
+      }));
+  
+      // Respuesta con datos paginados
+      res.status(200).json({
+        data: result, // Lista de atributos
+        total: count, // Total de atributos encontrados
+        page,         // Página actual
+        pageSize      // Tamaño de la página
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al obtener los atributos por categoría', error: error.message });
+    }
+  };
 
 // Crear un atributo
 exports.createAttribute = [
