@@ -32,14 +32,18 @@ exports.createCategory = [
     }
   }
 ];
+
 // Obtener todas las categorías activas
 exports.getCategories = async (req, res) => {
   try {
     const categories = await Category.findAll({
-      where: sequelize.literal('active IS NULL OR active = true')
+      where: { active: true },
+      attributes: ['category_id', 'name'], // Solo seleccionamos id y nombre
+      order: [['created_at', 'DESC']] // Mantenemos el orden por fecha
     });
 
     res.status(200).json(categories);
+
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener categorías', error: error.message });

@@ -14,6 +14,8 @@ const categoryController = require('../controllers/categoryController');
 router.post('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), categoryController.createCategory);
 //Obtiene todas las categorías
 router.get('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), categoryController.getAllCategories);
+//Obtiene todas las categorías
+router.get('/get-categories', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), categoryController.getCategories);
 //Elimina una categoría de la base de datos.
 router.delete('/:id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), categoryController.deleteCategory);
 //Obtiene una categoría por su ID.
