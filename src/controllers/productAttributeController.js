@@ -1,5 +1,6 @@
 const { body, param, validationResult } = require('express-validator');
 const { Category, ProductAttribute, CategoryAttributes } = require('../models/Associations');
+const { Op } = require('sequelize'); // Importar los operadores de Sequelize
 const loggerUtils = require('../utils/loggerUtils');
 
 // Obtener cantidad de atributos por categorías (solo categorías activas y atributos no eliminados)
@@ -28,7 +29,7 @@ exports.getAttributeCountByCategory = async (req, res) => {
       where: {
         // Asegurar que solo se cuenten relaciones con atributos válidos
         attribute_id: {
-          [CategoryAttributes.sequelize.Op.ne]: null
+          [Op.ne]: null // Usar Op.ne para "no igual a null"
         }
       }
     });
