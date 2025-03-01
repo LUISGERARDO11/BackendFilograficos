@@ -11,12 +11,12 @@ const roleMiddleware = require('../middlewares/roleMiddleware');
 
 // Rutas CRUD para Collaborators
 
+//Crea un nuevo colaborador.
+router.post('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,roleMiddleware(['administrador']), collaboratorController.createCollaborator);
 // Obtiene todos los colaboradores.
 router.get('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,roleMiddleware(['administrador']), collaboratorController.getAllCollaborators);
 //Obtiene un colaborador por su ID.
 router.get('/:id',authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,roleMiddleware(['administrador']),  collaboratorController.getCollaboratorById);
-//Crea un nuevo colaborador.
-router.post('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,roleMiddleware(['administrador']), collaboratorController.createCollaborator);
 //Actualiza un colaborador por ID.
 router.put('/:id',authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,roleMiddleware(['administrador']),  collaboratorController.updateCollaborator);
 // Ruta para eliminar lógicamente colaboradores (solo administradores)
