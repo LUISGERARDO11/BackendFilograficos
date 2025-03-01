@@ -17,7 +17,12 @@ const ProductAttribute = sequelize.define('ProductAttribute', {
     type: DataTypes.ENUM('texto', 'numero', 'boolean', 'lista'),
     allowNull: false
   },
-  allowed_values: DataTypes.TEXT
+  allowed_values: DataTypes.TEXT,
+  is_deleted: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false
+  }
 }, {
   tableName: 'product_attributes',
   timestamps: true,
