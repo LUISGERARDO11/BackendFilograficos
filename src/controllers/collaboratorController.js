@@ -8,6 +8,7 @@ exports.createCollaborator = [
   body('collaborator_type').isIn(['individual', 'marca']).withMessage('Tipo inválido, debe ser "individual" o "marca".'),
   body('email').isEmail().withMessage('Debe ser un correo válido.'),
   body('phone').optional().isString().isLength({ min: 8, max: 15 }).withMessage('El teléfono debe tener entre 8 y 15 caracteres.'),
+  body('contact').optional().isString().withMessage('El contacto debe ser un texto válido.'),
 
   async (req, res) => {
     const errors = validationResult(req);

@@ -16,7 +16,10 @@ const Collaborator = sequelize.define('Collaborator', {
     type: DataTypes.ENUM('individual', 'marca'),
     allowNull: false
   },
-  contact: DataTypes.STRING(255),
+  contact: {
+    type: DataTypes.STRING(255),
+    allowNull: true // O false si quieres hacerlo obligatorio
+  },  
   email: {
     type: DataTypes.STRING(255),
     allowNull: false,
