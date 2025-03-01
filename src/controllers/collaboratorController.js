@@ -17,7 +17,7 @@ exports.createCollaborator = [
     }
 
     try {
-      const { name, collaborator_type, email, phone, logo } = req.body;
+      const { name, collaborator_type,contact, email, phone, logo } = req.body;
 
       // Verificar si el correo ya existe
       const existingCollaborator = await Collaborator.findOne({ where: { email } });
@@ -26,7 +26,7 @@ exports.createCollaborator = [
       }
 
       const newCollaborator = await Collaborator.create({
-        name, collaborator_type, email, phone, logo, active: true
+        name, collaborator_type, contact,email, phone, logo, active: true
       });
 
       loggerUtils.logUserActivity(req.user.user_id, 'create', `Colaborador creado: ${name}`);
