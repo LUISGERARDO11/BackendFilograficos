@@ -32,6 +32,19 @@ exports.createCategory = [
     }
   }
 ];
+// Obtener todas las categorías activas
+exports.getCategories = async (req, res) => {
+  try {
+    const categories = await Category.findAll({
+      where: sequelize.literal('active IS NULL OR active = true')
+    });
+
+    res.status(200).json(categories);
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener categorías', error: error.message });
+  }
+};
 
 // Obtener todas las categorías
 exports.getAllCategories = async (req, res) => {
@@ -42,8 +55,8 @@ exports.getAllCategories = async (req, res) => {
 
     // Validación de parámetros
     if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
-      return res.status(400).json({ 
-        message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' 
+      return res.status(400).json({
+        message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos'
       });
     }
 
@@ -54,7 +67,7 @@ exports.getAllCategories = async (req, res) => {
       offset: (page - 1) * pageSize
     });
 
-    res.status(200).json({ 
+    res.status(200).json({
       categories,
       total: count,
       page,
