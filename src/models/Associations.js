@@ -22,7 +22,6 @@ const Payment = require('./Payment');
 const Banner = require('./Banner');
 const BackupLog = require('./BackupLog');
 const RestorationLog = require('./RestorationLog');
-
 const Collaborator = require('./Collaborator');
 const Category = require('./Category');
 const Product = require('./Product');
@@ -44,6 +43,7 @@ const PromotionCategory = require('./PromotionCategory');
 const Review = require('./Review');
 const PushSubscription = require('./PushSubscription');
 const NotificationLog = require('./NotificationLog');
+const CategoryAttributes = require('./CategoryAttributes');
 
 // Relaciones de Usuarios
 User.hasOne(Account, { foreignKey: 'user_id' });
@@ -216,6 +216,11 @@ PushSubscription.belongsTo(User, { foreignKey: 'user_id' });
 User.hasMany(NotificationLog, { foreignKey: 'user_id' });
 NotificationLog.belongsTo(User, { foreignKey: 'user_id' });
 
+// Many-to-many relationship between Category and ProductAttribute
+Category.belongsToMany(ProductAttribute, {through: CategoryAttributes, foreignKey: 'category_id', otherKey: 'attribute_id' });
+
+ProductAttribute.belongsToMany(Category, {through: CategoryAttributes, foreignKey: 'attribute_id', otherKey: 'category_id' });
+
 // Exportación de Modelos
 module.exports = {
   User,
@@ -260,5 +265,6 @@ module.exports = {
   PromotionCategory,
   Review,
   PushSubscription,
-  NotificationLog 
+  NotificationLog,
+  CategoryAttributes
 };
