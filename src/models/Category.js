@@ -13,7 +13,12 @@ const Category = sequelize.define('Category', {
     unique: true,
     allowNull: false
   },
-  description: DataTypes.TEXT
+  description: DataTypes.TEXT,
+  active: { // 🔹 Agregar esta columna
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true // Por defecto, las categorías estarán activas
+  }
 }, {
   tableName: 'categories',
   timestamps: true,

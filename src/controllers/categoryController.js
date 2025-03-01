@@ -36,7 +36,7 @@ exports.createCategory = [
 // Obtener todas las categorías
 exports.getAllCategories = async (req, res) => {
   try {
-    const categories = await Category.findAll();
+    const categories = await Category.findAll({ where: { active: true } });
     res.status(200).json(categories);
   } catch (error) {
     loggerUtils.logCriticalError(error);
@@ -75,7 +75,6 @@ exports.deleteCategory = async (req, res) => {
     res.status(500).json({ message: 'Error al desactivar la categoría', error: error.message });
   }
 };
-
 
 // Actualizar categoría por ID
 exports.updateCategory = [
