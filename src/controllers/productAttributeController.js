@@ -2,7 +2,7 @@ const { body, param, validationResult } = require('express-validator');
 const { Category, ProductAttribute, CategoryAttributes } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 
-// Obtener cantidad de atributos por categorías
+// Obtener cantidad de atributos por categorías (solo categorías activas y atributos no eliminados)
 exports.getAttributeCountByCategory = async (req, res) => {
   try {
     const counts = await CategoryAttributes.findAll({
@@ -11,11 +11,26 @@ exports.getAttributeCountByCategory = async (req, res) => {
         [CategoryAttributes.sequelize.fn('COUNT', CategoryAttributes.sequelize.col('attribute_id')), 'count']
       ],
       group: ['category_id'],
-      include: [{
-        model: Category,
-        as: 'category',
-        attributes: ['category_id', 'name']
-      }]
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['category_id', 'name'],
+          where: { active: true } // Filtrar solo categorías activas
+        },
+        {
+          model: ProductAttribute,
+          as: 'attribute',
+          attributes: [], // No necesitamos atributos específicos aquí, solo filtrar
+          where: { is_deleted: false } // Filtrar solo atributos no eliminados
+        }
+      ],
+      where: {
+        // Asegurar que solo se cuenten relaciones con atributos válidos
+        attribute_id: {
+          [CategoryAttributes.sequelize.Op.ne]: null
+        }
+      }
     });
 
     const result = counts.map(count => ({
