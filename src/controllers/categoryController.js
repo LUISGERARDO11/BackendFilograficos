@@ -36,13 +36,14 @@ exports.createCategory = [
 // Obtener todas las categorías
 exports.getAllCategories = async (req, res) => {
   try {
-    const categories = await Category.findAll();
+    const categories = await Category.findAll({ where: { active: true } }); // 🔹 Solo categorías activas
     res.status(200).json(categories);
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener categorías', error: error.message });
   }
 };
+
 
 // Obtener una categoría por su ID
 exports.getCategoryById = async (req, res) => {
@@ -58,7 +59,7 @@ exports.getCategoryById = async (req, res) => {
   }
 };
 
-// Eliminar categoría (física)
+// Eliminación lógica de categoría
 exports.deleteCategory = async (req, res) => {
   try {
     const category = await Category.findByPk(req.params.id);
@@ -66,15 +67,16 @@ exports.deleteCategory = async (req, res) => {
       return res.status(404).json({ message: 'Categoría no encontrada' });
     }
 
-    await category.destroy();
-    loggerUtils.logUserActivity(req.user.user_id, 'delete', `Categoría eliminada: ${category.name}`);
-    res.status(200).json({ message: 'Categoría eliminada correctamente.' });
+    await category.update({ active: false }); // 🔹 En lugar de eliminar, desactivamos la categoría
+    loggerUtils.logUserActivity(req.user.user_id, 'delete', `Categoría desactivada: ${category.name}`);
+    res.status(200).json({ message: 'Categoría desactivada correctamente.' });
 
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al eliminar categoría', error: error.message });
+    res.status(500).json({ message: 'Error al desactivar la categoría', error: error.message });
   }
 };
+
 
 // Actualizar categoría por ID
 exports.updateCategory = [
