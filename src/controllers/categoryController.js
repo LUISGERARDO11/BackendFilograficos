@@ -36,14 +36,13 @@ exports.createCategory = [
 // Obtener todas las categorías
 exports.getAllCategories = async (req, res) => {
   try {
-    const categories = await Category.findAll({ where: { active: true } }); // 🔹 Solo categorías activas
+    const categories = await Category.findAll();
     res.status(200).json(categories);
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener categorías', error: error.message });
   }
 };
-
 
 // Obtener una categoría por su ID
 exports.getCategoryById = async (req, res) => {

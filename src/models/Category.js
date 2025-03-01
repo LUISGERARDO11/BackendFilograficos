@@ -13,11 +13,7 @@ const Category = sequelize.define('Category', {
     unique: true,
     allowNull: false
   },
-  description: DataTypes.TEXT,
-  active: { 
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
-  }
+  description: DataTypes.TEXT
 }, {
   tableName: 'categories',
   timestamps: true,
