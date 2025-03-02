@@ -29,6 +29,15 @@ router.get(
   productAttributeController.getAttributesByCategory
 );
 
+// Obtener todos los atributos de acuerdo a una categoría (requiere autenticación y rol de administrador) sin paginacion
+router.get(
+  '/by-category-without-pagination/:category_id',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productAttributeController.getAttributesByCategoryWithoutPagination
+);
+
 // Crear un nuevo atributo (requiere autenticación y rol de administrador)
 router.post(
   '/',

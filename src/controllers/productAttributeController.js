@@ -97,6 +97,38 @@ exports.getAttributesByCategory = async (req, res) => {
     }
   };
 
+// Obtener todos los atributos de acuerdo a una categoría (sin paginación)
+exports.getAttributesByCategoryWithoutPagination = async (req, res) => {
+  const { category_id } = req.params;
+
+  try {
+    // Consulta sin paginación
+    const attributes = await CategoryAttributes.findAll({
+      where: { category_id },
+      include: [{
+        model: ProductAttribute,
+        as: 'attribute',
+        where: { is_deleted: false },
+        attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values']
+      }]
+    });
+
+    // Mapear los resultados para el formato deseado
+    const result = attributes.map(attr => ({
+      attribute_id: attr.attribute.attribute_id,
+      attribute_name: attr.attribute.attribute_name,
+      data_type: attr.attribute.data_type,
+      allowed_values: attr.attribute.allowed_values
+    }));
+
+    // Respuesta con datos completos
+    res.status(200).json(result);
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener los atributos por categoría', error: error.message });
+  }
+};
+
 // Crear un atributo
 exports.createAttribute = [
   body('attribute_name').trim().notEmpty().withMessage('El nombre del atributo es obligatorio').escape(),
