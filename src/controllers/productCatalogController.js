@@ -19,14 +19,16 @@ const validateProduct = [
   body('production_cost').isFloat({ min: 0 }).withMessage('El costo de producción debe ser un número positivo'),
   body('profit_margin').isFloat({ min: 0 }).withMessage('El margen de ganancia debe ser un número positivo'),
   body('collaborator_id').optional({ nullable: true }).isInt().withMessage('El ID del colaborador debe ser un número entero'),
-  body('stock_threshold').optional().isInt({ min: 0 }).withMessage('El umbral de stock debe ser un número entero positivo') // Validación opcional para stock_threshold
+  body('stock_threshold').optional().isInt({ min: 0 }).withMessage('El umbral de stock debe ser un número entero positivo')
 ];
+
 // Validación para los parámetros de consulta
 const validateGetProducts = [
     query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser un número entero positivo'),
     query('pageSize').optional().isInt({ min: 1 }).withMessage('El tamaño de página debe ser un número entero positivo'),
     query('sort').optional().isString().withMessage('El parámetro de ordenamiento debe ser una cadena (e.g., "sku:ASC,name:DESC")')
 ];
+
 // Crear un producto
 exports.createProduct = [
   validateProduct,
@@ -142,8 +144,8 @@ exports.createProduct = [
             const imageUrl = await uploadProductImagesToCloudinary(image.buffer, `${newProduct.sku}-${index + 1}-${image.originalname}`);
             return {
               product_id: newProduct.product_id,
-              image_url: imageUrl,
-              order: index + 1
+              url_imagen: imageUrl, // Cambia 'image_url' a 'url_imagen'
+              orden: index + 1 // Cambia 'order' a 'orden'
             };
           })
         );
@@ -166,6 +168,7 @@ exports.createProduct = [
     }
   }
 ];
+
 // Obtener todos los productos activos del catálogo
 exports.getAllProducts = [
   validateGetProducts,
