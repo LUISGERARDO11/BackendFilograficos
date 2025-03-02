@@ -95,37 +95,42 @@ exports.getAttributesByCategory = async (req, res) => {
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error al obtener los atributos por categoría', error: error.message });
     }
-  };
+};
 
-// Obtener todos los atributos de acuerdo a una categoría (sin paginación)
-exports.getAttributesByCategoryWithoutPagination = async (req, res) => {
-  const { category_id } = req.params;
-
+exports.getAttributesByActiveCategories = async (req, res) => {
   try {
-    // Consulta sin paginación
-    const attributes = await CategoryAttributes.findAll({
-      where: { category_id },
+    // Obtener todas las categorías activas con sus atributos no eliminados
+    const categoriesWithAttributes = await Category.findAll({
+      attributes: ['category_id', 'name'],
+      where: { active: true },
       include: [{
-        model: ProductAttribute,
-        as: 'attribute',
-        where: { is_deleted: false },
-        attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values']
+        model: CategoryAttributes,
+        as: 'categoryAttributes',
+        include: [{
+          model: ProductAttribute,
+          as: 'attribute',
+          where: { is_deleted: false },
+          attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values']
+        }]
       }]
     });
 
-    // Mapear los resultados para el formato deseado
-    const result = attributes.map(attr => ({
-      attribute_id: attr.attribute.attribute_id,
-      attribute_name: attr.attribute.attribute_name,
-      data_type: attr.attribute.data_type,
-      allowed_values: attr.attribute.allowed_values
+    // Formatear la respuesta agrupando los atributos por categoría
+    const result = categoriesWithAttributes.map(category => ({
+      category_id: category.category_id,
+      category_name: category.name,
+      attributes: category.categoryAttributes.map(attr => ({
+        attribute_id: attr.attribute.attribute_id,
+        attribute_name: attr.attribute.attribute_name,
+        data_type: attr.attribute.data_type,
+        allowed_values: attr.attribute.allowed_values
+      }))
     }));
 
-    // Respuesta con datos completos
     res.status(200).json(result);
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al obtener los atributos por categoría', error: error.message });
+    res.status(500).json({ message: 'Error al obtener los atributos por categorías activas', error: error.message });
   }
 };
 
