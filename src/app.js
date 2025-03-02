@@ -29,6 +29,7 @@ const faqCategoriesRoutes = require('./routes/faqCategoriesRoutes');
 const faqRoutes = require('./routes/faqRoutes');
 const supportInquiryRoutes = require('./routes/supportInquiryRoutes');
 const productAtributeRoutes = require('./routes/productAttributeRoutes');
+const productRoutes = require('./routes/productRoutes');
 //Hailie
 const collaboratorRoutes = require('./routes/collaboratorsRoutes');
 const categoryRoutes = require('./routes/categoriesRoutes');
@@ -86,6 +87,7 @@ app.use('/api/faq-categories', faqCategoriesRoutes);
 app.use('/api/faq', faqRoutes);
 app.use('/api/support-inquiry', supportInquiryRoutes);
 app.use('/api/product-attributes', productAtributeRoutes);
+app.use('/api/product', productRoutes);
 // Hailie
 app.use('/api/collaborators', collaboratorRoutes);
 app.use('/api/categories', categoryRoutes);

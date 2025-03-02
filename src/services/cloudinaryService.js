@@ -35,7 +35,29 @@ const uploadFilesToCloudinary = (fileBuffer, options = {}) => {
   });
 };
 
+const uploadProductImagesToCloudinary = (fileBuffer, fileName = '') => {
+  return new Promise((resolve, reject) => {
+    const options = {
+      folder: 'ProductImages', // Especifica el folder en Cloudinary
+      resource_type: 'auto', // Detecta automáticamente el tipo de recurso (imagen)
+      public_id: fileName.split('.')[0], // Usa el nombre del archivo sin extensión como public_id
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'], // Formatos permitidos
+    };
+
+    cloudinary.uploader
+      .upload_stream(options, (error, result) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(result.secure_url); // Devuelve la URL segura de la imagen subida
+        }
+      })
+      .end(fileBuffer);
+  });
+};
+
 module.exports = {
     uploadToCloudinary,
-    uploadFilesToCloudinary
+    uploadFilesToCloudinary,
+    uploadProductImagesToCloudinary
 };
