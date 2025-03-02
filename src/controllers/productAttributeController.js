@@ -1,5 +1,5 @@
 const { body, param, validationResult } = require('express-validator');
-const { Category, ProductAttribute, CategoryAttributes } = require('../models/Associations');
+const { Category, ProductAttribute,ProductAttributeValue, CategoryAttributes } = require('../models/Associations');
 const { Op } = require('sequelize');
 const loggerUtils = require('../utils/loggerUtils');
 
@@ -161,22 +161,62 @@ exports.updateAttribute = [
     }
 
     const { id } = req.params;
-    const { attribute_name, data_type, allowed_values } = req.body;
+    const { attribute_name, data_type, allowed_values, category_id } = req.body;
 
     try {
       const attribute = await ProductAttribute.findByPk(id);
-      if (!attribute) {
-        return res.status(404).json({ message: 'Atributo no encontrado' });
+      if (!attribute || attribute.status === 'inactive') {
+        return res.status(404).json({ message: 'Atributo no encontrado o ya está inactivo' });
       }
 
+      // Verificar duplicados en attribute_name
+      if (attribute_name && attribute_name !== attribute.attribute_name) {
+        const existingAttribute = await ProductAttribute.findOne({ where: { attribute_name } });
+        if (existingAttribute) {
+          return res.status(400).json({ message: 'Ya existe un atributo con este nombre' });
+        }
+      }
+
+      // Validar cambios en allowed_values si es tipo "lista"
+      if (allowed_values !== undefined && attribute.data_type === 'lista') {
+        const currentValues = await ProductAttributeValue.findAll({
+          where: { attribute_id: id },
+          attributes: ['value'],
+          raw: true
+        });
+        const usedValues = [...new Set(currentValues.map(v => v.value))]; // Valores únicos usados por productos
+        const newAllowedValues = allowed_values ? allowed_values.split(',') : [];
+
+        // Verificar si algún valor usado ya no está en la nueva lista
+        const invalidValues = usedValues.filter(val => !newAllowedValues.includes(val));
+        if (invalidValues.length > 0) {
+          return res.status(400).json({
+            message: `No se puede actualizar los valores permitidos. Los siguientes valores están en uso y no están en la nueva lista: ${invalidValues.join(', ')}`,
+            invalid_values: invalidValues
+          });
+        }
+      }
+
+      // Actualizar los campos proporcionados
       if (attribute_name !== undefined) attribute.attribute_name = attribute_name;
       if (data_type !== undefined) attribute.data_type = data_type;
-      if (allowed_values !== undefined) attribute.allowed_values = allowed_values || null; // Si es vacío o null, se guarda como null
+      if (allowed_values !== undefined) attribute.allowed_values = allowed_values || null;
 
       await attribute.save();
 
-      loggerUtils.logUserActivity(req.user?.user_id || 'system', 'update', `Atributo actualizado: ${attribute.attribute_id}`);
-      res.status(200).json({ message: 'Atributo actualizado exitosamente.', attribute });
+      // Manejar la relación con category_id si se proporciona
+      if (category_id !== undefined) {
+        const categoryExists = await Category.findByPk(category_id);
+        if (!categoryExists) {
+          return res.status(400).json({ message: 'La categoría especificada no existe' });
+        }
+        // Actualizar la relación en CategoryAttributes (eliminar y recrear)
+        await CategoryAttributes.destroy({ where: { attribute_id: id } });
+        await CategoryAttributes.create({ category_id, attribute_id: id });
+      }
+
+      loggerUtils.logUserActivity(req.user?.user_id || 'system', 'update', `Atributo actualizado: ${attribute.attribute_name} (ID: ${id})`);
+      res.status(200).json({ message: 'Atributo actualizado exitosamente', attribute });
     } catch (error) {
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error al actualizar el atributo', error: error.message });
@@ -185,23 +225,50 @@ exports.updateAttribute = [
 ];
 
 // Eliminar lógicamente un atributo
-exports.deleteAttribute = async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const [affectedRows] = await ProductAttribute.update(
-      { is_deleted: true },
-      { where: { attribute_id: id } }
-    );
-
-    if (affectedRows === 0) {
-      return res.status(404).json({ message: 'Atributo no encontrado' });
+exports.deleteAttribute = [
+  param('id').isInt().withMessage('El ID del atributo debe ser un número entero'),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
     }
 
-    loggerUtils.logUserActivity(req.user?.user_id || 'system', 'delete', `Atributo eliminado lógicamente: ID ${id}`);
-    res.status(200).json({ message: 'Atributo eliminado lógicamente exitosamente' });
-  } catch (error) {
-    loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al eliminar el atributo', error: error.message });
+    const { id } = req.params;
+
+    try {
+      const attribute = await ProductAttribute.findByPk(id);
+      if (!attribute || attribute.status === 'inactive') {
+        return res.status(404).json({ message: 'Atributo no encontrado o ya está inactivo' });
+      }
+
+      // Actualizar a 'inactive' para eliminación lógica
+      const [affectedRows] = await ProductAttribute.update(
+        { status: 'inactive' },
+        { where: { attribute_id: id, status: 'active' } }
+      );
+
+      if (affectedRows === 0) {
+        return res.status(404).json({ message: 'Atributo no encontrado o ya está inactivo' });
+      }
+
+      // Contar productos afectados para notificación
+      const affectedProducts = await ProductAttributeValue.count({ where: { attribute_id: id } });
+
+      // Opcional: Eliminar relación en CategoryAttributes (no afecta ProductAttributeValue)
+      await CategoryAttributes.destroy({ where: { attribute_id: id } });
+
+      loggerUtils.logUserActivity(
+        req.user?.user_id || 'system',
+        'delete',
+        `Atributo eliminado lógicamente: ${attribute.attribute_name} (ID: ${id}). Productos afectados: ${affectedProducts}`
+      );
+      res.status(200).json({
+        message: 'Atributo eliminado lógicamente exitosamente',
+        affected_products: affectedProducts
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al eliminar el atributo', error: error.message });
+    }
   }
-};
+];
