@@ -150,7 +150,7 @@ exports.createAttribute = [
 // Actualizar un atributo
 exports.updateAttribute = [
   param('id').isInt().withMessage('El ID del atributo debe ser un número entero'),
-  body('attribute_name').optional().trim().notEmpty().withMessage('El nombre del atributo es obligatorio').escape(),
+  body('attribute_name').optional().trim().notEmpty().withMessage('El nombre del atributo no puede estar vacío').escape(),
   body('data_type').optional().isIn(['texto', 'numero', 'boolean', 'lista']).withMessage('El tipo de dato no es válido'),
   body('allowed_values').optional({ nullable: true, checkFalsy: true }).isString().withMessage('Los valores permitidos deben ser una cadena de texto'),
 
@@ -165,16 +165,8 @@ exports.updateAttribute = [
 
     try {
       const attribute = await ProductAttribute.findByPk(id);
-      if (!attribute || attribute.status === 'inactive') {
-        return res.status(404).json({ message: 'Atributo no encontrado o ya está inactivo' });
-      }
-
-      // Verificar duplicados en attribute_name
-      if (attribute_name && attribute_name !== attribute.attribute_name) {
-        const existingAttribute = await ProductAttribute.findOne({ where: { attribute_name } });
-        if (existingAttribute) {
-          return res.status(400).json({ message: 'Ya existe un atributo con este nombre' });
-        }
+      if (!attribute || attribute.is_deleted) {
+        return res.status(404).json({ message: 'Atributo no encontrado o ya está eliminado' });
       }
 
       // Validar cambios en allowed_values si es tipo "lista"
@@ -237,24 +229,24 @@ exports.deleteAttribute = [
 
     try {
       const attribute = await ProductAttribute.findByPk(id);
-      if (!attribute || attribute.status === 'inactive') {
-        return res.status(404).json({ message: 'Atributo no encontrado o ya está inactivo' });
+      if (!attribute || attribute.is_deleted) {
+        return res.status(404).json({ message: 'Atributo no encontrado o ya está eliminado' });
       }
 
-      // Actualizar a 'inactive' para eliminación lógica
+      // Actualizar a is_deleted: true para eliminación lógica
       const [affectedRows] = await ProductAttribute.update(
-        { status: 'inactive' },
-        { where: { attribute_id: id, status: 'active' } }
+        { is_deleted: true },
+        { where: { attribute_id: id, is_deleted: false } }
       );
 
       if (affectedRows === 0) {
-        return res.status(404).json({ message: 'Atributo no encontrado o ya está inactivo' });
+        return res.status(404).json({ message: 'Atributo no encontrado o ya está eliminado' });
       }
 
       // Contar productos afectados para notificación
       const affectedProducts = await ProductAttributeValue.count({ where: { attribute_id: id } });
 
-      // Opcional: Eliminar relación en CategoryAttributes (no afecta ProductAttributeValue)
+      // Eliminar relación en CategoryAttributes (no afecta ProductAttributeValue)
       await CategoryAttributes.destroy({ where: { attribute_id: id } });
 
       loggerUtils.logUserActivity(
