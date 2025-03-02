@@ -11,7 +11,7 @@ const ProductAttribute = sequelize.define('ProductAttribute', {
   attribute_name: {
     type: DataTypes.STRING(255),
     allowNull: false,
-    unique: true
+    unique: false
   },
   data_type: {
     type: DataTypes.ENUM('texto', 'numero', 'boolean', 'lista'),
