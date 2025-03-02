@@ -225,9 +225,9 @@ CategoryAttributes.belongsTo(Category, { foreignKey: 'category_id', as: 'categor
 CategoryAttributes.belongsTo(ProductAttribute, { foreignKey: 'attribute_id', as: 'attribute' });
 
 // Many-to-many relationship between Category and ProductAttribute
-Category.belongsToMany(ProductAttribute, {through: CategoryAttributes, foreignKey: 'category_id', otherKey: 'attribute_id' });
+Category.belongsToMany(ProductAttribute, { through: CategoryAttributes, foreignKey: 'category_id', otherKey: 'attribute_id', as: 'categoryAttributes' });
 
-ProductAttribute.belongsToMany(Category, {through: CategoryAttributes, foreignKey: 'attribute_id', otherKey: 'category_id' });
+ProductAttribute.belongsToMany(Category, { through: CategoryAttributes, foreignKey: 'attribute_id', otherKey: 'category_id', as: 'categories'});
 
 // Exportación de Modelos
 module.exports = {

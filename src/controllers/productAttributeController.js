@@ -97,6 +97,7 @@ exports.getAttributesByCategory = async (req, res) => {
     }
 };
 
+// Obtener todos los atributos de todas las categorias activas (Sin paginacion)
 exports.getAttributesByActiveCategories = async (req, res) => {
   try {
     // Obtener todas las categorías activas con sus atributos no eliminados
@@ -104,14 +105,11 @@ exports.getAttributesByActiveCategories = async (req, res) => {
       attributes: ['category_id', 'name'],
       where: { active: true },
       include: [{
-        model: CategoryAttributes,
-        as: 'categoryAttributes',
-        include: [{
-          model: ProductAttribute,
-          as: 'attribute',
-          where: { is_deleted: false },
-          attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values']
-        }]
+        model: ProductAttribute,
+        as: 'categoryAttributes', // Usamos el alias definido en Associations.js
+        through: { attributes: [] }, // Excluir campos de la tabla intermedia CategoryAttributes
+        where: { is_deleted: false }, // Solo atributos no eliminados
+        attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values']
       }]
     });
 
@@ -120,10 +118,10 @@ exports.getAttributesByActiveCategories = async (req, res) => {
       category_id: category.category_id,
       category_name: category.name,
       attributes: category.categoryAttributes.map(attr => ({
-        attribute_id: attr.attribute.attribute_id,
-        attribute_name: attr.attribute.attribute_name,
-        data_type: attr.attribute.data_type,
-        allowed_values: attr.attribute.allowed_values
+        attribute_id: attr.attribute_id,
+        attribute_name: attr.attribute_name,
+        data_type: attr.data_type,
+        allowed_values: attr.allowed_values
       }))
     }));
 
