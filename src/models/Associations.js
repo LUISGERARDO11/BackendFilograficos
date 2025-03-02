@@ -114,6 +114,10 @@ BackupLog.hasMany(RestorationLog, { foreignKey: 'backup_id' });
 RestorationLog.belongsTo(BackupLog, { foreignKey: 'backup_id' });
 
 // Relaciones de Productos
+Product.belongsTo(Category, {foreignKey: 'category_id', as: 'category'});
+
+Category.hasMany(Product, {foreignKey: 'category_id', as: 'products'})
+
 Product.hasMany(ProductAttribute, { foreignKey: 'id_producto' });
 ProductAttribute.belongsTo(Product, { foreignKey: 'id_producto' });
 
