@@ -87,7 +87,7 @@ app.use('/api/faq-categories', faqCategoriesRoutes);
 app.use('/api/faq', faqRoutes);
 app.use('/api/support-inquiry', supportInquiryRoutes);
 app.use('/api/product-attributes', productAtributeRoutes);
-app.use('/api/product', productRoutes);
+app.use('/api/products', productRoutes);
 // Hailie
 app.use('/api/collaborators', collaboratorRoutes);
 app.use('/api/categories', categoryRoutes);
