@@ -213,9 +213,9 @@ exports.getAllProducts = [
           {
             model: ProductImage,
             attributes: ['url_imagen'], // Nombre correcto de la columna
-            where: { order: 1 }, // Solo la primera imagen
+            where: { orden: 1 }, // Cambia 'order' a 'orden'
             required: false, // LEFT JOIN para incluir productos sin imágenes
-            as: 'ProductImages' // Añade el alias definido en Associations.js
+            as: 'ProductImages'
           }
         ],
         order,
@@ -231,7 +231,7 @@ exports.getAllProducts = [
         product_type: product.product_type,
         price: product.calculated_price,
         stock: product.stock,
-        image_url: product.ProductImages.length > 0 ? product.ProductImages[0].url_imagen : null // Ya está usando el alias correcto
+        image_url: product.ProductImages.length > 0 ? product.ProductImages[0].url_imagen : null
       }));
 
       res.status(200).json({
