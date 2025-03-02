@@ -129,6 +129,18 @@ exports.createAttribute = [
       loggerUtils.logUserActivity(req.user?.user_id || 'system', 'create', `Atributo creado: ${newAttribute.attribute_id}`);
       res.status(201).json({ message: 'Atributo creado exitosamente.', attribute: newAttribute });
     } catch (error) {
+      // Registrar el error de validación de Sequelize
+      if (error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError') {
+        loggerUtils.logCriticalError(error.errors); // Registrar los errores de validación
+        return res.status(400).json({
+          message: 'Error de validación al crear el atributo',
+          errors: error.errors.map(err => ({
+            field: err.path,
+            message: err.message
+          }))
+        });
+      }
+
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error al crear el atributo', error: error.message });
     }
