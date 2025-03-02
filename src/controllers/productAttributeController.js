@@ -101,7 +101,7 @@ exports.getAttributesByCategory = async (req, res) => {
 exports.createAttribute = [
   body('attribute_name').trim().notEmpty().withMessage('El nombre del atributo es obligatorio').escape(),
   body('data_type').isIn(['texto', 'numero', 'boolean', 'lista']).withMessage('El tipo de dato no es válido'),
-  body('allowed_values').optional().isString().withMessage('Los valores permitidos deben ser una cadena de texto'),
+  body('allowed_values').optional({ nullable: true, checkFalsy: true }).isString().withMessage('Los valores permitidos deben ser una cadena de texto'),
   body('category_id').isInt().withMessage('El ID de la categoría debe ser un número entero'),
 
   async (req, res) => {
@@ -117,7 +117,7 @@ exports.createAttribute = [
       const newAttribute = await ProductAttribute.create({
         attribute_name,
         data_type,
-        allowed_values
+        allowed_values: allowed_values || null // Si es vacío o null, se guarda como null
       });
 
       // Asociar el atributo a la categoría
@@ -140,7 +140,7 @@ exports.updateAttribute = [
   param('id').isInt().withMessage('El ID del atributo debe ser un número entero'),
   body('attribute_name').optional().trim().notEmpty().withMessage('El nombre del atributo es obligatorio').escape(),
   body('data_type').optional().isIn(['texto', 'numero', 'boolean', 'lista']).withMessage('El tipo de dato no es válido'),
-  body('allowed_values').optional().isString().withMessage('Los valores permitidos deben ser una cadena de texto'),
+  body('allowed_values').optional({ nullable: true, checkFalsy: true }).isString().withMessage('Los valores permitidos deben ser una cadena de texto'),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -159,7 +159,7 @@ exports.updateAttribute = [
 
       if (attribute_name !== undefined) attribute.attribute_name = attribute_name;
       if (data_type !== undefined) attribute.data_type = data_type;
-      if (allowed_values !== undefined) attribute.allowed_values = allowed_values;
+      if (allowed_values !== undefined) attribute.allowed_values = allowed_values || null; // Si es vacío o null, se guarda como null
 
       await attribute.save();
 
