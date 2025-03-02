@@ -168,81 +168,81 @@ exports.createProduct = [
 ];
 // Obtener todos los productos activos del catálogo
 exports.getAllProducts = [
-    validateGetProducts,
-    async (req, res) => {
-      try {
-        const { page: pageParam, pageSize: pageSizeParam, sort } = req.query;
-        const page = parseInt(pageParam) || 1;
-        const pageSize = parseInt(pageSizeParam) || 10;
-  
-        // Validación de parámetros de paginación
-        if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
-          return res.status(400).json({ 
-            message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' 
-          });
-        }
-  
-        // Procesar el parámetro de ordenamiento
-        let order = [['sku', 'ASC']]; // Orden por defecto: SKU ascendente
-        if (sort) {
-          const sortParams = sort.split(',').map(param => param.trim().split(':'));
-          const validColumns = ['sku', 'name', 'calculated_price', 'stock'];
-          const validDirections = ['ASC', 'DESC'];
-  
-          order = sortParams.map(([column, direction]) => {
-            if (!validColumns.includes(column)) {
-              throw new Error(`Columna de ordenamiento inválida: ${column}. Use: ${validColumns.join(', ')}`);
-            }
-            if (!direction || !validDirections.includes(direction.toUpperCase())) {
-              throw new Error(`Dirección de ordenamiento inválida: ${direction}. Use: ASC o DESC`);
-            }
-            return [column, direction.toUpperCase()];
-          });
-        }
-  
-        // Consulta para obtener productos activos con paginación y ordenamiento
-        const { count, rows: products } = await Product.findAndCountAll({
-          where: { status: 'activo' }, // Solo productos activos
-          attributes: ['sku', 'name', 'product_type', 'calculated_price', 'stock'], // Campos requeridos del producto
-          include: [
-            {
-              model: Category,
-              attributes: ['name'], // Nombre de la categoría
-              as: 'category'
-            },
-            {
-              model: ProductImage,
-              attributes: ['image_url'],
-              where: { order: 1 }, // Solo la primera imagen
-              required: false // LEFT JOIN para incluir productos sin imágenes
-            }
-          ],
-          order,
-          limit: pageSize,
-          offset: (page - 1) * pageSize
+  validateGetProducts,
+  async (req, res) => {
+    try {
+      const { page: pageParam, pageSize: pageSizeParam, sort } = req.query;
+      const page = parseInt(pageParam) || 1;
+      const pageSize = parseInt(pageSizeParam) || 10;
+
+      // Validación de parámetros de paginación
+      if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
+        return res.status(400).json({ 
+          message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' 
         });
-  
-        // Formatear la respuesta
-        const formattedProducts = products.map(product => ({
-          sku: product.sku,
-          name: product.name,
-          category: product.category ? product.category.name : null,
-          product_type: product.product_type,
-          price: product.calculated_price,
-          stock: product.stock,
-          image_url: product.ProductImages.length > 0 ? product.ProductImages[0].image_url : null
-        }));
-  
-        res.status(200).json({
-          message: 'Productos obtenidos exitosamente',
-          products: formattedProducts,
-          total: count,
-          page,
-          pageSize
-        });
-      } catch (error) {
-        loggerUtils.logCriticalError(error);
-        res.status(500).json({ message: 'Error al obtener los productos', error: error.message });
       }
+
+      // Procesar el parámetro de ordenamiento
+      let order = [['sku', 'ASC']]; // Orden por defecto: SKU ascendente
+      if (sort) {
+        const sortParams = sort.split(',').map(param => param.trim().split(':'));
+        const validColumns = ['sku', 'name', 'calculated_price', 'stock'];
+        const validDirections = ['ASC', 'DESC'];
+
+        order = sortParams.map(([column, direction]) => {
+          if (!validColumns.includes(column)) {
+            throw new Error(`Columna de ordenamiento inválida: ${column}. Use: ${validColumns.join(', ')}`);
+          }
+          if (!direction || !validDirections.includes(direction.toUpperCase())) {
+            throw new Error(`Dirección de ordenamiento inválida: ${direction}. Use: ASC o DESC`);
+          }
+          return [column, direction.toUpperCase()];
+        });
+      }
+
+      // Consulta para obtener productos activos con paginación y ordenamiento
+      const { count, rows: products } = await Product.findAndCountAll({
+        where: { status: 'activo' }, // Solo productos activos
+        attributes: ['sku', 'name', 'product_type', 'calculated_price', 'stock'], // Campos requeridos del producto
+        include: [
+          {
+            model: Category,
+            attributes: ['name'], // Nombre de la categoría
+            as: 'category'
+          },
+          {
+            model: ProductImage,
+            attributes: ['url_imagen'], // Cambia 'image_url' a 'url_imagen'
+            where: { order: 1 }, // Solo la primera imagen
+            required: false // LEFT JOIN para incluir productos sin imágenes
+          }
+        ],
+        order,
+        limit: pageSize,
+        offset: (page - 1) * pageSize
+      });
+
+      // Formatear la respuesta
+      const formattedProducts = products.map(product => ({
+        sku: product.sku,
+        name: product.name,
+        category: product.category ? product.category.name : null,
+        product_type: product.product_type,
+        price: product.calculated_price,
+        stock: product.stock,
+        image_url: product.ProductImages.length > 0 ? product.ProductImages[0].url_imagen : null // Cambia 'image_url' a 'url_imagen'
+      }));
+
+      res.status(200).json({
+        message: 'Productos obtenidos exitosamente',
+        products: formattedProducts,
+        total: count,
+        page,
+        pageSize
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al obtener los productos', error: error.message });
     }
+  }
 ];

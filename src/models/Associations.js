@@ -124,7 +124,7 @@ ProductAttribute.belongsTo(Product, { foreignKey: 'id_producto' });
 Product.hasMany(ProductAttributeValue, { foreignKey: 'id_producto' });
 ProductAttributeValue.belongsTo(Product, { foreignKey: 'id_producto' });
 
-Product.hasMany(ProductImage, { foreignKey: 'id_producto' });
+Product.hasMany(ProductImage, { foreignKey: 'id_producto',as: 'ProductImages'});
 ProductImage.belongsTo(Product, { foreignKey: 'id_producto' });
 
 Product.hasMany(PriceHistory, { foreignKey: 'id_producto' });
