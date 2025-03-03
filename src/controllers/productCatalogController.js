@@ -242,7 +242,7 @@ exports.getAllProducts = [
       // Consulta para obtener productos activos con paginación y ordenamiento
       const { count, rows: products } = await Product.findAndCountAll({
         where: { status: 'activo' }, // Solo productos activos
-        attributes: ['sku', 'name', 'product_type', 'calculated_price', 'stock'], // Campos requeridos del producto
+        attributes: ['product_id', 'sku', 'name', 'product_type', 'calculated_price', 'stock'], // Añadido 'product_id'
         include: [
           {
             model: Category,
