@@ -39,9 +39,12 @@ exports.createProduct = [
     }
 
     const { sku, name, description, product_type, category_id, attributes, customizations, production_cost, profit_margin, collaborator_id, stock_threshold } = req.body;
-    const images = req.files; // Imágenes subidas con multer
+    const images = req.files;
 
     try {
+      // Convertir category_id a número
+      const categoryIdNum = parseInt(category_id, 10);
+
       // 1. Verificar unicidad del SKU
       const existingProduct = await Product.findOne({ where: { sku } });
       if (existingProduct) {
@@ -49,7 +52,7 @@ exports.createProduct = [
       }
 
       // 2. Validar categoría
-      const category = await Category.findByPk(category_id);
+      const category = await Category.findByPk(categoryIdNum);
       if (!category) {
         return res.status(404).json({ message: 'Categoría no encontrada' });
       }
@@ -59,20 +62,21 @@ exports.createProduct = [
         const validAttributes = await ProductAttribute.findAll({
           include: [{
             model: Category,
-            as: 'categories', // Especifica el alias aquí
-            where: { category_id },
+            as: 'categories',
+            where: { category_id: categoryIdNum }, // Usar el número
             through: { attributes: [] },
             attributes: []
           }],
-          where: { is_deleted: false } // Solo atributos activos
+          where: { is_deleted: false }
         });
         const validAttributeIds = validAttributes.map(attr => attr.attribute_id);
 
         for (const attr of attributes) {
-          if (!validAttributeIds.includes(attr.attribute_id)) {
-            return res.status(400).json({ message: `El atributo con ID ${attr.attribute_id} no pertenece a esta categoría` });
+          const attributeIdNum = parseInt(attr.attribute_id, 10); // Convertir a número
+          if (!validAttributeIds.includes(attributeIdNum)) {
+            return res.status(400).json({ message: `El atributo con ID ${attributeIdNum} no pertenece a esta categoría` });
           }
-          const attribute = validAttributes.find(a => a.attribute_id === attr.attribute_id);
+          const attribute = validAttributes.find(a => a.attribute_id === attributeIdNum);
           if (attribute.data_type === 'lista' && attribute.allowed_values) {
             const allowed = attribute.allowed_values.split(',');
             if (!allowed.includes(attr.value)) {
