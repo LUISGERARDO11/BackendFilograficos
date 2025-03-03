@@ -59,6 +59,7 @@ exports.createProduct = [
         const validAttributes = await ProductAttribute.findAll({
           include: [{
             model: Category,
+            as: 'categories', // Especifica el alias aquí
             where: { category_id },
             through: { attributes: [] },
             attributes: []
