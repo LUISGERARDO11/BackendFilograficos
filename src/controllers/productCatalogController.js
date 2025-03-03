@@ -1,4 +1,5 @@
-const { body, query, validationResult } = require('express-validator');
+const { body, query, param, validationResult } = require('express-validator');
+const { Op } = require('sequelize');
 const { Product, Category, Collaborator, ProductAttribute, ProductAttributeValue, CustomizationOption, ProductImage, CategoryAttributes } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { uploadProductImagesToCloudinary } = require('../services/cloudinaryService');
