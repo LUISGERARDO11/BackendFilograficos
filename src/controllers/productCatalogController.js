@@ -102,8 +102,8 @@ exports.createProduct = [
         return res.status(400).json({ message: 'Los productos de tipo "Existencia" no pueden tener personalizaciones' });
       }
 
-      // 6. Calcular precio final
-      const calculated_price = production_cost * (1 + profit_margin / 100);
+      // 6. Calcular precio final con 2 decimales
+      const calculated_price = parseFloat((production_cost * (1 + profit_margin / 100)).toFixed(2));
 
       // 7. Crear el producto
       const newProduct = await Product.create({
