@@ -148,7 +148,7 @@ exports.createProduct = [
           images.map(async (image, index) => {
             const imageUrl = await uploadProductImagesToCloudinary(image.buffer, `${newProduct.sku}-${index + 1}-${image.originalname}`);
             return {
-              product_id: newProduct.product_id,
+              id_producto: newProduct.product_id,
               url_imagen: imageUrl, // Cambia 'image_url' a 'url_imagen'
               orden: index + 1 // Cambia 'order' a 'orden'
             };
