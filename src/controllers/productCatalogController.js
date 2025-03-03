@@ -29,6 +29,36 @@ const validateGetProducts = [
     query('sort').optional().isString().withMessage('El parámetro de ordenamiento debe ser una cadena (e.g., "sku:ASC,name:DESC")')
 ];
 
+// Validación para eliminar un producto
+const validateDeleteProduct = [
+  param('product_id').isInt({ min: 1 }).withMessage('El ID del producto debe ser un número entero positivo')
+];
+
+// Validación para obtener un producto por ID
+const validateGetProductById = [
+  param('product_id').isInt({ min: 1 }).withMessage('El ID del producto debe ser un número entero positivo')
+];
+
+// Validación para actualizar un producto
+const validateUpdateProduct = [
+  param('product_id').isInt({ min: 1 }).withMessage('El ID del producto debe ser un número entero positivo'),
+  body('sku').trim().notEmpty().withMessage('El SKU es obligatorio').escape(),
+  body('name').trim().notEmpty().withMessage('El nombre es obligatorio').escape(),
+  body('description').optional().trim().escape(),
+  body('product_type').isIn(['Existencia', 'semi_personalizado', 'personalizado']).withMessage('Tipo de producto no válido'),
+  body('category_id').isInt().withMessage('El ID de la categoría debe ser un número entero'),
+  body('attributes').isArray().withMessage('Los atributos deben ser un arreglo').optional({ nullable: true }),
+  body('attributes.*.attribute_id').isInt().withMessage('El ID del atributo debe ser un número entero'),
+  body('attributes.*.value').trim().notEmpty().withMessage('El valor del atributo es obligatorio'),
+  body('customizations').optional().isArray().withMessage('Las personalizaciones deben ser un arreglo'),
+  body('customizations.*.type').optional().isIn(['Imagen', 'Texto']).withMessage('Tipo de personalización no válido'),
+  body('customizations.*.description').optional().trim().notEmpty().withMessage('La descripción de la personalización es obligatoria'),
+  body('production_cost').isFloat({ min: 0 }).withMessage('El costo de producción debe ser un número positivo'),
+  body('profit_margin').isFloat({ min: 0 }).withMessage('El margen de ganancia debe ser un número positivo'),
+  body('collaborator_id').optional({ nullable: true }).isInt().withMessage('El ID del colaborador debe ser un número entero'),
+  body('stock_threshold').optional().isInt({ min: 0 }).withMessage('El umbral de stock debe ser un número entero positivo')
+];
+
 // Crear un producto
 exports.createProduct = [
   validateProduct,
@@ -252,6 +282,286 @@ exports.getAllProducts = [
     } catch (error) {
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error al obtener los productos', error: error.message });
+    }
+  }
+];
+
+// Eliminar lógicamente un producto
+exports.deleteProduct = [
+  validateDeleteProduct,
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { product_id } = req.params; // Cambiado de req.query a req.params
+
+    try {
+      const product = await Product.findByPk(product_id);
+      if (!product) {
+        return res.status(404).json({ message: 'Producto no encontrado' });
+      }
+
+      if (product.status === 'inactivo') {
+        return res.status(400).json({ message: 'El producto ya está inactivo' });
+      }
+
+      await product.update({ status: 'inactivo' });
+
+      loggerUtils.logUserActivity(req.user?.user_id || 'system', 'delete', `Producto eliminado lógicamente: ${product.name} (SKU: ${product.sku})`);
+      res.status(200).json({ message: 'Producto eliminado lógicamente exitosamente' });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al eliminar el producto', error: error.message });
+    }
+  }
+];
+
+// Obtener un producto por ID
+exports.getProductById = [
+  validateGetProductById,
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { product_id } = req.params; // Cambiado de req.query a req.params
+
+    try {
+      const product = await Product.findByPk(product_id, {
+        include: [
+          {
+            model: Category,
+            attributes: ['category_id', 'name'],
+            as: 'category'
+          },
+          {
+            model: Collaborator,
+            attributes: ['collaborator_id', 'name'],
+            as: 'collaborator'
+          },
+          {
+            model: ProductAttributeValue,
+            as: 'ProductAttributeValues',
+            include: [
+              {
+                model: ProductAttribute,
+                attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values'],
+                as: 'attribute'
+              }
+            ]
+          },
+          {
+            model: CustomizationOption,
+            attributes: ['type', 'description'],
+            as: 'CustomizationOptions'
+          },
+          {
+            model: ProductImage,
+            attributes: ['url_imagen', 'orden'],
+            as: 'ProductImages'
+          }
+        ]
+      });
+
+      if (!product) {
+        return res.status(404).json({ message: 'Producto no encontrado' });
+      }
+
+      const formattedProduct = {
+        product_id: product.product_id,
+        sku: product.sku,
+        name: product.name,
+        description: product.description,
+        product_type: product.product_type,
+        category: product.category ? { category_id: product.category.category_id, name: product.category.name } : null,
+        collaborator: product.collaborator ? { collaborator_id: product.collaborator.collaborator_id, name: product.collaborator.name } : null,
+        production_cost: product.production_cost,
+        profit_margin: product.profit_margin,
+        calculated_price: product.calculated_price,
+        stock: product.stock,
+        stock_threshold: product.stock_threshold,
+        status: product.status,
+        attributes: product.ProductAttributeValues.map(attr => ({
+          attribute_id: attr.attribute.attribute_id,
+          attribute_name: attr.attribute.attribute_name,
+          value: attr.value,
+          data_type: attr.attribute.data_type,
+          allowed_values: attr.attribute.allowed_values
+        })),
+        customizations: product.CustomizationOptions.map(cust => ({
+          type: cust.type,
+          description: cust.description
+        })),
+        images: product.ProductImages.map(img => ({
+          url_imagen: img.url_imagen,
+          orden: img.orden
+        }))
+      };
+
+      res.status(200).json({
+        message: 'Producto obtenido exitosamente',
+        product: formattedProduct
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al obtener el producto', error: error.message });
+    }
+  }
+];
+
+// Actualizar un producto
+exports.updateProduct = [
+  validateUpdateProduct,
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { product_id } = req.params; // Cambiado de req.body a req.params
+    const { sku, name, description, product_type, category_id, attributes, customizations, production_cost, profit_margin, collaborator_id, stock_threshold } = req.body;
+    const images = req.files;
+
+    try {
+      const product = await Product.findByPk(product_id);
+      if (!product) {
+        return res.status(404).json({ message: 'Producto no encontrado' });
+      }
+
+      // 1. Verificar unicidad del SKU (excepto para el mismo producto)
+      const existingProduct = await Product.findOne({ where: { sku, product_id: { [Op.ne]: product_id } } });
+      if (existingProduct) {
+        return res.status(400).json({ message: 'El SKU ya existe en otro producto' });
+      }
+
+      // 2. Validar categoría
+      const categoryIdNum = parseInt(category_id, 10);
+      const category = await Category.findByPk(categoryIdNum);
+      if (!category) {
+        return res.status(404).json({ message: 'Categoría no encontrada' });
+      }
+
+      // 3. Validar atributos
+      if (attributes && attributes.length > 0) {
+        const validAttributes = await ProductAttribute.findAll({
+          include: [{
+            model: Category,
+            as: 'categories',
+            where: { category_id: categoryIdNum },
+            through: { attributes: [] },
+            attributes: []
+          }],
+          where: { is_deleted: false }
+        });
+        const validAttributeIds = validAttributes.map(attr => attr.attribute_id);
+
+        for (const attr of attributes) {
+          const attributeIdNum = parseInt(attr.attribute_id, 10);
+          if (!validAttributeIds.includes(attributeIdNum)) {
+            return res.status(400).json({ message: `El atributo con ID ${attributeIdNum} no pertenece a esta categoría` });
+          }
+          const attribute = validAttributes.find(a => a.attribute_id === attributeIdNum);
+          if (attribute.data_type === 'lista' && attribute.allowed_values) {
+            const allowed = attribute.allowed_values.split(',');
+            if (!allowed.includes(attr.value)) {
+              return res.status(400).json({ message: `El valor "${attr.value}" no es permitido para el atributo "${attribute.attribute_name}"` });
+            }
+          }
+          if (attribute.data_type === 'numero' && isNaN(parseFloat(attr.value))) {
+            return res.status(400).json({ message: `El valor "${attr.value}" debe ser un número para el atributo "${attribute.attribute_name}"` });
+          }
+        }
+      }
+
+      // 4. Validar colaborador
+      if (collaborator_id) {
+        const collaborator = await Collaborator.findByPk(collaborator_id);
+        if (!collaborator) {
+          return res.status(404).json({ message: 'Colaborador no encontrado' });
+        }
+      }
+
+      // 5. Validar personalizaciones
+      if (product_type === 'Existencia' && customizations && customizations.length > 0) {
+        return res.status(400).json({ message: 'Los productos de tipo "Existencia" no pueden tener personalizaciones' });
+      }
+
+      // 6. Calcular precio final con 2 decimales
+      const calculated_price = parseFloat((production_cost * (1 + profit_margin / 100)).toFixed(2));
+
+      // 7. Actualizar el producto
+      await product.update({
+        sku,
+        name,
+        description: description || null,
+        product_type,
+        category_id: categoryIdNum,
+        collaborator_id: collaborator_id || null,
+        production_cost,
+        profit_margin,
+        calculated_price,
+        stock_threshold: stock_threshold !== undefined ? stock_threshold : product.stock_threshold
+      });
+
+      // 8. Actualizar atributos (reemplazar los existentes)
+      if (attributes) {
+        await ProductAttributeValue.destroy({ where: { product_id } });
+        if (attributes.length > 0) {
+          const attributeValues = attributes.map(attr => ({
+            product_id,
+            attribute_id: attr.attribute_id,
+            value: attr.value
+          }));
+          await ProductAttributeValue.bulkCreate(attributeValues);
+        }
+      }
+
+      // 9. Actualizar personalizaciones (reemplazar las existentes)
+      if (product_type !== 'Existencia' && customizations) {
+        await CustomizationOption.destroy({ where: { product_id } });
+        if (customizations.length > 0) {
+          const customizationOptions = customizations.map(cust => ({
+            product_id,
+            type: cust.type,
+            description: cust.description
+          }));
+          await CustomizationOption.bulkCreate(customizationOptions);
+        }
+      }
+
+      // 10. Actualizar imágenes (reemplazar las existentes si se proporcionan nuevas)
+      let imageRecords = [];
+      if (images && images.length > 0) {
+        await ProductImage.destroy({ where: { id_producto: product_id } });
+        imageRecords = await Promise.all(
+          images.map(async (image, index) => {
+            const imageUrl = await uploadProductImagesToCloudinary(image.buffer, `${sku}-${index + 1}-${image.originalname}`);
+            return {
+              id_producto: product_id,
+              url_imagen: imageUrl,
+              orden: index + 1
+            };
+          })
+        );
+        await ProductImage.bulkCreate(imageRecords);
+      }
+
+      loggerUtils.logUserActivity(req.user?.user_id || 'system', 'update', `Producto actualizado: ${name} (SKU: ${sku})`);
+      res.status(200).json({
+        message: 'Producto actualizado exitosamente',
+        product: {
+          ...product.dataValues,
+          attributes: attributes || [],
+          customizations: (product_type !== 'Existencia' && customizations) ? customizations : [],
+          images: images && images.length > 0 ? imageRecords : product.ProductImages || []
+        }
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al actualizar el producto', error: error.message });
     }
   }
 ];

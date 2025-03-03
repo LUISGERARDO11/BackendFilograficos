@@ -22,10 +22,41 @@ router.post(
   productCatalogController.createProduct
 );
 
-// Ruta para obtener todos los productos activos del catálogo (público, sin seguridad)
+// Ruta para obtener todos los productos activos del catálogo (requiere autenticación y rol de administrador)
 router.get(
   '/catalog',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
   productCatalogController.getAllProducts
+);
+
+// Ruta para eliminar lógicamente un producto (solo administradores)
+router.delete(
+  '/:product_id',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productCatalogController.deleteProduct
+);
+
+// Ruta para obtener los detalles de un producto por ID (requiere autenticación y rol de administrador)
+router.get(
+  '/detail/:product_id',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productCatalogController.getProductById
+);
+
+// Ruta para actualizar un producto (solo administradores)
+router.put(
+  '/:product_id',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  validateProductImages(uploadProductImages),
+  productCatalogController.updateProduct
 );
 
 module.exports = router;
