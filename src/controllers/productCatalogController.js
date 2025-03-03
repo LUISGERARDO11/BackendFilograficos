@@ -264,6 +264,7 @@ exports.getAllProducts = [
 
       // Formatear la respuesta
       const formattedProducts = products.map(product => ({
+        product_id: product.product_id, // Añadido
         sku: product.sku,
         name: product.name,
         category: product.category ? product.category.name : null,
