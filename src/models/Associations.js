@@ -205,6 +205,10 @@ PromotionCategory.belongsTo(Promotion, { foreignKey: 'promotion_id' });
 Category.hasMany(PromotionCategory, { foreignKey: 'category_id' });
 PromotionCategory.belongsTo(Category, { foreignKey: 'category_id' });
 
+// Relaciones entre Product y Collaborator
+Product.belongsTo(Collaborator, { foreignKey: 'collaborator_id', as: 'collaborator' });
+Collaborator.hasMany(Product, { foreignKey: 'collaborator_id', as: 'products' });
+
 // Relaciones de Reseñas
 User.hasMany(Review, { foreignKey: 'user_id' });
 Review.belongsTo(User, { foreignKey: 'user_id' });
