@@ -170,14 +170,20 @@ exports.getAllProducts = async (req, res) => {
     let order = [['product_id', 'ASC']];
     if (sort) {
       const sortParams = sort.split(',').map(param => param.trim().split(':'));
-      const validColumns = ['name', 'product_id'];
+      const validColumns = ['name', 'product_id', 'sku', 'price', 'stock']; // Columnas válidas para ordenar
       const validDirections = ['ASC', 'DESC'];
+
       order = sortParams.map(([column, direction]) => {
         if (!validColumns.includes(column)) {
           throw new Error(`Columna de ordenamiento inválida: ${column}. Use: ${validColumns.join(', ')}`);
         }
         if (!direction || !validDirections.includes(direction.toUpperCase())) {
           throw new Error(`Dirección de ordenamiento inválida: ${direction}. Use: ASC o DESC`);
+        }
+
+        // Mapear columnas a los modelos correspondientes
+        if (['sku', 'price', 'stock'].includes(column)) {
+          return [ProductVariant, column === 'price' ? 'calculated_price' : column, direction.toUpperCase()];
         }
         return [column, direction.toUpperCase()];
       });
