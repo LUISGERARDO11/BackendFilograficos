@@ -180,7 +180,11 @@ exports.getAllProducts = async (req, res) => {
         if (!direction || !validDirections.includes(direction.toUpperCase())) {
           throw new Error(`Dirección de ordenamiento inválida: ${direction}. Use: ASC o DESC`);
         }
-        return [column === 'variant_count' || column === 'min_price' || column === 'max_price' || column === 'total_stock' ? ProductVariant : column, column, direction.toUpperCase()];
+        // Si es una columna agregada, usar raw SQL en el ordenamiento
+        if (['variant_count', 'min_price', 'max_price', 'total_stock'].includes(column)) {
+          return [Product.sequelize.literal(column), direction.toUpperCase()];
+        }
+        return ['product_id' === column ? Product : column, column, direction.toUpperCase()];
       });
     }
 
@@ -214,14 +218,7 @@ exports.getAllProducts = async (req, res) => {
         {
           model: ProductVariant,
           attributes: [],
-          include: [
-            {
-              model: ProductImage,
-              attributes: ['image_url'],
-              where: { order: 1 },
-              required: false
-            }
-          ]
+          required: false // LEFT JOIN para incluir productos sin variantes
         }
       ],
       group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Product.created_at', 'Product.updated_at', 'Category.category_id', 'Category.name'],
