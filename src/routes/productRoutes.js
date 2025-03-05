@@ -1,4 +1,3 @@
-// routes/productRoutes.js
 const express = require('express');
 const router = express.Router();
 
@@ -11,6 +10,7 @@ const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 const validateProductImages = require('../middlewares/validateProductImages');
 const uploadProductImages = require('../config/multerProductImagesConfig');
+const { validateProduct, validateGetProducts, validateDeleteProduct, validateGetProductById, validateUpdateProduct } = require('../middlewares/productValidation');
 
 // Ruta para crear un producto (solo administradores)
 router.post(
@@ -18,7 +18,9 @@ router.post(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  validateProductImages(uploadProductImages), // Usa la configuración específica de multer para productos
+  uploadProductImages, // Configuración de Multer para múltiples imágenes por variante
+  validateProductImages, // Validación de imágenes (1-10 por variante)
+  validateProduct, // Validación de datos del producto y variantes
   productCatalogController.createProduct
 );
 
@@ -28,6 +30,7 @@ router.get(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
+  validateGetProducts, // Validación de parámetros de consulta
   productCatalogController.getAllProducts
 );
 
@@ -37,6 +40,7 @@ router.delete(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
+  validateDeleteProduct, // Validación del parámetro product_id
   productCatalogController.deleteProduct
 );
 
@@ -46,6 +50,7 @@ router.get(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
+  validateGetProductById, // Validación del parámetro product_id
   productCatalogController.getProductById
 );
 
@@ -55,7 +60,9 @@ router.put(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  validateProductImages(uploadProductImages),
+  uploadProductImages, // Configuración de Multer para múltiples imágenes por variante
+  validateProductImages, // Validación de imágenes (1-10 por variante)
+  validateUpdateProduct, // Validación de datos del producto y variantes
   productCatalogController.updateProduct
 );
 

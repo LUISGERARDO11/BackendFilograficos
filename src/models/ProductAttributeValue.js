@@ -8,12 +8,12 @@ const ProductAttributeValue = sequelize.define('ProductAttributeValue', {
     autoIncrement: true,
     allowNull: false
   },
-  product_id: {
+  variant_id: { // Cambiado de product_id a variant_id
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'products',
-      key: 'product_id'
+      model: 'product_variants',
+      key: 'variant_id'
     }
   },
   attribute_id: {

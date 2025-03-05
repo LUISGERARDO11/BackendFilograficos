@@ -1,4 +1,3 @@
-// config/multerProductImagesConfig.js
 const multer = require('multer');
 const path = require('path');
 
@@ -17,8 +16,8 @@ const uploadProductImages = multer({
   },
   limits: {
     fileSize: 5 * 1024 * 1024, // Máximo 5MB por imagen
-    files: 10 // Máximo 10 imágenes
+    files: 100 // Máximo total de 100 imágenes (10 por variante, asumiendo hasta 10 variantes)
   }
-}).array('images', 10); // Campo 'images', entre 1 y 10 imágenes
+}).any(); // Permite cualquier campo dinámico como variants[index][images]
 
 module.exports = uploadProductImages;

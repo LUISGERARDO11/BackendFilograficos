@@ -2,25 +2,25 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
 
 const ProductImage = sequelize.define('ProductImage', {
-  id_imagen: {
+  image_id: { // Cambiado de id_imagen a image_id para consistencia
     type: DataTypes.INTEGER,
     primaryKey: true,
     autoIncrement: true,
     allowNull: false
   },
-  id_producto: {
+  variant_id: { // Cambiado de id_producto a variant_id
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'products',
-      key: 'product_id'
+      model: 'product_variants',
+      key: 'variant_id'
     }
   },
-  url_imagen: {
+  image_url: { // Cambiado de url_imagen a image_url para consistencia
     type: DataTypes.STRING(255),
     allowNull: false
   },
-  orden: {
+  order: { // Cambiado de orden a order para consistencia
     type: DataTypes.INTEGER,
     allowNull: false
   }
@@ -32,4 +32,3 @@ const ProductImage = sequelize.define('ProductImage', {
 });
 
 module.exports = ProductImage;
-

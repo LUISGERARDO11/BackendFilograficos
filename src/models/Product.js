@@ -24,11 +24,6 @@ const Product = sequelize.define('Product', {
       key: 'category_id'
     }
   },
-  sku: {
-    type: DataTypes.STRING(50),
-    allowNull: false,
-    unique: true
-  },
   name: {
     type: DataTypes.STRING(255),
     allowNull: false
@@ -38,28 +33,9 @@ const Product = sequelize.define('Product', {
     type: DataTypes.ENUM('Existencia', 'semi_personalizado', 'personalizado'),
     allowNull: false
   },
-  production_cost: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: false
-  },
-  profit_margin: {
-    type: DataTypes.DECIMAL(5, 2),
-    allowNull: false
-  },
-  calculated_price: DataTypes.DECIMAL(10, 2),
   on_promotion: {
     type: DataTypes.BOOLEAN,
     defaultValue: false
-  },
-  stock: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0,
-    allowNull: false
-  },
-  stock_threshold: {
-    type: DataTypes.INTEGER,
-    defaultValue: 10,
-    allowNull: false
   },
   average_rating: {
     type: DataTypes.DECIMAL(3, 2),
@@ -70,8 +46,8 @@ const Product = sequelize.define('Product', {
     defaultValue: 0
   },
   status: {
-    type: DataTypes.ENUM('activo', 'inactivo'),
-    defaultValue: 'activo'
+    type: DataTypes.ENUM('active', 'inactive'),
+    defaultValue: 'active'
   }
 }, {
   tableName: 'products',

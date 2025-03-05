@@ -25,6 +25,7 @@ const RestorationLog = require('./RestorationLog');
 const Collaborator = require('./Collaborator');
 const Category = require('./Category');
 const Product = require('./Product');
+const ProductVariant = require('./ProductVariant');
 const ProductAttribute = require('./ProductAttribute');
 const ProductAttributeValue = require('./ProductAttributeValue');
 const ProductImage = require('./ProductImage');
@@ -114,66 +115,60 @@ BackupLog.hasMany(RestorationLog, { foreignKey: 'backup_id' });
 RestorationLog.belongsTo(BackupLog, { foreignKey: 'backup_id' });
 
 // Relaciones de Productos
-Product.belongsTo(Category, {foreignKey: 'category_id', as: 'category'});
+Product.hasMany(ProductVariant, { foreignKey: 'product_id' });
+ProductVariant.belongsTo(Product, { foreignKey: 'product_id' });
 
-Category.hasMany(Product, {foreignKey: 'category_id', as: 'products'})
+ProductVariant.hasMany(ProductAttributeValue, { foreignKey: 'variant_id' });
+ProductAttributeValue.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
 
-Product.hasMany(ProductAttribute, { foreignKey: 'id_producto' });
-ProductAttribute.belongsTo(Product, { foreignKey: 'id_producto' });
+ProductAttribute.hasMany(ProductAttributeValue, { foreignKey: 'attribute_id' });
+ProductAttributeValue.belongsTo(ProductAttribute, { foreignKey: 'attribute_id' });
 
-Product.hasMany(ProductAttributeValue, { foreignKey: 'id_producto' });
-ProductAttributeValue.belongsTo(Product, { foreignKey: 'id_producto' });
+ProductVariant.hasMany(ProductImage, { foreignKey: 'variant_id' });
+ProductImage.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
 
-// Relación entre ProductAttributeValue y ProductAttribute
-ProductAttributeValue.belongsTo(ProductAttribute, { foreignKey: 'attribute_id', as: 'attribute' });
-ProductAttribute.hasMany(ProductAttributeValue, { foreignKey: 'attribute_id', as: 'attributeValues' });
+Product.hasMany(PriceHistory, { foreignKey: 'product_id' });
+PriceHistory.belongsTo(Product, { foreignKey: 'product_id' });
 
-Product.hasMany(ProductImage, { foreignKey: 'id_producto',as: 'ProductImages'});
-ProductImage.belongsTo(Product, { foreignKey: 'id_producto' });
+Product.hasMany(Customization, { foreignKey: 'product_id' });
+Customization.belongsTo(Product, { foreignKey: 'product_id' });
 
-Product.hasMany(PriceHistory, { foreignKey: 'id_producto' });
-PriceHistory.belongsTo(Product, { foreignKey: 'id_producto' });
+Product.hasMany(CustomizationOption, { foreignKey: 'product_id' }); 
+CustomizationOption.belongsTo(Product, { foreignKey: 'product_id' });
 
-Product.hasMany(Customization, { foreignKey: 'id_producto' });
-Customization.belongsTo(Product, { foreignKey: 'id_producto' });
+Product.hasMany(ShippingOption, { foreignKey: 'product_id' });
+ShippingOption.belongsTo(Product, { foreignKey: 'product_id' });
 
-Product.hasMany(CustomizationOption, { foreignKey: 'id_producto' });
-CustomizationOption.belongsTo(Product, { foreignKey: 'id_producto' });
+Product.belongsTo(Category, { foreignKey: 'category_id' });
+Category.hasMany(Product, { foreignKey: 'category_id' });
 
-Product.hasMany(ShippingOption, { foreignKey: 'id_producto' });
-ShippingOption.belongsTo(Product, { foreignKey: 'id_producto' });
+Product.belongsTo(Collaborator, { foreignKey: 'collaborator_id' });
+Collaborator.hasMany(Product, { foreignKey: 'collaborator_id' });
 
 // Relaciones de Personalización
-CustomizationOption.hasMany(Customization, { foreignKey: 'id_opcion' });
-Customization.belongsTo(CustomizationOption, { foreignKey: 'id_opcion' });
+CustomizationOption.hasMany(Customization, { foreignKey: 'option_id' });
+Customization.belongsTo(CustomizationOption, { foreignKey: 'option_id' });
 
-// Nueva relación entre Order y Customization
 Order.hasMany(Customization, { foreignKey: 'order_id' });
 Customization.belongsTo(Order, { foreignKey: 'order_id' });
 
 // Relaciones de Opciones de Envío
-ShippingOption.hasMany(DeliveryPoint, { foreignKey: 'id_opcion_envio' });
-DeliveryPoint.belongsTo(ShippingOption, { foreignKey: 'id_opcion_envio' });
+ShippingOption.hasMany(DeliveryPoint, { foreignKey: 'shipping_option_id' });
+DeliveryPoint.belongsTo(ShippingOption, { foreignKey: 'shipping_option_id' });
 
 // Relaciones de Carrito
-Cart.hasMany(Product, { foreignKey: 'id_carrito' });
-Product.belongsTo(Cart, { foreignKey: 'id_carrito' });
-
-// Relaciones del Carrito
 Cart.hasMany(CartDetail, { foreignKey: 'cart_id' });
 CartDetail.belongsTo(Cart, { foreignKey: 'cart_id' });
 
-// Relaciones de Productos con DetalleCarrito
-Product.hasMany(CartDetail, { foreignKey: 'product_id' });
-CartDetail.belongsTo(Product, { foreignKey: 'product_id' });
+ProductVariant.hasMany(CartDetail, { foreignKey: 'product_id' }); // Relacionado con ProductVariant en lugar de Product
+CartDetail.belongsTo(ProductVariant, { foreignKey: 'product_id' });
 
 // Relaciones de Pedidos
 Order.hasMany(OrderDetail, { foreignKey: 'order_id' });
 OrderDetail.belongsTo(Order, { foreignKey: 'order_id' });
 
-// Relaciones de Productos con Detalle de Pedidos
-Product.hasMany(OrderDetail, { foreignKey: 'product_id' });
-OrderDetail.belongsTo(Product, { foreignKey: 'product_id' });
+ProductVariant.hasMany(OrderDetail, { foreignKey: 'product_id' }); // Relacionado con ProductVariant en lugar de Product
+OrderDetail.belongsTo(ProductVariant, { foreignKey: 'product_id' });
 
 // Relaciones de Promociones
 Product.hasMany(Promotion, { foreignKey: 'product_id' });
@@ -199,8 +194,8 @@ CouponUsage.belongsTo(Order, { foreignKey: 'order_id' });
 Promotion.hasMany(PromotionProduct, { foreignKey: 'promotion_id' });
 PromotionProduct.belongsTo(Promotion, { foreignKey: 'promotion_id' });
 
-Product.hasMany(PromotionProduct, { foreignKey: 'product_id' });
-PromotionProduct.belongsTo(Product, { foreignKey: 'product_id' });
+ProductVariant.hasMany(PromotionProduct, { foreignKey: 'product_id' }); // Relacionado con ProductVariant en lugar de Product
+PromotionProduct.belongsTo(ProductVariant, { foreignKey: 'product_id' });
 
 // Relaciones de PromotionCategory
 Promotion.hasMany(PromotionCategory, { foreignKey: 'promotion_id' });
@@ -209,16 +204,12 @@ PromotionCategory.belongsTo(Promotion, { foreignKey: 'promotion_id' });
 Category.hasMany(PromotionCategory, { foreignKey: 'category_id' });
 PromotionCategory.belongsTo(Category, { foreignKey: 'category_id' });
 
-// Relaciones entre Product y Collaborator
-Product.belongsTo(Collaborator, { foreignKey: 'collaborator_id', as: 'collaborator' });
-Collaborator.hasMany(Product, { foreignKey: 'collaborator_id', as: 'products' });
-
 // Relaciones de Reseñas
 User.hasMany(Review, { foreignKey: 'user_id' });
 Review.belongsTo(User, { foreignKey: 'user_id' });
 
-Product.hasMany(Review, { foreignKey: 'product_id' });
-Review.belongsTo(Product, { foreignKey: 'product_id' });
+ProductVariant.hasMany(Review, { foreignKey: 'product_id' }); // Relacionado con ProductVariant en lugar de Product
+Review.belongsTo(ProductVariant, { foreignKey: 'product_id' });
 
 // Relaciones de Push Subscriptions
 User.hasMany(PushSubscription, { foreignKey: 'user_id' });
@@ -228,14 +219,12 @@ PushSubscription.belongsTo(User, { foreignKey: 'user_id' });
 User.hasMany(NotificationLog, { foreignKey: 'user_id' });
 NotificationLog.belongsTo(User, { foreignKey: 'user_id' });
 
-// Asociaciones directas para CategoryAttributes
-CategoryAttributes.belongsTo(Category, { foreignKey: 'category_id', as: 'category' });
-CategoryAttributes.belongsTo(ProductAttribute, { foreignKey: 'attribute_id', as: 'attribute' });
+// Asociaciones para CategoryAttributes (many-to-many entre Category y ProductAttribute)
+CategoryAttributes.belongsTo(Category, { foreignKey: 'category_id' });
+CategoryAttributes.belongsTo(ProductAttribute, { foreignKey: 'attribute_id' });
 
-// Many-to-many relationship between Category and ProductAttribute
-Category.belongsToMany(ProductAttribute, { through: CategoryAttributes, foreignKey: 'category_id', otherKey: 'attribute_id', as: 'categoryAttributes' });
-
-ProductAttribute.belongsToMany(Category, { through: CategoryAttributes, foreignKey: 'attribute_id', otherKey: 'category_id', as: 'categories'});
+Category.belongsToMany(ProductAttribute, { through: CategoryAttributes, foreignKey: 'category_id', otherKey: 'attribute_id' });
+ProductAttribute.belongsToMany(Category, { through: CategoryAttributes, foreignKey: 'attribute_id', otherKey: 'category_id' });
 
 // Exportación de Modelos
 module.exports = {
@@ -261,10 +250,10 @@ module.exports = {
   Banner,
   BackupLog,
   RestorationLog,
-  OrderDetail,
   Collaborator,
   Category,
   Product,
+  ProductVariant, // Añadido nuevo modelo
   ProductAttribute,
   ProductAttributeValue,
   ProductImage,
@@ -275,6 +264,7 @@ module.exports = {
   DeliveryPoint,
   Cart,
   CartDetail,
+  OrderDetail,
   Promotion,
   CouponUsage,
   PromotionProduct,
