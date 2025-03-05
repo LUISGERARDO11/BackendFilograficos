@@ -24,9 +24,9 @@ const validateProduct = [
 ];
 
 const validateGetProducts = [
-  query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser un número entero positivo'),
-  query('pageSize').optional().isInt({ min: 1 }).withMessage('El tamaño de página debe ser un número entero positivo'),
-  query('sort').optional().isString().withMessage('El parámetro de ordenamiento debe ser una cadena (e.g., "sku:ASC,name:DESC")')
+    query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser un número entero positivo'),
+    query('pageSize').optional().isInt({ min: 1 }).withMessage('El tamaño de página debe ser un número entero positivo'),
+    query('sort').optional().isString().withMessage('El parámetro de ordenamiento debe ser una cadena (e.g., "name:ASC,product_id:DESC")')
 ];
 
 const validateDeleteProduct = [

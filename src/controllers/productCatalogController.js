@@ -170,7 +170,7 @@ exports.getAllProducts = async (req, res) => {
     let order = [['product_id', 'ASC']];
     if (sort) {
       const sortParams = sort.split(',').map(param => param.trim().split(':'));
-      const validColumns = ['name', 'product_id', 'sku', 'price', 'stock']; // Columnas válidas para ordenar
+      const validColumns = ['name', 'product_id', 'variant_count', 'min_price', 'max_price', 'total_stock'];
       const validDirections = ['ASC', 'DESC'];
 
       order = sortParams.map(([column, direction]) => {
@@ -180,50 +180,83 @@ exports.getAllProducts = async (req, res) => {
         if (!direction || !validDirections.includes(direction.toUpperCase())) {
           throw new Error(`Dirección de ordenamiento inválida: ${direction}. Use: ASC o DESC`);
         }
-
-        // Mapear columnas a los modelos correspondientes
-        if (['sku', 'price', 'stock'].includes(column)) {
-          return [ProductVariant, column === 'price' ? 'calculated_price' : column, direction.toUpperCase()];
-        }
-        return [column, direction.toUpperCase()];
+        return [column === 'variant_count' || column === 'min_price' || column === 'max_price' || column === 'total_stock' ? ProductVariant : column, column, direction.toUpperCase()];
       });
     }
 
     const { count, rows: products } = await Product.findAndCountAll({
       where: { status: 'active' },
-      attributes: ['product_id', 'name', 'product_type'],
+      attributes: [
+        'product_id',
+        'name',
+        'product_type',
+        'created_at',
+        'updated_at',
+        [
+          Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')),
+          'variant_count'
+        ],
+        [
+          Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')),
+          'min_price'
+        ],
+        [
+          Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')),
+          'max_price'
+        ],
+        [
+          Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')),
+          'total_stock'
+        ]
+      ],
       include: [
         { model: Category, attributes: ['name'] },
         {
           model: ProductVariant,
+          attributes: [],
           include: [
-            { model: ProductImage, attributes: ['image_url'], where: { order: 1 }, required: false }
+            {
+              model: ProductImage,
+              attributes: ['image_url'],
+              where: { order: 1 },
+              required: false
+            }
           ]
         }
       ],
+      group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Product.created_at', 'Product.updated_at', 'Category.category_id', 'Category.name'],
       order,
       limit: pageSize,
-      offset: (page - 1) * pageSize
+      offset: (page - 1) * pageSize,
+      subQuery: false
     });
 
-    const formattedProducts = products.flatMap(product =>
-      product.ProductVariants.map(variant => ({
+    const formattedProducts = await Promise.all(products.map(async (product) => {
+      const firstVariant = await ProductVariant.findOne({
+        where: { product_id: product.product_id },
+        include: [{ model: ProductImage, attributes: ['image_url'], where: { order: 1 }, required: false }],
+        order: [['variant_id', 'ASC']]
+      });
+
+      return {
         product_id: product.product_id,
-        variant_id: variant.variant_id,
-        sku: variant.sku,
         name: product.name,
         category: product.Category ? product.Category.name : null,
         product_type: product.product_type,
-        price: variant.calculated_price,
-        stock: variant.stock,
-        image_url: variant.ProductImages.length > 0 ? variant.ProductImages[0].image_url : null
-      }))
-    );
+        variant_count: parseInt(product.get('variant_count')) || 0,
+        min_price: parseFloat(product.get('min_price')) || 0,
+        max_price: parseFloat(product.get('max_price')) || 0,
+        total_stock: parseInt(product.get('total_stock')) || 0,
+        created_at: product.created_at,
+        updated_at: product.updated_at,
+        image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null
+      };
+    }));
 
     res.status(200).json({
       message: 'Productos obtenidos exitosamente',
       products: formattedProducts,
-      total: count,
+      total: count.length,
       page,
       pageSize
     });
