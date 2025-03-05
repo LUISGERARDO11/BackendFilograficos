@@ -1,5 +1,5 @@
 const { body, param, validationResult } = require('express-validator');
-const { Category, ProductAttribute,ProductAttributeValue, CategoryAttributes } = require('../models/Associations');
+const { Category, ProductAttribute, ProductAttributeValue, CategoryAttributes } = require('../models/Associations');
 const { Op } = require('sequelize');
 const loggerUtils = require('../utils/loggerUtils');
 
@@ -9,21 +9,19 @@ exports.getAttributeCountByCategory = async (req, res) => {
     const counts = await CategoryAttributes.findAll({
       attributes: [
         'category_id',
-        [CategoryAttributes.sequelize.fn('COUNT', CategoryAttributes.sequelize.col('CategoryAttributes.attribute_id')), 'count'] // Especificar tabla
+        [CategoryAttributes.sequelize.fn('COUNT', CategoryAttributes.sequelize.col('CategoryAttributes.attribute_id')), 'count']
       ],
       group: ['category_id'],
       include: [
         {
           model: Category,
-          as: 'category',
           attributes: ['category_id', 'name'],
-          where: { active: true } // Filtrar solo categorías activas
+          where: { active: true }
         },
         {
           model: ProductAttribute,
-          as: 'attribute',
           attributes: [],
-          where: { is_deleted: false } // Filtrar solo atributos no eliminados
+          where: { is_deleted: false }
         }
       ],
       where: {
@@ -35,7 +33,7 @@ exports.getAttributeCountByCategory = async (req, res) => {
 
     const result = counts.map(count => ({
       category_id: count.category_id,
-      category_name: count.category.name,
+      category_name: count.Category.name,
       attribute_count: count.get('count')
     }));
 
@@ -48,76 +46,67 @@ exports.getAttributeCountByCategory = async (req, res) => {
 
 // Obtener todos los atributos de acuerdo a una categoría (con paginación)
 exports.getAttributesByCategory = async (req, res) => {
-    const { category_id } = req.params;
-    const { page: pageParam, pageSize: pageSizeParam } = req.query;
-    
-    // Configuración de paginación
-    const page = parseInt(pageParam) || 1;
-    const pageSize = parseInt(pageSizeParam) || 10;
+  const { category_id } = req.params;
+  const { page: pageParam, pageSize: pageSizeParam } = req.query;
   
-    try {
-      // Validación de parámetros de paginación
-      if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
-        return res.status(400).json({ 
-          message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' 
-        });
-      }
-  
-      // Consulta con paginación usando findAndCountAll
-      const { count, rows: attributes } = await CategoryAttributes.findAndCountAll({
-        where: { category_id },
-        include: [{
-          model: ProductAttribute,
-          as: 'attribute',
-          where: { is_deleted: false },
-          attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values']
-        }],
-        limit: pageSize,
-        offset: (page - 1) * pageSize
+  const page = parseInt(pageParam) || 1;
+  const pageSize = parseInt(pageSizeParam) || 10;
+
+  try {
+    if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
+      return res.status(400).json({ 
+        message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' 
       });
-  
-      // Mapear los resultados para el formato deseado
-      const result = attributes.map(attr => ({
-        attribute_id: attr.attribute.attribute_id,
-        attribute_name: attr.attribute.attribute_name,
-        data_type: attr.attribute.data_type,
-        allowed_values: attr.attribute.allowed_values
-      }));
-  
-      // Respuesta con datos paginados
-      res.status(200).json({
-        data: result, // Lista de atributos
-        total: count, // Total de atributos encontrados
-        page,         // Página actual
-        pageSize      // Tamaño de la página
-      });
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error al obtener los atributos por categoría', error: error.message });
     }
+
+    const { count, rows: attributes } = await CategoryAttributes.findAndCountAll({
+      where: { category_id },
+      include: [{
+        model: ProductAttribute,
+        where: { is_deleted: false },
+        attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values']
+      }],
+      limit: pageSize,
+      offset: (page - 1) * pageSize
+    });
+
+    const result = attributes.map(attr => ({
+      attribute_id: attr.ProductAttribute.attribute_id,
+      attribute_name: attr.ProductAttribute.attribute_name,
+      data_type: attr.ProductAttribute.data_type,
+      allowed_values: attr.ProductAttribute.allowed_values
+    }));
+
+    res.status(200).json({
+      data: result,
+      total: count,
+      page,
+      pageSize
+    });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener los atributos por categoría', error: error.message });
+  }
 };
 
 // Obtener todos los atributos de todas las categorias activas (Sin paginacion)
 exports.getAttributesByActiveCategories = async (req, res) => {
   try {
-    // Obtener todas las categorías activas con sus atributos no eliminados
     const categoriesWithAttributes = await Category.findAll({
       attributes: ['category_id', 'name'],
       where: { active: true },
       include: [{
         model: ProductAttribute,
-        as: 'categoryAttributes', // Usamos el alias definido en Associations.js
-        through: { attributes: [] }, // Excluir campos de la tabla intermedia CategoryAttributes
-        where: { is_deleted: false }, // Solo atributos no eliminados
+        through: { attributes: [] },
+        where: { is_deleted: false },
         attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values']
       }]
     });
 
-    // Formatear la respuesta agrupando los atributos por categoría
     const result = categoriesWithAttributes.map(category => ({
       category_id: category.category_id,
       category_name: category.name,
-      attributes: category.categoryAttributes.map(attr => ({
+      attributes: category.ProductAttributes.map(attr => ({
         attribute_id: attr.attribute_id,
         attribute_name: attr.attribute_name,
         data_type: attr.data_type,
@@ -148,14 +137,12 @@ exports.createAttribute = [
     const { attribute_name, data_type, allowed_values, category_id } = req.body;
 
     try {
-      // Crear el atributo
       const newAttribute = await ProductAttribute.create({
         attribute_name,
         data_type,
-        allowed_values: allowed_values || null // Si es vacío o null, se guarda como null
+        allowed_values: allowed_values || null
       });
 
-      // Asociar el atributo a la categoría
       await CategoryAttributes.create({
         category_id,
         attribute_id: newAttribute.attribute_id
@@ -164,9 +151,8 @@ exports.createAttribute = [
       loggerUtils.logUserActivity(req.user?.user_id || 'system', 'create', `Atributo creado: ${newAttribute.attribute_id}`);
       res.status(201).json({ message: 'Atributo creado exitosamente.', attribute: newAttribute });
     } catch (error) {
-      // Registrar el error de validación de Sequelize
       if (error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError') {
-        loggerUtils.logCriticalError(error.errors); // Registrar los errores de validación
+        loggerUtils.logCriticalError(error.errors);
         return res.status(400).json({
           message: 'Error de validación al crear el atributo',
           errors: error.errors.map(err => ({
@@ -204,17 +190,15 @@ exports.updateAttribute = [
         return res.status(404).json({ message: 'Atributo no encontrado o ya está eliminado' });
       }
 
-      // Validar cambios en allowed_values si es tipo "lista"
       if (allowed_values !== undefined && attribute.data_type === 'lista') {
         const currentValues = await ProductAttributeValue.findAll({
           where: { attribute_id: id },
           attributes: ['value'],
           raw: true
         });
-        const usedValues = [...new Set(currentValues.map(v => v.value))]; // Valores únicos usados por productos
+        const usedValues = [...new Set(currentValues.map(v => v.value))];
         const newAllowedValues = allowed_values ? allowed_values.split(',') : [];
 
-        // Verificar si algún valor usado ya no está en la nueva lista
         const invalidValues = usedValues.filter(val => !newAllowedValues.includes(val));
         if (invalidValues.length > 0) {
           return res.status(400).json({
@@ -224,20 +208,17 @@ exports.updateAttribute = [
         }
       }
 
-      // Actualizar los campos proporcionados
       if (attribute_name !== undefined) attribute.attribute_name = attribute_name;
       if (data_type !== undefined) attribute.data_type = data_type;
       if (allowed_values !== undefined) attribute.allowed_values = allowed_values || null;
 
       await attribute.save();
 
-      // Manejar la relación con category_id si se proporciona
       if (category_id !== undefined) {
         const categoryExists = await Category.findByPk(category_id);
         if (!categoryExists) {
           return res.status(400).json({ message: 'La categoría especificada no existe' });
         }
-        // Actualizar la relación en CategoryAttributes (eliminar y recrear)
         await CategoryAttributes.destroy({ where: { attribute_id: id } });
         await CategoryAttributes.create({ category_id, attribute_id: id });
       }
@@ -268,7 +249,6 @@ exports.deleteAttribute = [
         return res.status(404).json({ message: 'Atributo no encontrado o ya está eliminado' });
       }
 
-      // Actualizar a is_deleted: true para eliminación lógica
       const [affectedRows] = await ProductAttribute.update(
         { is_deleted: true },
         { where: { attribute_id: id, is_deleted: false } }
@@ -278,10 +258,8 @@ exports.deleteAttribute = [
         return res.status(404).json({ message: 'Atributo no encontrado o ya está eliminado' });
       }
 
-      // Contar productos afectados para notificación
       const affectedProducts = await ProductAttributeValue.count({ where: { attribute_id: id } });
 
-      // Eliminar relación en CategoryAttributes (no afecta ProductAttributeValue)
       await CategoryAttributes.destroy({ where: { attribute_id: id } });
 
       loggerUtils.logUserActivity(
