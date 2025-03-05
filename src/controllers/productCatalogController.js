@@ -180,11 +180,11 @@ exports.getAllProducts = async (req, res) => {
         if (!direction || !validDirections.includes(direction.toUpperCase())) {
           throw new Error(`Dirección de ordenamiento inválida: ${direction}. Use: ASC o DESC`);
         }
-        // Si es una columna agregada, usar raw SQL en el ordenamiento
+        // Usar sequelize.literal para columnas agregadas, y array simple para columnas base
         if (['variant_count', 'min_price', 'max_price', 'total_stock'].includes(column)) {
           return [Product.sequelize.literal(column), direction.toUpperCase()];
         }
-        return ['product_id' === column ? Product : column, column, direction.toUpperCase()];
+        return [column, direction.toUpperCase()];
       });
     }
 
@@ -218,7 +218,7 @@ exports.getAllProducts = async (req, res) => {
         {
           model: ProductVariant,
           attributes: [],
-          required: false // LEFT JOIN para incluir productos sin variantes
+          required: false
         }
       ],
       group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Product.created_at', 'Product.updated_at', 'Category.category_id', 'Category.name'],
