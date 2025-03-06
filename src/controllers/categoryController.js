@@ -1,3 +1,4 @@
+const { Op } = require('sequelize'); // Necesitamos Op para el filtro por nombre
 const { body, validationResult } = require('express-validator');
 const Category = require('../models/Category');
 const loggerUtils = require('../utils/loggerUtils');
@@ -53,22 +54,43 @@ exports.getCategories = async (req, res) => {
 // Obtener todas las categorías
 exports.getAllCategories = async (req, res) => {
   try {
-    const { page: pageParam, pageSize: pageSizeParam } = req.query;
+    const { page: pageParam, pageSize: pageSizeParam, active, name, sortBy, sortOrder } = req.query;
     const page = parseInt(pageParam) || 1;
     const pageSize = parseInt(pageSizeParam) || 10;
 
-    // Validación de parámetros
+    // Validación de parámetros de paginación
     if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
       return res.status(400).json({
         message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos'
       });
     }
 
-const { count, rows: categories } = await Category.findAndCountAll({
-  order: [['created_at', 'DESC']],
-  limit: pageSize,
-  offset: (page - 1) * pageSize
-});
+    // Construir el objeto where dinámicamente
+    const whereClause = {};
+
+    // Filtro por estado (active): true, false o undefined (todas)
+    if (active !== undefined) {
+      whereClause.active = active === 'true' ? true : active === 'false' ? false : undefined;
+    }
+
+    // Filtro por nombre (búsqueda parcial con LIKE)
+    if (name) {
+      whereClause.name = { [Op.like]: `%${name}%` };
+    }
+
+    // Ordenamiento dinámico (solo por 'name' en este caso)
+    const validSortFields = ['name']; // Limitamos a 'name' como campo válido
+    const order = sortBy && validSortFields.includes(sortBy)
+      ? [[sortBy, sortOrder === 'ASC' ? 'ASC' : 'DESC']]
+      : [['created_at', 'DESC']]; // Por defecto, orden por created_at DESC
+
+    // Consulta a la base de datos
+    const { count, rows: categories } = await Category.findAndCountAll({
+      where: whereClause,
+      order,
+      limit: pageSize,
+      offset: (page - 1) * pageSize
+    });
 
     res.status(200).json({
       categories,
