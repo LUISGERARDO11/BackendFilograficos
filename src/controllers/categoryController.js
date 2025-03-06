@@ -64,12 +64,11 @@ exports.getAllCategories = async (req, res) => {
       });
     }
 
-    const { count, rows: categories } = await Category.findAndCountAll({
-      where: { active: true },
-      order: [['created_at', 'DESC']], // Opcional: ordenar por fecha
-      limit: pageSize,
-      offset: (page - 1) * pageSize
-    });
+const { count, rows: categories } = await Category.findAndCountAll({
+  order: [['created_at', 'DESC']],
+  limit: pageSize,
+  offset: (page - 1) * pageSize
+});
 
     res.status(200).json({
       categories,
