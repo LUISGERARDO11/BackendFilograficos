@@ -5,10 +5,20 @@ const { uploadProductImagesToCloudinary } = require('../services/cloudinaryServi
 
 // Crear un producto con variantes
 exports.createProduct = async (req, res) => {
-  const { name, description, product_type, category_id, collaborator_id, variants } = req.body;
+  let { name, description, product_type, category_id, collaborator_id, variants } = req.body;
   const files = req.files;
 
   try {
+    // Parsear variants si es una cadena JSON
+    if (typeof variants === 'string') {
+      variants = JSON.parse(variants);
+    }
+
+    // Validar que variants sea un array
+    if (!Array.isArray(variants)) {
+      return res.status(400).json({ message: 'Las variantes deben ser un arreglo' });
+    }
+
     // Validar categoría
     const categoryIdNum = parseInt(category_id, 10);
     const category = await Category.findByPk(categoryIdNum);
@@ -124,7 +134,7 @@ exports.createProduct = async (req, res) => {
           const imageUrl = await uploadProductImagesToCloudinary(image.buffer, `${variant.sku}-${idx + 1}-${image.originalname}`);
           return {
             variant_id: newVariant.variant_id,
-            image_url: imageUrl, // Usamos image_url como está en el modelo
+            image_url: imageUrl,
             order: idx + 1
           };
         })
