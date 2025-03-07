@@ -17,7 +17,7 @@ exports.createCollaborator = [
     }
 
     try {
-      const { name, collaborator_type,contact, email, phone, logo } = req.body;
+      const { name, collaborator_type, contact, email, phone, logo } = req.body;
 
       // Verificar si el correo ya existe
       const existingCollaborator = await Collaborator.findOne({ where: { email } });
@@ -26,7 +26,7 @@ exports.createCollaborator = [
       }
 
       const newCollaborator = await Collaborator.create({
-        name, collaborator_type, contact,email, phone, logo, active: true
+        name, collaborator_type, contact, email, phone, logo, active: true
       });
 
       loggerUtils.logUserActivity(req.user.user_id, 'create', `Colaborador creado: ${name}`);
@@ -44,6 +44,39 @@ exports.getAllCollaborators = async (req, res) => {
   try {
     const collaborators = await Collaborator.findAll({ where: { active: true } });
     res.status(200).json(collaborators);
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener colaboradores', error: error.message });
+  }
+};
+// Obtener todos los colaboradores con paginación
+exports.getCollaborators = async (req, res) => {
+  try {
+    const { page: pageParam, pageSize: pageSizeParam } = req.query;
+    const page = parseInt(pageParam) || 1;
+    const pageSize = parseInt(pageSizeParam) || 10;
+
+    // Validación de parámetros de paginación
+    if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
+      return res.status(400).json({
+        message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos'
+      });
+    }
+
+    // Consulta a la base de datos
+    const { count, rows: collaborators } = await Collaborator.findAndCountAll({
+      where: { active: true },
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.status(200).json({
+      collaborators,
+      total: count,
+      page,
+      pageSize
+    });
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener colaboradores', error: error.message });
