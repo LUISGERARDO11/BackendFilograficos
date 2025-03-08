@@ -63,9 +63,8 @@ exports.getCollaborators = async (req, res) => {
       });
     }
 
-    // Consulta a la base de datos
+    // Consulta a la base de datos SIN filtrar por "active"
     const { count, rows: collaborators } = await Collaborator.findAndCountAll({
-      where: { active: true },
       limit: pageSize,
       offset: (page - 1) * pageSize,
       order: [['createdAt', 'DESC']]
