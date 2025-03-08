@@ -3,6 +3,7 @@ const router = express.Router();
 
 // Importar controladores
 const productCatalogController = require('../controllers/productCatalogController');
+const productStockController = require('../controllers/productStockController'); // Nuevo controlador
 
 // Importar middlewares
 const authMiddleware = require('../middlewares/authMiddleware');
@@ -64,6 +65,24 @@ router.put(
   validateProductImages, // Validación de imágenes (1-10 por variante)
   validateUpdateProduct, // Validación de datos del producto y variantes
   productCatalogController.updateProduct
+);
+
+// Ruta para obtener variantes con información de stock (requiere autenticación y rol de administrador)
+router.get(
+  '/stock/variants',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productStockController.getStockVariants // Validaciones ya están en el controlador
+);
+
+// Ruta para actualizar el stock de una variante (requiere autenticación y rol de administrador)
+router.put(
+  '/stock/update',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productStockController.updateStock // Validaciones ya están en el controlador
 );
 
 module.exports = router;
