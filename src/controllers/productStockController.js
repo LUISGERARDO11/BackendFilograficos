@@ -45,13 +45,17 @@ exports.getStockVariants = [
             whereVariant.stock = 0;
             break;
           case 'low_stock':
-            whereVariant.stock = { [Op.gt]: 0, [Op.lte]: ProductVariant.sequelize.col('stock_threshold') };
+            whereVariant.stock = {
+              [Op.gt]: 0,
+              [Op.lte]: ProductVariant.sequelize.col('stock_threshold')
+            };
             break;
           case 'in_stock':
-            whereVariant.stock = { [Op.gt]: ProductVariant.sequelize.col('stock_threshold') };
+            whereVariant.stock = {
+              [Op.gt]: ProductVariant.sequelize.col('stock_threshold')
+            };
             break;
           default:
-            // No debería llegar aquí debido a la validación, pero por seguridad
             break;
         }
       }
@@ -63,20 +67,27 @@ exports.getStockVariants = [
           {
             model: Product,
             where: whereProduct,
-            attributes: ['name', 'product_type'],
-            include: [{ model: Category, attributes: ['name'] }]
+            attributes: ['product_id', 'name', 'product_type', 'category_id'],
+            include: [
+              {
+                model: Category,
+                attributes: ['category_id', 'name'],
+                required: false // LEFT JOIN para Category
+              }
+            ]
           },
           {
             model: ProductImage,
             attributes: ['image_url'],
-            where: { order: 1 }, // Solo la primera imagen
+            where: { order: 1 },
             required: false
           }
         ],
         attributes: ['variant_id', 'sku', 'stock', 'stock_threshold', 'updated_at'],
         limit: parseInt(pageSize),
         offset: (parseInt(page) - 1) * parseInt(pageSize),
-        order: [['variant_id', 'ASC']]
+        order: [['variant_id', 'ASC']],
+        subQuery: false // Evitar subconsulta innecesaria
       });
 
       // Validar existencia de categoría si se proporcionó
