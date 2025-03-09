@@ -1,6 +1,8 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
-const notificationManager = require('../services/notificationManager');
+const NotificationManager = require('../services/notificationManager');
+
+const notificationManager = new NotificationManager(); // Instanciar aquí
 
 const ProductVariant = sequelize.define('ProductVariant', {
   variant_id: {
@@ -60,10 +62,8 @@ const ProductVariant = sequelize.define('ProductVariant', {
       const currentStock = variant.dataValues.stock;
       const stockThreshold = variant.dataValues.stock_threshold;
 
-      // Solo actuar si el stock cambió y disminuyó
       if (currentStock !== previousStock && currentStock < previousStock) {
         try {
-          // Cargar el nombre del producto relacionado
           const product = await variant.getProduct({ attributes: ['name'] });
           const productName = product ? `${product.name} (SKU: ${variant.sku})` : `SKU: ${variant.sku}`;
 
