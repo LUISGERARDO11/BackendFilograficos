@@ -17,7 +17,7 @@ const NotificationLog = sequelize.define('NotificationLog', {
     }
   },
   type: {
-    type: DataTypes.ENUM('push', 'email'),
+    type: DataTypes.ENUM('push', 'email', 'system'),
     allowNull: false
   },
   title: {
