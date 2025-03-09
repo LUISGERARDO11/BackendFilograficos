@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
+const notificationManager = require('../services/notificationManager');
 
 const ProductVariant = sequelize.define('ProductVariant', {
   variant_id: {
@@ -45,14 +46,48 @@ const ProductVariant = sequelize.define('ProductVariant', {
   },
   last_stock_added_at: {
     type: DataTypes.DATE,
-    allowNull: true, // Puede ser NULL si nunca se ha agregado stock
-    defaultValue: null // NULL por defecto al crear la variante
+    allowNull: true,
+    defaultValue: null
   }
 }, {
   tableName: 'product_variants',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  hooks: {
+    afterUpdate: async (variant, options) => {
+      const previousStock = variant._previousDataValues.stock;
+      const currentStock = variant.dataValues.stock;
+      const stockThreshold = variant.dataValues.stock_threshold;
+
+      // Solo actuar si el stock cambió y disminuyó
+      if (currentStock !== previousStock && currentStock < previousStock) {
+        try {
+          // Cargar el nombre del producto relacionado
+          const product = await variant.getProduct({ attributes: ['name'] });
+          const productName = product ? `${product.name} (SKU: ${variant.sku})` : `SKU: ${variant.sku}`;
+
+          if (currentStock === 0) {
+            await notificationManager.notifyOutOfStock(variant.variant_id, productName);
+          } else if (currentStock <= stockThreshold) {
+            await notificationManager.notifyLowStock(variant.variant_id, productName, currentStock);
+          }
+        } catch (error) {
+          console.error('Error al enviar notificación de stock:', error.message);
+          const { NotificationLog } = require('../models/Associations');
+          await NotificationLog.create({
+            user_id: null,
+            type: 'system',
+            title: 'Error en notificación de stock',
+            message: `Fallo al notificar para variant_id: ${variant.variant_id}`,
+            status: 'failed',
+            error_message: error.message,
+            created_at: new Date(),
+          });
+        }
+      }
+    }
+  }
 });
 
 module.exports = ProductVariant;
