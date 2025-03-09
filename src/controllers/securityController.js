@@ -7,26 +7,6 @@ const { sequelize } = require('../config/dataBase');
 const { User,FailedAttempt } = require('../models/Associations');
 const Config = require('../models/Systemconfig');
 
-// Obtener usuarios bloqueados permanentemente
-exports.getBlockedUsers = async (req, res) => {
-  try {
-    const blockedUsers = await User.findAll({
-      where: { status: 'bloqueado_permanente' }, // Filtra solo los bloqueados
-      attributes: ['user_id', 'nombre', 'email', 'tipo_usuario', 'createdAt'], // Selecciona solo los campos necesarios
-      order: [['createdAt', 'DESC']] // Ordena por fecha de bloqueo
-    });
-
-    if (!blockedUsers.length) {
-      return res.status(404).json({ message: 'No hay usuarios bloqueados permanentemente.' });
-    }
-
-    res.status(200).json({ blockedUsers });
-  } catch (error) {
-    loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al obtener usuarios bloqueados', error: error.message });
-  }
-};
-
 // Obtener historial de intentos fallidos
 exports.getFailedLoginAttempts = async (req, res) => {
   const { periodo } = req.query;
