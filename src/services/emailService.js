@@ -71,112 +71,60 @@ class EmailService {
    * Envía un correo de verificación
    * @param {string} destinatario - Correo del destinatario
    * @param {string} token - Token de verificación
-   * @returns {Promise<void>}
+   * @returns {Promise<Object>} Resultado del envío
    */
   async sendVerificationEmail(destinatario, token) {
-    try {
-      const template = await getEmailTemplate('email_verificacion');
-      const verificationLink = `${process.env.BASE_URL}/auth/verify-email?token=${token}`;
-      const data = { destinatario, token, verificationLink };
+    const template = await getEmailTemplate('email_verificacion');
+    const verificationLink = `${process.env.BASE_URL}/auth/verify-email?token=${token}`;
+    const data = { destinatario, token, verificationLink };
+    const htmlContent = ejs.render(template.html_content, data);
+    const textContent = ejs.render(template.text_content, data);
 
-      const mailOptions = {
-        from: process.env.EMAIL_FROM,
-        to: destinatario,
-        subject: template.subject,
-        html: ejs.render(template.html_content, data),
-        text: ejs.render(template.text_content, data),
-      };
-
-      await transporter.sendMail(mailOptions);
-      loggerUtils.logUserActivity(null, 'send_verification_email', `Correo enviado a ${destinatario}`);
-      console.log('Correo de verificación enviado');
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      throw new Error(`Error enviando correo: ${error.message}`);
-    }
+    return this.sendGenericEmail(destinatario, template.subject, htmlContent, textContent);
   }
 
   /**
    * Envía un OTP para MFA
    * @param {string} destinatario - Correo del destinatario
    * @param {string} otp - Código OTP
-   * @returns {Promise<void>}
+   * @returns {Promise<Object>} Resultado del envío
    */
   async sendMFAOTPEmail(destinatario, otp) {
-    try {
-      const template = await getEmailTemplate('mfa_autenticacion');
-      const data = { destinatario, otp: otp.split('').join(' ') };
+    const template = await getEmailTemplate('mfa_autenticacion');
+    const data = { destinatario, otp: otp.split('').join(' ') };
+    const htmlContent = ejs.render(template.html_content, data);
+    const textContent = ejs.render(template.text_content, data);
 
-      const mailOptions = {
-        from: process.env.EMAIL_FROM,
-        to: destinatario,
-        subject: template.subject,
-        html: ejs.render(template.html_content, data),
-        text: ejs.render(template.text_content, data),
-      };
-
-      await transporter.sendMail(mailOptions);
-      loggerUtils.logUserActivity(null, 'send_mfa_otp', `OTP MFA enviado a ${destinatario}`);
-      console.log('Correo MFA enviado');
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      throw new Error(`Error enviando OTP MFA: ${error.message}`);
-    }
+    return this.sendGenericEmail(destinatario, template.subject, htmlContent, textContent);
   }
 
   /**
    * Envía un OTP para recuperación de contraseña
    * @param {string} destinatario - Correo del destinatario
    * @param {string} otp - Código OTP
-   * @returns {Promise<void>}
+   * @returns {Promise<Object>} Resultado del envío
    */
   async sendOTPEmail(destinatario, otp) {
-    try {
-      const template = await getEmailTemplate('recuperacion_contrasena');
-      const data = { destinatario, otp: otp.split('').join(' ') };
+    const template = await getEmailTemplate('recuperacion_contrasena');
+    const data = { destinatario, otp: otp.split('').join(' ') };
+    const htmlContent = ejs.render(template.html_content, data);
+    const textContent = ejs.render(template.text_content, data);
 
-      const mailOptions = {
-        from: process.env.EMAIL_FROM,
-        to: destinatario,
-        subject: template.subject,
-        html: ejs.render(template.html_content, data),
-        text: ejs.render(template.text_content, data),
-      };
-
-      await transporter.sendMail(mailOptions);
-      loggerUtils.logUserActivity(null, 'send_otp_recovery', `OTP recuperación enviado a ${destinatario}`);
-      console.log('Correo recuperación enviado');
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      throw new Error(`Error enviando OTP recuperación: ${error.message}`);
-    }
+    return this.sendGenericEmail(destinatario, template.subject, htmlContent, textContent);
   }
 
   /**
    * Envía notificación de cambio de contraseña
    * @param {string} destinatario - Correo del destinatario
-   * @returns {Promise<void>}
+   * @returns {Promise<Object>} Resultado del envío
    */
   async sendPasswordChangeNotification(destinatario) {
-    try {
-      const template = await getEmailTemplate('notificacion_cambio_contrasena');
-      const data = { destinatario };
+    const template = await getEmailTemplate('notificacion_cambio_contrasena');
+    const data = { destinatario };
+    const htmlContent = ejs.render(template.html_content, data);
+    const textContent = ejs.render(template.text_content, data);
 
-      const mailOptions = {
-        from: process.env.EMAIL_FROM,
-        to: destinatario,
-        subject: template.subject,
-        html: ejs.render(template.html_content, data),
-        text: ejs.render(template.text_content, data),
-      };
-
-      await transporter.sendMail(mailOptions);
-      loggerUtils.logUserActivity(null, 'password_change_notification', `Notificación enviada a ${destinatario}`);
-      console.log('Notificación de cambio enviada');
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      throw new Error(`Error enviando notificación: ${error.message}`);
-    }
+    return this.sendGenericEmail(destinatario, template.subject, htmlContent, textContent);
   }
 
   /**
@@ -185,29 +133,16 @@ class EmailService {
    * @param {string} userName - Nombre del usuario
    * @param {string} subject - Asunto del mensaje
    * @param {string} message - Mensaje del usuario
-   * @returns {Promise<void>}
+   * @returns {Promise<Object>} Resultado del envío
    */
   async sendUserSupportEmail(userEmail, userName, subject, message) {
-    try {
-      const template = await getEmailTemplate('support_inquiry_notification');
-      const companyEmail = process.env.COMPANY_EMAIL || 'soporte@empresa.com';
-      const data = { user_email: userEmail, user_name: userName, subject, message };
+    const template = await getEmailTemplate('support_inquiry_notification');
+    const companyEmail = process.env.COMPANY_EMAIL || 'soporte@empresa.com';
+    const data = { user_email: userEmail, user_name: userName, subject, message };
+    const htmlContent = ejs.render(template.html_content, data);
+    const textContent = ejs.render(template.text_content, data);
 
-      const mailOptions = {
-        from: process.env.EMAIL_FROM,
-        to: companyEmail,
-        subject: `${template.subject} ${subject}`,
-        html: ejs.render(template.html_content, data),
-        text: ejs.render(template.text_content, data),
-      };
-
-      await transporter.sendMail(mailOptions);
-      loggerUtils.logUserActivity(null, 'send_user_support_email', `Correo enviado desde ${userEmail} a ${companyEmail}`);
-      console.log('Correo de soporte enviado');
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      throw new Error(`Error enviando correo de soporte: ${error.message}`);
-    }
+    return this.sendGenericEmail(companyEmail, `${template.subject} ${subject}`, htmlContent, textContent);
   }
 
   /**

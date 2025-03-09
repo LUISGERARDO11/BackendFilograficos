@@ -44,7 +44,11 @@ exports.createConsultation = [
       // 2. Enviar el correo antes de guardar en la BD
       const emailResult = await emailService.sendUserSupportEmail(user_email, user_name, subject, message);
       if (!emailResult.success) {
-        throw new Error('Fallo al enviar el correo de soporte');
+        loggerUtils.logUserActivity(req.user?.user_id || 'system', 'support_email_failed', `Fallo al enviar correo de soporte desde ${user_email}`);
+        return res.status(500).json({
+          message: 'Error al enviar el correo de soporte.',
+          error: emailResult.messageId || 'No se recibió información del error',
+        });
       }
 
       // 3. Buscar el usuario en la base de datos por su email

@@ -73,12 +73,12 @@ exports.changePassword = [
       );
 
       // Enviar notificación de cambio de contraseña
+      let emailResult = null;
       const user = await User.findByPk(userId);
       if (user) {
-        const emailResult = await emailService.sendPasswordChangeNotification(user.email);
+        emailResult = await emailService.sendPasswordChangeNotification(user.email);
         if (!emailResult.success) {
           loggerUtils.logUserActivity(userId, 'password_change_notification_failed', 'Fallo al enviar notificación de cambio de contraseña');
-          // No detenemos el flujo, solo registramos el error
           console.error('Error al enviar notificación de cambio de contraseña:', emailResult.messageId);
         }
       }
@@ -88,7 +88,7 @@ exports.changePassword = [
 
       res.status(200).json({
         message: 'Contraseña actualizada exitosamente.',
-        ...(user && emailResult?.success ? { emailInfo: { messageId: emailResult.messageId } } : {}),
+        ...(emailResult?.success ? { emailInfo: { messageId: emailResult.messageId } } : {}),
       });
     } catch (error) {
       loggerUtils.logCriticalError(error);
@@ -306,7 +306,6 @@ exports.resetPassword = [
       const emailResult = await emailService.sendPasswordChangeNotification(user.email);
       if (!emailResult.success) {
         loggerUtils.logUserActivity(user.user_id, 'password_reset_notification_failed', 'Fallo al enviar notificación de cambio de contraseña');
-        // No detenemos el flujo, solo registramos el error
         console.error('Error al enviar notificación de cambio de contraseña:', emailResult.messageId);
       }
 
