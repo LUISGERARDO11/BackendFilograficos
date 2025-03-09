@@ -1,5 +1,5 @@
 const { body, param, validationResult } = require('express-validator');
-const { SupportInquiry, User  } = require('../models/Associations');
+const { SupportInquiry, User } = require('../models/Associations');
 const emailService = require('../services/emailService');
 const supportService = require('../services/supportInquiryService');
 const loggerUtils = require('../utils/loggerUtils');
@@ -12,7 +12,7 @@ const validateConsultation = [
   body('user_email').isEmail().withMessage('Debe ser un correo válido').normalizeEmail(),
   body('subject').trim().notEmpty().withMessage('El asunto es obligatorio').escape(),
   body('message').trim().notEmpty().withMessage('El mensaje es obligatorio').escape(),
-  body('recaptchaToken').not().isEmpty().withMessage('Se requiere el token de reCAPTCHA'), // Validación del token de reCAPTCHA
+  body('recaptchaToken').not().isEmpty().withMessage('Se requiere el token de reCAPTCHA'),
 ];
 
 // Crear una nueva consulta
@@ -42,7 +42,10 @@ exports.createConsultation = [
       }
 
       // 2. Enviar el correo antes de guardar en la BD
-      await emailService.sendUserSupportEmail(user_email, user_name, subject, message);
+      const emailResult = await emailService.sendUserSupportEmail(user_email, user_name, subject, message);
+      if (!emailResult.success) {
+        throw new Error('Fallo al enviar el correo de soporte');
+      }
 
       // 3. Buscar el usuario en la base de datos por su email
       const existingUser = await User.findOne({ where: { email: user_email } });
@@ -61,8 +64,12 @@ exports.createConsultation = [
       // 5. Registrar la actividad
       loggerUtils.logUserActivity(req.user?.user_id || 'system', 'create', `Nueva consulta creada: ${newConsultation.inquiry_id}`);
 
-      // 6. Respuesta exitosa
-      res.status(201).json({ message: 'Consulta creada exitosamente.', consultation: newConsultation });
+      // 6. Respuesta exitosa con información del correo
+      res.status(201).json({
+        message: 'Consulta creada exitosamente.',
+        consultation: newConsultation,
+        emailInfo: { messageId: emailResult.messageId },
+      });
     } catch (error) {
       // 7. Manejo de errores
       loggerUtils.logCriticalError(error);
