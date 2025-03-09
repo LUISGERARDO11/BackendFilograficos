@@ -27,4 +27,6 @@ router.put('/update-token-lifetime', authMiddleware, tokenExpirationMiddleware.v
 // Ruta para obtener la configuración del sistema relacionada con la seguridad
 router.get('/token-lifetime', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), securityController.getConfig);
 
+router.get('/blocked-users', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), securityController.getBlockedUsers);
+
 module.exports = router;
