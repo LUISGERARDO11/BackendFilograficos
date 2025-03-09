@@ -66,7 +66,7 @@ class NotificationService {
         loggerUtils.logUserActivity(
           userId,
           'push_debug',
-          `Enviando push - p256dh: ${subscription.p256dh}, longitud: ${p256dhBuffer.length} bytes, auth: ${subscription.auth}`
+          `Enviando push - endpoint: ${subscription.endpoint}, p256dh: ${subscription.p256dh}, longitud: ${p256dhBuffer.length} bytes, auth: ${subscription.auth}`
         );
 
         if (p256dhBuffer.length !== 65) {
@@ -81,8 +81,13 @@ class NotificationService {
           },
         };
 
-        // Intentar enviar la notificación
-        await webPush.sendNotification(pushSubscription, payload);
+        // Intentar enviar la notificación con más depuración
+        try {
+          await webPush.sendNotification(pushSubscription, payload);
+        } catch (sendError) {
+          loggerUtils.logCriticalError(sendError, `Fallo al enviar push al endpoint: ${subscription.endpoint}`);
+          throw sendError;
+        }
       }
 
       await NotificationLog.create({
