@@ -16,98 +16,97 @@ require('dotenv').config();
 
 // Registro de usuarios
 exports.register = [
-  // Validar y sanitizar entradas
-  body('name').isString().trim().escape(),
-  body('email').isEmail().normalizeEmail(),
-  body('phone').isString().trim().escape(),
-  body('password').isLength({ min: 8 }).withMessage('La contraseña debe tener al menos 8 caracteres').trim().escape(),
-  body('user_type').isIn(['cliente', 'administrador']).withMessage('Tipo de usuario no válido'),
-
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { name, email, phone, password, user_type } = req.body;
-
-    try {
-      // Validar si el usuario ya existe
-      let existingUser = await User.findOne({ where: { email } });
-      if (existingUser) {
-        return res.status(400).json({ message: 'El correo ya está en uso.' });
+    // Validar y sanitizar entradas
+    body('name').isString().trim().escape(),
+    body('email').isEmail().normalizeEmail(),
+    body('phone').isString().trim().escape(),
+    body('password').isLength({ min: 8 }).withMessage('La contraseña debe tener al menos 8 caracteres').trim().escape(),
+    body('user_type').isIn(['cliente', 'administrador']).withMessage('Tipo de usuario no válido'),
+  
+    async (req, res) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
       }
-
-      // Crear el nuevo usuario
-      const newUser = await User.create({
-        name,
-        email,
-        phone,
-        user_type,
-        status: 'pendiente',
-      });
-
-      // Cifrar la contraseña utilizando el servicio
-      const hashedPassword = await authService.hashPassword(password);
-
-      // Crear una cuenta vinculada al usuario
-      const newAccount = await Account.create({
-        user_id: newUser.user_id,
-        password_hash: hashedPassword,
-        last_access: new Date(),
-        max_failed_login_attempts: 5,
-      });
-
-      // Crear el estado de la contraseña
-      await PasswordStatus.create({
-        account_id: newAccount.account_id,
-        requires_change: false,
-        last_change_date: new Date(),
-      });
-
-      // Generar token de verificación
-      const verificationToken = crypto.randomBytes(32).toString('hex');
-
-      // Obtener el tiempo de vida del token de verificación desde la base de datos
-      const config = await Config.findOne();
-      const verificationLifetime = config?.email_verification_lifetime
-        ? config.email_verification_lifetime * 1000
-        : 24 * 60 * 60 * 1000; // 24 horas por defecto
-
-      // Verifica que el tiempo de vida sea un número válido
-      if (isNaN(verificationLifetime)) {
-        throw new Error('El tiempo de vida del token de verificación es inválido');
-      }
-
-      // Asigna la fecha de expiración correctamente
-      newUser.email_verification_expiration = new Date(Date.now() + verificationLifetime);
-      await newUser.save();
-
-      // Enviar correo de verificación
-      const emailResult = await emailService.sendVerificationEmail(newUser.email, verificationToken);
-      if (!emailResult.success) {
-        loggerUtils.logUserActivity(newUser.user_id, 'email_verification_failed', 'Fallo al enviar correo de verificación');
-        return res.status(500).json({
-          message: 'Usuario registrado, pero fallo al enviar el correo de verificación.',
-          error: emailResult.messageId,
+  
+      const { name, email, phone, password, user_type } = req.body;
+  
+      try {
+        // Validar si el usuario ya existe
+        let existingUser = await User.findOne({ where: { email } });
+        if (existingUser) {
+          return res.status(400).json({ message: 'El correo ya está en uso.' });
+        }
+  
+        // Crear el nuevo usuario
+        const newUser = await User.create({
+          name,
+          email,
+          phone,
+          user_type,
+          status: 'pendiente',
         });
+  
+        // Cifrar la contraseña utilizando el servicio
+        const hashedPassword = await authService.hashPassword(password);
+  
+        // Crear una cuenta vinculada al usuario
+        const newAccount = await Account.create({
+          user_id: newUser.user_id,
+          password_hash: hashedPassword,
+          last_access: new Date(),
+          max_failed_login_attempts: 5,
+        });
+  
+        // Crear el estado de la contraseña
+        await PasswordStatus.create({
+          account_id: newAccount.account_id,
+          requires_change: false,
+          last_change_date: new Date(),
+        });
+  
+        // Generar token de verificación
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+  
+        // Obtener el tiempo de vida del token de verificación desde la base de datos
+        const config = await Config.findOne();
+        const verificationLifetime = config?.email_verification_lifetime
+          ? config.email_verification_lifetime * 1000
+          : 24 * 60 * 60 * 1000; // 24 horas por defecto
+  
+        // Verifica que el tiempo de vida sea un número válido
+        if (isNaN(verificationLifetime)) {
+          throw new Error('El tiempo de vida del token de verificación es inválido');
+        }
+  
+        // Asigna la fecha de expiración correctamente
+        newUser.email_verification_expiration = new Date(Date.now() + verificationLifetime);
+        await newUser.save();
+  
+        // Enviar correo de verificación
+        const emailResult = await emailService.sendVerificationEmail(newUser.email, verificationToken);
+        if (!emailResult.success) {
+          loggerUtils.logUserActivity(newUser.user_id, 'email_verification_failed', `Fallo al enviar correo de verificación a ${newUser.email}`);
+          return res.status(500).json({
+            message: 'Usuario registrado, pero fallo al enviar el correo de verificación.',
+            error: emailResult.messageId || 'No se recibió información del error',
+          });
+        }
+  
+        // Registrar actividad de creación de usuario
+        loggerUtils.logUserActivity(newUser.user_id, 'account_creation', 'Usuario registrado exitosamente');
+  
+        res.status(201).json({
+          message: 'Usuario registrado exitosamente',
+          user: newUser,
+          emailInfo: { messageId: emailResult.messageId },
+        });
+      } catch (error) {
+        loggerUtils.logCriticalError(error);
+        res.status(500).json({ message: 'Error en el registro de usuario', error: error.message });
       }
-
-      // Registrar actividad de creación de usuario
-      loggerUtils.logUserActivity(newUser.user_id, 'account_creation', 'Usuario registrado exitosamente');
-
-      res.status(201).json({
-        message: 'Usuario registrado exitosamente',
-        user: newUser,
-        emailInfo: { messageId: emailResult.messageId },
-      });
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error en el registro de usuario', error: error.message });
-    }
-  },
+    },
 ];
-
 // Verificar el correo electrónico del usuario
 exports.verifyEmail = async (req, res) => {
     const { token } = req.query;
@@ -339,7 +338,7 @@ exports.logout = async (req, res) => {
 // Inicia el proceso para autenticacion en dos pasos
 exports.sendOtpMfa = async (req, res) => {
     const { userId } = req.body;
-
+  
     try {
       // Buscar la cuenta del usuario por userId
       const account = await Account.findOne({
@@ -383,10 +382,10 @@ exports.sendOtpMfa = async (req, res) => {
       // Enviar el OTP por correo electrónico
       const emailResult = await emailService.sendMFAOTPEmail(account.User.email, otp);
       if (!emailResult.success) {
-        loggerUtils.logUserActivity(userId, 'mfa_otp_email_failed', 'Fallo al enviar OTP de autenticación');
+        loggerUtils.logUserActivity(userId, 'mfa_otp_email_failed', `Fallo al enviar OTP de autenticación a ${account.User.email}`);
         return res.status(500).json({
           message: 'Error al enviar el OTP.',
-          error: emailResult.messageId,
+          error: emailResult.messageId || 'No se recibió información del error',
         });
       }
   
