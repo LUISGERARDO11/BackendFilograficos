@@ -33,13 +33,13 @@ exports.getStockVariants = [
       }
 
       const { page = 1, pageSize = 10, category_id, stock_status } = req.query;
-
+ 
       // Configurar filtros para Product
       const whereProduct = { status: 'active' };
       if (category_id) {
         whereProduct.category_id = parseInt(category_id, 10);
       }
-
+  
       // Configurar filtros para ProductVariant según stock_status
       const whereVariant = {};
       if (stock_status) {
@@ -65,7 +65,7 @@ exports.getStockVariants = [
             break;
         }
       }
-
+  
       // Consulta con paginación
       const { count, rows: variants } = await ProductVariant.findAndCountAll({
         where: whereVariant,
@@ -92,10 +92,10 @@ exports.getStockVariants = [
         attributes: ['variant_id', 'sku', 'stock', 'stock_threshold', 'last_stock_added_at', 'updated_at'],
         limit: parseInt(pageSize),
         offset: (parseInt(page) - 1) * parseInt(pageSize),
-        order: [['variant_id', 'ASC']],
+        order: [['updated_at', 'DESC']], // Ordenar por updated_at descendente
         subQuery: false
       });
-
+  
       // Validar existencia de categoría si se proporcionó
       if (category_id) {
         const categoryExists = await Category.findByPk(category_id);
@@ -103,7 +103,7 @@ exports.getStockVariants = [
           return res.status(404).json({ message: 'Categoría no encontrada' });
         }
       }
-
+  
       // Formatear respuesta
       const formattedVariants = variants.map(variant => ({
         variant_id: variant.variant_id,
@@ -118,7 +118,7 @@ exports.getStockVariants = [
         first_image: variant.ProductImages.length > 0 ? variant.ProductImages[0].image_url : null,
         last_updated: variant.updated_at
       }));
-
+  
       res.status(200).json({
         message: 'Variantes obtenidas exitosamente',
         variants: formattedVariants,
