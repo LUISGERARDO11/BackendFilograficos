@@ -1,10 +1,13 @@
-const { User } = require('../models/Associations'); // Asegúrate de importar el modelo User
-const notificationService = require('./notificationService');
-const emailService = require('./emailService');
+const NotificationService = require('./notificationService'); // Importar la clase
+const EmailService = require('./emailService');
 const loggerUtils = require('../utils/loggerUtils');
 
 class NotificationManager {
-  // Notificar stock agotado
+  constructor() {
+    this.emailService = new EmailService();
+    this.notificationService = new NotificationService(); // Instanciar aquí
+  }
+
   async notifyOutOfStock(variantId, productName) {
     try {
       await this.notifyAdmins('out_of_stock', variantId, productName, 0);
@@ -15,7 +18,6 @@ class NotificationManager {
     }
   }
 
-  // Notificar stock bajo
   async notifyLowStock(variantId, productName, stock) {
     try {
       await this.notifyAdmins('low_stock', variantId, productName, stock);
@@ -26,9 +28,14 @@ class NotificationManager {
     }
   }
 
-  // Método privado para notificar a administradores
   async notifyAdmins(stockStatus, variantId, productName, stock) {
-    // Buscar todos los administradores
+    const { User } = require('../models/Associations');
+
+    if (!User || typeof User.findAll !== 'function') {
+      loggerUtils.logCriticalError(new Error('Modelo User no está definido en notifyAdmins'));
+      throw new Error('Modelo User no está definido o no tiene el método findAll');
+    }
+
     const admins = await User.findAll({
       where: { user_type: 'administrador' },
       attributes: ['user_id', 'email'],
@@ -39,7 +46,6 @@ class NotificationManager {
       return;
     }
 
-    // Evitar duplicados usando un Set
     const notifiedUsers = new Set();
 
     for (const admin of admins) {
@@ -53,13 +59,10 @@ class NotificationManager {
         ? `La variante ${productName} (ID: ${variantId}) se ha quedado sin stock.`
         : `La variante ${productName} (ID: ${variantId}) tiene solo ${stock} unidades restantes.`;
 
-      // Enviar correo
-      await emailService.notifyStockEmail(admin.email, title, message);
-
-      // Enviar notificación push si está suscrito
-      await notificationService.notifyStock(admin.user_id, title, message);
+      await this.emailService.notifyStockEmail(admin.email, title, message);
+      await this.notificationService.notifyStock(admin.user_id, title, message); // Usar la instancia
     }
   }
 }
 
-module.exports = new NotificationManager();
+module.exports = NotificationManager;

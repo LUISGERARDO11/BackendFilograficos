@@ -1,5 +1,4 @@
 const webPush = require('web-push');
-const { PushSubscription, NotificationLog, User } = require('../models/Associations');
 const webPushConfig = require('../config/notificationConfig');
 const loggerUtils = require('../utils/loggerUtils');
 
@@ -12,10 +11,16 @@ class NotificationService {
     );
   }
 
-  // Método para guardar una suscripción push
   async saveSubscription(userId, subscriptionData) {
+    const { PushSubscription } = require('../models/Associations');
     const { endpoint, keys } = subscriptionData;
+
     try {
+      const p256dhBuffer = Buffer.from(keys.p256dh, 'base64');
+      if (p256dhBuffer.length !== 65) {
+        throw new Error(`La clave p256dh debe ser de 65 bytes, pero tiene ${p256dhBuffer.length} bytes`);
+      }
+
       const existingSubscription = await PushSubscription.findOne({
         where: { user_id: userId, endpoint },
       });
@@ -34,7 +39,6 @@ class NotificationService {
       });
 
       loggerUtils.logUserActivity(userId, 'save_subscription', `Suscripción push guardada para el usuario ${userId}`);
-
       return subscription;
     } catch (error) {
       loggerUtils.logCriticalError(error);
@@ -42,8 +46,9 @@ class NotificationService {
     }
   }
 
-  // Método para enviar notificación push a un usuario
   async sendPushNotification(userId, title, message) {
+    const { PushSubscription, NotificationLog } = require('../models/Associations');
+
     try {
       const subscriptions = await PushSubscription.findAll({
         where: { user_id: userId },
@@ -56,19 +61,30 @@ class NotificationService {
       const payload = JSON.stringify({ title, body: message });
 
       for (const subscription of subscriptions) {
-        await webPush.sendNotification(
-          {
-            endpoint: subscription.endpoint,
-            keys: {
-              p256dh: subscription.p256dh,
-              auth: subscription.auth,
-            },
-          },
-          payload
+        // Depuración detallada
+        const p256dhBuffer = Buffer.from(subscription.p256dh, 'base64');
+        loggerUtils.logUserActivity(
+          userId,
+          'push_debug',
+          `Enviando push - p256dh: ${subscription.p256dh}, longitud: ${p256dhBuffer.length} bytes, auth: ${subscription.auth}`
         );
+
+        if (p256dhBuffer.length !== 65) {
+          throw new Error(`La clave p256dh debe ser de 65 bytes, pero tiene ${p256dhBuffer.length} bytes`);
+        }
+
+        const pushSubscription = {
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: subscription.p256dh,
+            auth: subscription.auth,
+          },
+        };
+
+        // Intentar enviar la notificación
+        await webPush.sendNotification(pushSubscription, payload);
       }
 
-      // Registrar en el log de notificaciones
       await NotificationLog.create({
         user_id: userId,
         type: 'push',
@@ -90,24 +106,24 @@ class NotificationService {
         error_message: error.message,
         created_at: new Date(),
       });
+      loggerUtils.logCriticalError(error);
       throw new Error(`Error al enviar notificación push: ${error.message}`);
     }
   }
 
-  // Nuevo método para notificaciones de stock (solo administradores)
   async notifyStock(userId, title, message) {
+    const { User } = require('../models/Associations');
+
     try {
-      // Verificar si el usuario es administrador
       const user = await User.findOne({
         where: { user_id: userId, user_type: 'administrador' },
       });
 
       if (!user) {
         loggerUtils.logUserActivity(userId, 'not_admin', `Usuario ${userId} no es administrador, no se envía notificación de stock`);
-        return; // No enviar si no es administrador
+        return;
       }
 
-      // Enviar notificación push
       await this.sendPushNotification(userId, title, message);
     } catch (error) {
       loggerUtils.logCriticalError(error);
@@ -116,4 +132,4 @@ class NotificationService {
   }
 }
 
-module.exports = new NotificationService();
+module.exports = NotificationService;
