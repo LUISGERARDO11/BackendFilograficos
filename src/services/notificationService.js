@@ -1,6 +1,7 @@
 const webPush = require('web-push');
-const { PushSubscription, NotificationLog } = require('../models');
+const { PushSubscription, NotificationLog } = require('../models/Associations');
 const webPushConfig = require('../config/notificationConfig');
+const loggerUtils = require('../utils/loggerUtils');
 
 class NotificationService {
   constructor() {
@@ -9,6 +10,36 @@ class NotificationService {
       webPushConfig.vapidDetails.publicKey,
       webPushConfig.vapidDetails.privateKey
     );
+  }
+
+  // Método para guardar una suscripción push
+  async saveSubscription(userId, subscriptionData) {
+    const { endpoint, keys } = subscriptionData;
+    try {
+      const existingSubscription = await PushSubscription.findOne({
+        where: { user_id: userId, endpoint },
+      });
+
+      if (existingSubscription) {
+        return existingSubscription;
+      }
+
+      const subscription = await PushSubscription.create({
+        user_id: userId,
+        endpoint,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+
+      loggerUtils.logUserActivity(userId, 'save_subscription', `Suscripción push guardada para el usuario ${userId}`);
+
+      return subscription;
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al guardar la suscripción: ${error.message}`);
+    }
   }
 
   // Método para enviar notificación push a un usuario
@@ -60,31 +91,6 @@ class NotificationService {
         created_at: new Date(),
       });
       throw new Error(`Error al enviar notificación push: ${error.message}`);
-    }
-  }
-
-  // Método para guardar una suscripción push
-  async saveSubscription(userId, subscriptionData) {
-    const { endpoint, keys } = subscriptionData;
-    try {
-      const existingSubscription = await PushSubscription.findOne({
-        where: { user_id: userId, endpoint },
-      });
-
-      if (existingSubscription) {
-        return existingSubscription;
-      }
-
-      return await PushSubscription.create({
-        user_id: userId,
-        endpoint,
-        p256dh: keys.p256dh,
-        auth: keys.auth,
-        created_at: new Date(),
-        updated_at: new Date(),
-      });
-    } catch (error) {
-      throw new Error(`Error al guardar la suscripción: ${error.message}`);
     }
   }
 }
