@@ -16,6 +16,11 @@ class NotificationService {
     const { endpoint, keys } = subscriptionData;
 
     try {
+      const p256dhBuffer = Buffer.from(keys.p256dh, 'base64');
+      if (p256dhBuffer.length !== 65) {
+        throw new Error(`La clave p256dh debe ser de 65 bytes, pero tiene ${p256dhBuffer.length} bytes`);
+      }
+
       const existingSubscription = await PushSubscription.findOne({
         where: { user_id: userId, endpoint },
       });
@@ -56,16 +61,28 @@ class NotificationService {
       const payload = JSON.stringify({ title, body: message });
 
       for (const subscription of subscriptions) {
-        await webPush.sendNotification(
-          {
-            endpoint: subscription.endpoint,
-            keys: {
-              p256dh: subscription.p256dh,
-              auth: subscription.auth,
-            },
-          },
-          payload
+        // Depuración detallada
+        const p256dhBuffer = Buffer.from(subscription.p256dh, 'base64');
+        loggerUtils.logUserActivity(
+          userId,
+          'push_debug',
+          `Enviando push - p256dh: ${subscription.p256dh}, longitud: ${p256dhBuffer.length} bytes, auth: ${subscription.auth}`
         );
+
+        if (p256dhBuffer.length !== 65) {
+          throw new Error(`La clave p256dh debe ser de 65 bytes, pero tiene ${p256dhBuffer.length} bytes`);
+        }
+
+        const pushSubscription = {
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: subscription.p256dh,
+            auth: subscription.auth,
+          },
+        };
+
+        // Intentar enviar la notificación
+        await webPush.sendNotification(pushSubscription, payload);
       }
 
       await NotificationLog.create({
@@ -89,6 +106,7 @@ class NotificationService {
         error_message: error.message,
         created_at: new Date(),
       });
+      loggerUtils.logCriticalError(error);
       throw new Error(`Error al enviar notificación push: ${error.message}`);
     }
   }
@@ -114,4 +132,4 @@ class NotificationService {
   }
 }
 
-module.exports = NotificationService; // Exportar la clase sin instanciarla
+module.exports = NotificationService;
