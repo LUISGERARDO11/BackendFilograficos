@@ -19,7 +19,7 @@ const upload = multer({ storage: storage });
 //Crea un nuevo colaborador.
 router.post('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), upload.single('logo'), collaboratorController.createCollaborator);
 // Obtiene todos los colaboradores.
-router.get('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), upload.single('logo'), collaboratorController.getAllCollaborators);
+router.get('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), collaboratorController.getAllCollaborators);
 //Obtiene un colaborador por su ID.
 router.get('/:id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), collaboratorController.getCollaboratorById);
 //Actualiza un colaborador por ID.
