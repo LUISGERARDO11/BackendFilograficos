@@ -42,6 +42,11 @@ const ProductVariant = sequelize.define('ProductVariant', {
     type: DataTypes.INTEGER,
     defaultValue: 10,
     allowNull: false
+  },
+  last_stock_added_at: {
+    type: DataTypes.DATE,
+    allowNull: true, // Puede ser NULL si nunca se ha agregado stock
+    defaultValue: null // NULL por defecto al crear la variante
   }
 }, {
   tableName: 'product_variants',
