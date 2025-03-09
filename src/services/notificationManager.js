@@ -1,4 +1,3 @@
-const Associations = require('../models/Associations'); // Importar todo el módulo
 const notificationService = require('./notificationService');
 const emailService = require('./emailService');
 const loggerUtils = require('../utils/loggerUtils');
@@ -28,10 +27,12 @@ class NotificationManager {
 
   // Método privado para notificar a administradores
   async notifyAdmins(stockStatus, variantId, productName, stock) {
-    // Usar el modelo User desde Associations
-    const { User } = Associations;
+    // Importar dinámicamente para evitar problemas de carga
+    const { User } = require('../models/Associations');
 
+    // Verificar que User esté definido
     if (!User || typeof User.findAll !== 'function') {
+      loggerUtils.logCriticalError(new Error('Modelo User no está definido en notifyAdmins'));
       throw new Error('Modelo User no está definido o no tiene el método findAll');
     }
 
@@ -69,4 +70,5 @@ class NotificationManager {
   }
 }
 
-module.exports = new NotificationManager();
+// Exportar la clase sin instanciarla
+module.exports = NotificationManager;
