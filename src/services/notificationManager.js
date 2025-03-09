@@ -1,10 +1,11 @@
-const notificationService = require('./notificationService');
-const EmailService = require('./emailService'); // Importar la clase
+const NotificationService = require('./notificationService'); // Importar la clase
+const EmailService = require('./emailService');
 const loggerUtils = require('../utils/loggerUtils');
 
 class NotificationManager {
   constructor() {
-    this.emailService = new EmailService(); // Instanciar aquí
+    this.emailService = new EmailService();
+    this.notificationService = new NotificationService(); // Instanciar aquí
   }
 
   async notifyOutOfStock(variantId, productName) {
@@ -58,10 +59,10 @@ class NotificationManager {
         ? `La variante ${productName} (ID: ${variantId}) se ha quedado sin stock.`
         : `La variante ${productName} (ID: ${variantId}) tiene solo ${stock} unidades restantes.`;
 
-      await this.emailService.notifyStockEmail(admin.email, title, message); // Usar la instancia
-      await notificationService.notifyStock(admin.user_id, title, message);
+      await this.emailService.notifyStockEmail(admin.email, title, message);
+      await this.notificationService.notifyStock(admin.user_id, title, message); // Usar la instancia
     }
   }
 }
 
-module.exports = NotificationManager; // Exportar la clase
+module.exports = NotificationManager;
