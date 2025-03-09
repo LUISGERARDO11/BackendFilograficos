@@ -1,5 +1,5 @@
 const webPush = require('web-push');
-const { PushSubscription, NotificationLog } = require('../models/Associations');
+const { PushSubscription, NotificationLog, User } = require('../models/Associations');
 const webPushConfig = require('../config/notificationConfig');
 const loggerUtils = require('../utils/loggerUtils');
 
@@ -91,6 +91,27 @@ class NotificationService {
         created_at: new Date(),
       });
       throw new Error(`Error al enviar notificación push: ${error.message}`);
+    }
+  }
+
+  // Nuevo método para notificaciones de stock (solo administradores)
+  async notifyStock(userId, title, message) {
+    try {
+      // Verificar si el usuario es administrador
+      const user = await User.findOne({
+        where: { user_id: userId, user_type: 'administrador' },
+      });
+
+      if (!user) {
+        loggerUtils.logUserActivity(userId, 'not_admin', `Usuario ${userId} no es administrador, no se envía notificación de stock`);
+        return; // No enviar si no es administrador
+      }
+
+      // Enviar notificación push
+      await this.sendPushNotification(userId, title, message);
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al notificar stock por push: ${error.message}`);
     }
   }
 }
