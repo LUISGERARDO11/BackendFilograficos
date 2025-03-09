@@ -1,4 +1,4 @@
-const { User } = require('../models/Associations'); // Asegúrate de importar el modelo User
+const Associations = require('../models/Associations'); // Importar todo el módulo
 const notificationService = require('./notificationService');
 const emailService = require('./emailService');
 const loggerUtils = require('../utils/loggerUtils');
@@ -28,6 +28,13 @@ class NotificationManager {
 
   // Método privado para notificar a administradores
   async notifyAdmins(stockStatus, variantId, productName, stock) {
+    // Usar el modelo User desde Associations
+    const { User } = Associations;
+
+    if (!User || typeof User.findAll !== 'function') {
+      throw new Error('Modelo User no está definido o no tiene el método findAll');
+    }
+
     // Buscar todos los administradores
     const admins = await User.findAll({
       where: { user_type: 'administrador' },
