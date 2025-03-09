@@ -4,10 +4,13 @@ const { ProductVariant, Product, Category, ProductImage } = require('../models/A
 const loggerUtils = require('../utils/loggerUtils');
 
 // Función auxiliar para calcular stock_status
-const getStockStatus = (stock, threshold) => {
-  if (stock === 0) return 'out_of_stock';
-  if (stock <= threshold) return 'low_stock';
-  return 'in_stock';
+const getStockStatus = (stock, threshold, lastStockAddedAt) => {
+  if (stock > threshold) return 'in_stock';
+  if (stock > 0 && stock <= threshold) return 'low_stock';
+  if (stock === 0) {
+    return lastStockAddedAt ? 'out_of_stock' : 'no_stock'; // "Agotado" si hubo stock antes, "Sin stock" si nunca lo hubo
+  }
+  return 'unknown'; // Por si acaso, aunque no debería llegar aquí
 };
 
 // Método: Obtener variantes con paginación y filtrado por categoría y/o estado del stock
@@ -18,8 +21,8 @@ exports.getStockVariants = [
   query('category_id').optional().isInt({ min: 1 }).withMessage('El ID de la categoría debe ser un número entero'),
   query('stock_status')
     .optional()
-    .isIn(['in_stock', 'low_stock', 'out_of_stock'])
-    .withMessage('El estado del stock debe ser "in_stock", "low_stock" o "out_of_stock"'),
+    .isIn(['in_stock', 'low_stock', 'out_of_stock', 'no_stock'])
+    .withMessage('El estado del stock debe ser "in_stock", "low_stock", "out_of_stock" o "no_stock"'),
 
   async (req, res) => {
     try {
@@ -41,8 +44,8 @@ exports.getStockVariants = [
       const whereVariant = {};
       if (stock_status) {
         switch (stock_status) {
-          case 'out_of_stock':
-            whereVariant.stock = 0;
+          case 'in_stock':
+            whereVariant.stock = { [Op.gt]: ProductVariant.sequelize.col('stock_threshold') };
             break;
           case 'low_stock':
             whereVariant.stock = {
@@ -50,10 +53,13 @@ exports.getStockVariants = [
               [Op.lte]: ProductVariant.sequelize.col('stock_threshold')
             };
             break;
-          case 'in_stock':
-            whereVariant.stock = {
-              [Op.gt]: ProductVariant.sequelize.col('stock_threshold')
-            };
+          case 'out_of_stock':
+            whereVariant.stock = 0;
+            whereVariant.last_stock_added_at = { [Op.ne]: null }; // Tiene fecha de última adición
+            break;
+          case 'no_stock':
+            whereVariant.stock = 0;
+            whereVariant.last_stock_added_at = null; // Nunca tuvo stock
             break;
           default:
             break;
@@ -83,11 +89,11 @@ exports.getStockVariants = [
             required: false
           }
         ],
-        attributes: ['variant_id', 'sku', 'stock', 'stock_threshold', 'updated_at'],
+        attributes: ['variant_id', 'sku', 'stock', 'stock_threshold', 'last_stock_added_at', 'updated_at'],
         limit: parseInt(pageSize),
         offset: (parseInt(page) - 1) * parseInt(pageSize),
         order: [['variant_id', 'ASC']],
-        subQuery: false // Evitar subconsulta innecesaria
+        subQuery: false
       });
 
       // Validar existencia de categoría si se proporcionó
@@ -107,7 +113,8 @@ exports.getStockVariants = [
         product_type: variant.Product ? variant.Product.product_type : null,
         stock: variant.stock,
         stock_threshold: variant.stock_threshold,
-        stock_status: getStockStatus(variant.stock, variant.stock_threshold),
+        stock_status: getStockStatus(variant.stock, variant.stock_threshold, variant.last_stock_added_at),
+        last_stock_added_at: variant.last_stock_added_at,
         first_image: variant.ProductImages.length > 0 ? variant.ProductImages[0].image_url : null,
         last_updated: variant.updated_at
       }));
@@ -143,7 +150,7 @@ exports.updateStock = [
 
       const { variant_id, stock, stock_threshold } = req.body;
 
-      // Buscar la variante con el producto incluido (incluyendo 'status')
+      // Buscar la variante con el producto incluido
       const variant = await ProductVariant.findByPk(variant_id, {
         include: [{ model: Product, attributes: ['name', 'status'] }]
       });
@@ -160,6 +167,12 @@ exports.updateStock = [
       const updateData = { stock: parseInt(stock) };
       if (stock_threshold !== undefined) {
         updateData.stock_threshold = parseInt(stock_threshold);
+      }
+
+      // Actualizar last_stock_added_at si el stock aumenta
+      const currentStock = variant.stock;
+      if (parseInt(stock) > currentStock) {
+        updateData.last_stock_added_at = new Date(); // Fecha actual
       }
 
       // Actualizar la variante
@@ -181,7 +194,8 @@ exports.updateStock = [
           product_name: variant.Product ? variant.Product.name : null,
           stock: variant.stock,
           stock_threshold: variant.stock_threshold,
-          stock_status: getStockStatus(variant.stock, variant.stock_threshold),
+          stock_status: getStockStatus(variant.stock, variant.stock_threshold, variant.last_stock_added_at),
+          last_stock_added_at: variant.last_stock_added_at,
           last_updated: variant.updated_at
         }
       });
