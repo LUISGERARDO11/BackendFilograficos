@@ -1,7 +1,9 @@
 const { body, validationResult } = require('express-validator');
 const { PushSubscription } = require('../models/Associations');
-const notificationService = require('../services/notificationService');
+const NotificationService = require('../services/notificationService'); // Importar la clase
 const loggerUtils = require('../utils/loggerUtils');
+
+const notificationService = new NotificationService(); // Instanciar aquí
 
 // Middleware de validación
 const validateSubscription = [
@@ -20,7 +22,7 @@ exports.subscribeToPush = [
     }
 
     const { endpoint, keys } = req.body;
-    const userId = req.user.user_id; // Suponemos que el user_id viene del token de autenticación
+    const userId = req.user.user_id;
 
     try {
       // Validar que el usuario existe (opcional, dependiendo de tu lógica)
