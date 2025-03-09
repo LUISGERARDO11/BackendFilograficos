@@ -1,6 +1,7 @@
 const { body, validationResult } = require('express-validator');
 const Collaborator = require('../models/Collaborator');
 const loggerUtils = require('../utils/loggerUtils'); // Asegúrate de que existe o lo creamos
+const cloudinaryService = require('../services/cloudinaryService'); // Añadimos el servicio de Cloudinary
 
 // Crear un nuevo colaborador
 exports.createCollaborator = [
@@ -17,7 +18,13 @@ exports.createCollaborator = [
     }
 
     try {
-      const { name, collaborator_type, contact, email, phone, logo } = req.body;
+      const { name, collaborator_type, contact, email, phone } = req.body;
+      let logoUrl = null;
+
+      // Subir el logo a Cloudinary si se envía una imagen
+      if (req.file) {
+        logoUrl = await cloudinaryService.uploadToCloudinary(req.file.buffer);
+      }
 
       // Verificar si el correo ya existe
       const existingCollaborator = await Collaborator.findOne({ where: { email } });
@@ -26,7 +33,13 @@ exports.createCollaborator = [
       }
 
       const newCollaborator = await Collaborator.create({
-        name, collaborator_type, contact, email, phone, logo, active: true
+        name,
+        collaborator_type,
+        contact,
+        email,
+        phone,
+        logo: logoUrl, // Guardamos la URL del logo (o null si no se subió)
+        active: true
       });
 
       loggerUtils.logUserActivity(req.user.user_id, 'create', `Colaborador creado: ${name}`);
@@ -111,6 +124,12 @@ exports.updateCollaborator = [
       const collaborator = await Collaborator.findByPk(req.params.id);
       if (!collaborator || !collaborator.active) {
         return res.status(404).json({ message: 'Colaborador no encontrado' });
+      }
+
+      // Subir nuevo logo a Cloudinary si se envía
+      if (req.file) {
+        const logoUrl = await cloudinaryService.uploadToCloudinary(req.file.buffer);
+        req.body.logo = logoUrl;
       }
 
       await collaborator.update(req.body);
