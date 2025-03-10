@@ -111,8 +111,11 @@ exports.getCollaboratorById = async (req, res) => {
 
 // Actualizar colaborador
 exports.updateCollaborator = [
+  body('name').optional().isString().trim().notEmpty().withMessage('El nombre no puede estar vacío.'),
+  body('collaborator_type').optional().isIn(['individual', 'marca']).withMessage('Tipo inválido, debe ser "individual" o "marca".'),
   body('email').optional().isEmail().withMessage('Debe ser un correo válido.'),
   body('phone').optional().isString().isLength({ min: 8, max: 15 }).withMessage('El teléfono debe tener entre 8 y 15 caracteres.'),
+  body('contact').optional().isString().withMessage('El contacto debe ser un texto válido.'),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -126,13 +129,37 @@ exports.updateCollaborator = [
         return res.status(404).json({ message: 'Colaborador no encontrado' });
       }
 
-      // Subir nuevo logo a Cloudinary si se envía
-      if (req.file) {
-        const logoUrl = await cloudinaryService.uploadToCloudinary(req.file.buffer);
-        req.body.logo = logoUrl;
+      // Check for duplicate email if email is being updated
+      if (req.body.email && req.body.email !== collaborator.email) {
+        const existingCollaborator = await Collaborator.findOne({ where: { email: req.body.email } });
+        if (existingCollaborator) {
+          return res.status(400).json({ message: 'El correo ya está registrado.' });
+        }
       }
 
-      await collaborator.update(req.body);
+      // Subir nuevo logo a Cloudinary si se envía
+      if (req.file) {
+        try {
+          const logoUrl = await cloudinaryService.uploadToCloudinary(req.file.buffer);
+          req.body.logo = logoUrl;
+        } catch (uploadError) {
+          loggerUtils.logCriticalError(uploadError);
+          return res.status(500).json({ message: 'Error al subir el logo a Cloudinary', error: uploadError.message });
+        }
+      }
+
+      // Filter allowed fields to update
+      const allowedFields = ['name', 'collaborator_type', 'contact', 'email', 'phone', 'logo'];
+      const updates = Object.keys(req.body)
+        .filter(key => allowedFields.includes(key))
+        .reduce((obj, key) => {
+          obj[key] = req.body[key];
+          return obj;
+        }, {});
+
+      await collaborator.update(updates);
+      await collaborator.reload(); // Refresh instance to get latest data
+
       loggerUtils.logUserActivity(req.user.user_id, 'update', `Colaborador actualizado: ${collaborator.name}`);
       res.status(200).json({ message: 'Colaborador actualizado.', collaborator });
 
