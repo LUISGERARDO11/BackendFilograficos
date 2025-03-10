@@ -22,31 +22,26 @@ class NotificationService {
 
   async saveSubscription(userId, subscriptionData) {
     const { PushSubscription } = require('../models/Associations');
-    const { endpoint, keys } = subscriptionData;
-
+    const { token } = subscriptionData;
+  
     try {
-      const p256dhBuffer = Buffer.from(keys.p256dh, 'base64');
-      if (p256dhBuffer.length !== 65) {
-        throw new Error(`La clave p256dh debe ser de 65 bytes, pero tiene ${p256dhBuffer.length} bytes`);
-      }
-
       const existingSubscription = await PushSubscription.findOne({
-        where: { user_id: userId, endpoint },
+        where: { user_id: userId, endpoint: token },
       });
-
+  
       if (existingSubscription) {
         return existingSubscription;
       }
-
+  
       const subscription = await PushSubscription.create({
         user_id: userId,
-        endpoint,
-        p256dh: keys.p256dh,
-        auth: keys.auth,
+        endpoint: token,
+        p256dh: null,
+        auth: null,
         created_at: new Date(),
         updated_at: new Date(),
       });
-
+  
       loggerUtils.logUserActivity(userId, 'save_subscription', `Suscripción push guardada para el usuario ${userId}`);
       return subscription;
     } catch (error) {
