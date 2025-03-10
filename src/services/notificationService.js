@@ -4,6 +4,7 @@ const loggerUtils = require('../utils/loggerUtils');
 
 class NotificationService {
   constructor() {
+    loggerUtils.logUserActivity(null, 'vapid_config', `Configurando VAPID - subject: ${webPushConfig.vapidDetails.subject}, publicKey: ${webPushConfig.vapidDetails.publicKey.substring(0, 10)}...`);
     webPush.setVapidDetails(
       webPushConfig.vapidDetails.subject,
       webPushConfig.vapidDetails.publicKey,
@@ -61,7 +62,6 @@ class NotificationService {
       const payload = JSON.stringify({ title, body: message });
 
       for (const subscription of subscriptions) {
-        // Depuración detallada
         const p256dhBuffer = Buffer.from(subscription.p256dh, 'base64');
         loggerUtils.logUserActivity(
           userId,
@@ -81,9 +81,9 @@ class NotificationService {
           },
         };
 
-        // Intentar enviar la notificación con más depuración
         try {
           await webPush.sendNotification(pushSubscription, payload);
+          loggerUtils.logUserActivity(userId, 'push_sent', `Notificación enviada exitosamente al endpoint: ${subscription.endpoint}`);
         } catch (sendError) {
           loggerUtils.logCriticalError(sendError, `Fallo al enviar push al endpoint: ${subscription.endpoint}`);
           throw sendError;
