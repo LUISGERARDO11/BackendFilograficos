@@ -1,15 +1,23 @@
-const webPush = require('web-push');
-const webPushConfig = require('../config/notificationConfig');
+require('dotenv').config();
+const admin = require('firebase-admin');
 const loggerUtils = require('../utils/loggerUtils');
 
 class NotificationService {
   constructor() {
-    loggerUtils.logUserActivity(null, 'vapid_config', `Configurando VAPID - subject: ${webPushConfig.vapidDetails.subject}, publicKey: ${webPushConfig.vapidDetails.publicKey.substring(0, 10)}...`);
-    webPush.setVapidDetails(
-      webPushConfig.vapidDetails.subject,
-      webPushConfig.vapidDetails.publicKey,
-      webPushConfig.vapidDetails.privateKey
+    // Cargar las credenciales desde la variable de entorno
+    const serviceAccount = JSON.parse(
+      Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString()
     );
+
+    // Inicializar Firebase Admin solo si no está inicializado
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+    }
+
+    // Log para confirmar inicialización
+    loggerUtils.logUserActivity(null, 'firebase_config', `Configurando Firebase Admin - projectId: ${serviceAccount.project_id}`);
   }
 
   async saveSubscription(userId, subscriptionData) {
@@ -59,33 +67,29 @@ class NotificationService {
         throw new Error('No hay suscripciones push para este usuario');
       }
 
-      const payload = JSON.stringify({ title, body: message });
+      const payload = {
+        webpush: {
+          notification: {
+            title,
+            body: message,
+            icon: '/assets/icon.png', // Compatible con tu frontend
+          },
+        },
+      };
 
       for (const subscription of subscriptions) {
-        const p256dhBuffer = Buffer.from(subscription.p256dh, 'base64');
+        const token = subscription.endpoint.split('/').pop(); // Extraer el token FCM
         loggerUtils.logUserActivity(
           userId,
           'push_debug',
-          `Enviando push - endpoint: ${subscription.endpoint}, p256dh: ${subscription.p256dh}, longitud: ${p256dhBuffer.length} bytes, auth: ${subscription.auth}`
+          `Enviando push - token: ${token}, title: ${title}`
         );
 
-        if (p256dhBuffer.length !== 65) {
-          throw new Error(`La clave p256dh debe ser de 65 bytes, pero tiene ${p256dhBuffer.length} bytes`);
-        }
-
-        const pushSubscription = {
-          endpoint: subscription.endpoint,
-          keys: {
-            p256dh: subscription.p256dh,
-            auth: subscription.auth,
-          },
-        };
-
         try {
-          await webPush.sendNotification(pushSubscription, payload);
-          loggerUtils.logUserActivity(userId, 'push_sent', `Notificación enviada exitosamente al endpoint: ${subscription.endpoint}`);
+          const response = await admin.messaging().send({ ...payload, token });
+          loggerUtils.logUserActivity(userId, 'push_sent', `Notificación enviada exitosamente: ${response}`);
         } catch (sendError) {
-          loggerUtils.logCriticalError(sendError, `Fallo al enviar push al endpoint: ${subscription.endpoint}`);
+          loggerUtils.logCriticalError(sendError, `Fallo al enviar push al token: ${token}`);
           throw sendError;
         }
       }
