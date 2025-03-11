@@ -94,7 +94,7 @@ exports.getAllEmailTypes = async (req, res) => {
 // Obtener todos los tipos activos con paginación
 exports.getEmailTypes = async (req, res) => {
   try {
-    const { page: pageParam, pageSize: pageSizeParam, name, token, sortBy, sortOrder } = req.query;
+    const { page: pageParam, pageSize: pageSizeParam } = req.query;
     const page = parseInt(pageParam) || 1;
     const pageSize = parseInt(pageSizeParam) || 10;
 
@@ -105,29 +105,9 @@ exports.getEmailTypes = async (req, res) => {
       });
     }
 
-    // Construir el objeto where dinámicamente
-    const whereClause = { active: true }; // Solo tipos de email activos por defecto
-
-    // Filtro por nombre (búsqueda parcial con LIKE)
-    if (name) {
-      whereClause.name = { [Op.like]: `%${name}%` };
-    }
-
-    // Filtro por token (búsqueda parcial con LIKE)
-    if (token) {
-      whereClause.token = { [Op.like]: `%${token}%` };
-    }
-
-    // Ordenamiento dinámico
-    const validSortFields = ['name', 'token', 'created_at']; // Campos válidos para ordenar
-    const order = sortBy && validSortFields.includes(sortBy)
-      ? [[sortBy, sortOrder === 'ASC' ? 'ASC' : 'DESC']]
-      : [['created_at', 'DESC']]; // Por defecto, orden por created_at DESC
-
     // Consulta a la base de datos con paginación
     const { count, rows: emailTypes } = await EmailType.findAndCountAll({
-      where: whereClause,
-      order,
+      where: { active: true }, // Filtro fijo para tipos de email activos
       limit: pageSize,
       offset: (page - 1) * pageSize
     });
