@@ -62,10 +62,11 @@ exports.getAllCollaborators = async (req, res) => {
     res.status(500).json({ message: 'Error al obtener colaboradores', error: error.message });
   }
 };
-// Obtener todos los colaboradores con paginación
+
+// Obtener todos los colaboradores activos con paginación
 exports.getCollaborators = async (req, res) => {
   try {
-    const { page: pageParam, pageSize: pageSizeParam } = req.query;
+    const { page: pageParam, pageSize: pageSizeParam, name, email, sortBy, sortOrder } = req.query;
     const page = parseInt(pageParam) || 1;
     const pageSize = parseInt(pageSizeParam) || 10;
 
@@ -76,11 +77,31 @@ exports.getCollaborators = async (req, res) => {
       });
     }
 
-    // Consulta a la base de datos SIN filtrar por "active"
+    // Construir el objeto where dinámicamente
+    const whereClause = { active: true }; // Solo colaboradores activos por defecto
+
+    // Filtro por nombre (búsqueda parcial con LIKE)
+    if (name) {
+      whereClause.name = { [Op.like]: `%${name}%` };
+    }
+
+    // Filtro por email (búsqueda parcial con LIKE)
+    if (email) {
+      whereClause.email = { [Op.like]: `%${email}%` };
+    }
+
+    // Ordenamiento dinámico
+    const validSortFields = ['name', 'email', 'created_at']; // Campos válidos para ordenar
+    const order = sortBy && validSortFields.includes(sortBy)
+      ? [[sortBy, sortOrder === 'ASC' ? 'ASC' : 'DESC']]
+      : [['created_at', 'DESC']]; // Por defecto, orden por created_at DESC
+
+    // Consulta a la base de datos con paginación
     const { count, rows: collaborators } = await Collaborator.findAndCountAll({
+      where: whereClause,
+      order,
       limit: pageSize,
-      offset: (page - 1) * pageSize,
-      order: [['createdAt', 'DESC']]
+      offset: (page - 1) * pageSize
     });
 
     res.status(200).json({
