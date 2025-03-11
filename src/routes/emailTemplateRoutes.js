@@ -17,6 +17,9 @@ router.post('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration
 // Obtener todas las plantillas activas
 router.get('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, emailTemplateController.getAllEmailTemplates);
 
+// Obtener todas las plantillas activas con paginacion
+router.get('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, emailTemplateController.getEmailTemplates);
+
 // Obtener plantilla por ID
 router.get('/:templateId', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, emailTemplateController.getEmailTemplateById);
 
