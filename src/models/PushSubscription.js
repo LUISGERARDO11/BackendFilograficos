@@ -22,11 +22,11 @@ const PushSubscription = sequelize.define('PushSubscription', {
   },
   p256dh: {
     type: DataTypes.STRING(255),
-    allowNull: false
+    allowNull: true // Cambiar a true
   },
   auth: {
     type: DataTypes.STRING(255),
-    allowNull: false
+    allowNull: true // Cambiar a true
   },
   created_at: {
     type: DataTypes.DATE,
