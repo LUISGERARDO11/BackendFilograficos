@@ -74,6 +74,59 @@ exports.getAllEmailTemplates = async (req, res) => {
     res.status(500).json({ message: 'Error al obtener plantillas', error: error.message });
   }
 };
+// Obtener todas las plantillas activas con paginación
+exports.getEmailTemplates = async (req, res) => {
+  try {
+    const { page: pageParam, pageSize: pageSizeParam, name, sortBy, sortOrder } = req.query;
+    const page = parseInt(pageParam) || 1;
+    const pageSize = parseInt(pageSizeParam) || 10;
+
+    // Validación de parámetros de paginación
+    if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
+      return res.status(400).json({
+        message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos'
+      });
+    }
+
+    // Construir el objeto where dinámicamente
+    const whereClause = { active: true }; // Solo plantillas activas por defecto
+
+    // Filtro por nombre (búsqueda parcial con LIKE)
+    if (name) {
+      whereClause.name = { [Op.like]: `%${name}%` };
+    }
+
+    // Ordenamiento dinámico
+    const validSortFields = ['name', 'subject', 'created_at']; // Campos válidos para ordenar
+    const order = sortBy && validSortFields.includes(sortBy)
+      ? [[sortBy, sortOrder === 'ASC' ? 'ASC' : 'DESC']]
+      : [['created_at', 'DESC']]; // Por defecto, orden por created_at DESC
+
+    // Consulta a la base de datos con paginación
+    const { count, rows: templates } = await EmailTemplate.findAndCountAll({
+      where: whereClause,
+      include: [{
+        model: EmailType,
+        attributes: ['name', 'token'],
+        required: true
+      }],
+      attributes: { exclude: ['email_type_id', 'created_by', 'updated_by'] },
+      order,
+      limit: pageSize,
+      offset: (page - 1) * pageSize
+    });
+
+    res.status(200).json({
+      templates,
+      total: count,
+      page,
+      pageSize
+    });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener plantillas', error: error.message });
+  }
+};
 
 // Obtener plantilla por ID
 exports.getEmailTemplateById = async (req, res) => {
@@ -125,7 +178,7 @@ exports.updateEmailTemplate = [
       if (html_content !== undefined) template.html_content = html_content;
       if (text_content !== undefined) template.text_content = text_content;
       if (variables !== undefined) template.variables = variables;
-      
+
       template.updated_by = req.user.user_id;
 
       await template.save();
