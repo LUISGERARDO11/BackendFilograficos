@@ -32,7 +32,7 @@ router.get('/',
     collaboratorController.getAllCollaborators
 );
 // Obtiene todos los colaboradores con paginacion.
-router.get('/',
+router.get('/get',
     authMiddleware,
     tokenExpirationMiddleware.verifyTokenExpiration,
     roleMiddleware(['administrador']),
