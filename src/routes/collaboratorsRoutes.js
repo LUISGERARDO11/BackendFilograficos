@@ -31,6 +31,13 @@ router.get('/',
     roleMiddleware(['administrador']),
     collaboratorController.getAllCollaborators
 );
+// Obtiene todos los colaboradores con paginacion.
+router.get('/',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    collaboratorController.getCollaborators
+);
 //Obtiene un colaborador por su ID.
 router.get('/:id',
     authMiddleware,
