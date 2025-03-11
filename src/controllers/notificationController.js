@@ -7,9 +7,7 @@ const notificationService = new NotificationService(); // Instanciar aquí
 
 // Middleware de validación
 const validateSubscription = [
-  body('endpoint').trim().notEmpty().withMessage('El endpoint es obligatorio').escape(),
-  body('keys.p256dh').trim().notEmpty().withMessage('La clave p256dh es obligatoria').escape(),
-  body('keys.auth').trim().notEmpty().withMessage('La clave auth es obligatoria').escape(),
+  body('token').trim().notEmpty().withMessage('El token es obligatorio').escape(),
 ];
 
 // Endpoint para suscribirse a notificaciones push
@@ -21,21 +19,11 @@ exports.subscribeToPush = [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { endpoint, keys } = req.body;
+    const { token } = req.body;
     const userId = req.user.user_id;
 
     try {
-      // Validar que el usuario existe (opcional, dependiendo de tu lógica)
-      // Aquí podrías agregar una consulta a la tabla User si lo deseas
-
-      // Guardar o actualizar la suscripción
-      const subscriptionData = {
-        endpoint,
-        keys: {
-          p256dh: keys.p256dh,
-          auth: keys.auth,
-        },
-      };
+      const subscriptionData = { token };
       const subscription = await notificationService.saveSubscription(userId, subscriptionData);
 
       // Registrar la actividad
