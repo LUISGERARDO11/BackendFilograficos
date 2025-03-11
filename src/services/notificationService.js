@@ -50,6 +50,28 @@ class NotificationService {
     }
   }
 
+  async removeSubscription(userId) {
+    const { PushSubscription } = require('../models/Associations');
+
+    try {
+      // Eliminar todas las suscripciones asociadas al userId
+      const deletedCount = await PushSubscription.destroy({
+        where: { user_id: userId },
+      });
+
+      if (deletedCount > 0) {
+        loggerUtils.logUserActivity(userId, 'remove_subscription', `Suscripciones eliminadas para el usuario ${userId}`);
+        return { success: true, message: 'Suscripciones eliminadas exitosamente' };
+      } else {
+        loggerUtils.logUserActivity(userId, 'remove_subscription', `No se encontraron suscripciones para eliminar para el usuario ${userId}`);
+        return { success: false, message: 'No se encontraron suscripciones para este usuario' };
+      }
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al eliminar la suscripción: ${error.message}`);
+    }
+  }
+
   async sendPushNotification(userId, title, message) {
     const { PushSubscription, NotificationLog } = require('../models/Associations');
 
