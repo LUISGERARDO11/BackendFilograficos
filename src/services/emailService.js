@@ -16,7 +16,7 @@ class EmailService {
   }
 
   async sendGenericEmail(to, subject, html, text) {
-    const { NotificationLog } = require('../models/Associations'); // Importar aquí
+    const { NotificationLog } = require('../models/Associations');
 
     try {
       const mailOptions = {
@@ -30,13 +30,14 @@ class EmailService {
       const info = await transporter.sendMail(mailOptions);
 
       await NotificationLog.create({
-        user_id: null,
+        user_id: null, // No tenemos user_id directo aquí, depende del contexto
         type: 'email',
         title: subject,
         message: text || html,
         status: 'sent',
         sent_at: new Date(),
-        created_at: new Date(),
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000), // Expira en 24 horas
+        seen: false
       });
 
       loggerUtils.logUserActivity(null, 'send_generic_email', `Correo enviado a ${to}`);
@@ -49,7 +50,8 @@ class EmailService {
         message: text || html,
         status: 'failed',
         error_message: error.message,
-        created_at: new Date(),
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        seen: false
       });
       loggerUtils.logCriticalError(error);
       throw new Error(`Error enviando correo: ${error.message}`);
@@ -104,6 +106,14 @@ class EmailService {
   }
 
   async notifyStockEmail(to, title, message) {
+    const { User, CommunicationPreference } = require('../models/Associations');
+    const user = await User.findOne({ where: { email: to }, include: [{ model: CommunicationPreference }] });
+
+    if (!user || !user.CommunicationPreference?.methods.includes('email') || !user.CommunicationPreference?.categories.stock_alerts) {
+      loggerUtils.logUserActivity(user?.user_id || null, 'skip_email', `Notificación de stock omitida por preferencias para ${to}`);
+      return { success: false, message: 'Notificación omitida por preferencias' };
+    }
+
     const htmlContent = `<h1>${title}</h1><p>${message}</p>`;
     return this.sendGenericEmail(to, title, htmlContent, message);
   }

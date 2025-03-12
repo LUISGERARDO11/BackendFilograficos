@@ -29,7 +29,7 @@ class NotificationManager {
   }
 
   async notifyAdmins(stockStatus, variantId, productName, stock) {
-    const { User } = require('../models/Associations');
+    const { User, CommunicationPreference } = require('../models/Associations');
 
     if (!User || typeof User.findAll !== 'function') {
       loggerUtils.logCriticalError(new Error('Modelo User no está definido en notifyAdmins'));
@@ -38,7 +38,8 @@ class NotificationManager {
 
     const admins = await User.findAll({
       where: { user_type: 'administrador' },
-      attributes: ['user_id', 'email'],
+      include: [{ model: CommunicationPreference }], // Incluir preferencias de comunicación
+      attributes: ['user_id', 'email']
     });
 
     if (!admins.length) {
@@ -52,6 +53,25 @@ class NotificationManager {
       if (notifiedUsers.has(admin.user_id)) continue;
       notifiedUsers.add(admin.user_id);
 
+      const preferences = admin.CommunicationPreference || {
+        methods: ['email'], // Valor por defecto si no hay preferencias
+        categories: {
+          special_offers: true,
+          event_reminders: true,
+          news_updates: true,
+          order_updates: true,
+          urgent_orders: false,
+          design_reviews: true,
+          stock_alerts: false
+        }
+      };
+
+      const category = stockStatus === 'out_of_stock' ? 'stock_alerts' : 'stock_alerts';
+      if (!preferences.categories[category]) {
+        loggerUtils.logUserActivity(admin.user_id, 'skip_notification', `Notificación de ${category} omitida para ${admin.user_id} por preferencias`);
+        continue;
+      }
+
       const title = stockStatus === 'out_of_stock'
         ? `¡Alerta! ${productName} se ha agotado`
         : `¡Advertencia! ${productName} tiene stock bajo (${stock} unidades)`;
@@ -59,8 +79,13 @@ class NotificationManager {
         ? `La variante ${productName} (ID: ${variantId}) se ha quedado sin stock.`
         : `La variante ${productName} (ID: ${variantId}) tiene solo ${stock} unidades restantes.`;
 
-      await this.emailService.notifyStockEmail(admin.email, title, message);
-      await this.notificationService.notifyStock(admin.user_id, title, message); // Usar la instancia
+      // Enviar según métodos permitidos
+      if (preferences.methods.includes('email')) {
+        await this.emailService.notifyStockEmail(admin.email, title, message);
+      }
+      if (preferences.methods.includes('push')) {
+        await this.notificationService.notifyStock(admin.user_id, title, message);
+      }
     }
   }
 }
