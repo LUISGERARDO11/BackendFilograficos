@@ -45,6 +45,7 @@ const Review = require('./Review');
 const PushSubscription = require('./PushSubscription');
 const NotificationLog = require('./NotificationLog');
 const CategoryAttributes = require('./CategoryAttributes');
+const CommunicationPreference = require('./CommunicationPreference');
 
 // Relaciones de Usuarios
 User.hasOne(Account, { foreignKey: 'user_id' });
@@ -160,14 +161,14 @@ DeliveryPoint.belongsTo(ShippingOption, { foreignKey: 'shipping_option_id' });
 Cart.hasMany(CartDetail, { foreignKey: 'cart_id' });
 CartDetail.belongsTo(Cart, { foreignKey: 'cart_id' });
 
-ProductVariant.hasMany(CartDetail, { foreignKey: 'product_id' }); // Relacionado con ProductVariant en lugar de Product
+ProductVariant.hasMany(CartDetail, { foreignKey: 'product_id' });
 CartDetail.belongsTo(ProductVariant, { foreignKey: 'product_id' });
 
 // Relaciones de Pedidos
 Order.hasMany(OrderDetail, { foreignKey: 'order_id' });
 OrderDetail.belongsTo(Order, { foreignKey: 'order_id' });
 
-ProductVariant.hasMany(OrderDetail, { foreignKey: 'product_id' }); // Relacionado con ProductVariant en lugar de Product
+ProductVariant.hasMany(OrderDetail, { foreignKey: 'product_id' });
 OrderDetail.belongsTo(ProductVariant, { foreignKey: 'product_id' });
 
 // Relaciones de Promociones
@@ -194,7 +195,7 @@ CouponUsage.belongsTo(Order, { foreignKey: 'order_id' });
 Promotion.hasMany(PromotionProduct, { foreignKey: 'promotion_id' });
 PromotionProduct.belongsTo(Promotion, { foreignKey: 'promotion_id' });
 
-ProductVariant.hasMany(PromotionProduct, { foreignKey: 'product_id' }); // Relacionado con ProductVariant en lugar de Product
+ProductVariant.hasMany(PromotionProduct, { foreignKey: 'product_id' });
 PromotionProduct.belongsTo(ProductVariant, { foreignKey: 'product_id' });
 
 // Relaciones de PromotionCategory
@@ -208,7 +209,7 @@ PromotionCategory.belongsTo(Category, { foreignKey: 'category_id' });
 User.hasMany(Review, { foreignKey: 'user_id' });
 Review.belongsTo(User, { foreignKey: 'user_id' });
 
-ProductVariant.hasMany(Review, { foreignKey: 'product_id' }); // Relacionado con ProductVariant en lugar de Product
+ProductVariant.hasMany(Review, { foreignKey: 'product_id' });
 Review.belongsTo(ProductVariant, { foreignKey: 'product_id' });
 
 // Relaciones de Push Subscriptions
@@ -218,6 +219,10 @@ PushSubscription.belongsTo(User, { foreignKey: 'user_id' });
 // Relaciones de Notification Log
 User.hasMany(NotificationLog, { foreignKey: 'user_id' });
 NotificationLog.belongsTo(User, { foreignKey: 'user_id' });
+
+// Relaciones de CommunicationPreference
+User.hasOne(CommunicationPreference, { foreignKey: 'user_id' });
+CommunicationPreference.belongsTo(User, { foreignKey: 'user_id' });
 
 // Asociaciones para CategoryAttributes (many-to-many entre Category y ProductAttribute)
 CategoryAttributes.belongsTo(Category, { foreignKey: 'category_id' });
@@ -253,7 +258,7 @@ module.exports = {
   Collaborator,
   Category,
   Product,
-  ProductVariant, // Añadido nuevo modelo
+  ProductVariant,
   ProductAttribute,
   ProductAttributeValue,
   ProductImage,
@@ -272,5 +277,6 @@ module.exports = {
   Review,
   PushSubscription,
   NotificationLog,
-  CategoryAttributes
+  CategoryAttributes,
+  CommunicationPreference
 };

@@ -41,16 +41,19 @@ const NotificationLog = sequelize.define('NotificationLog', {
     type: DataTypes.TEXT,
     allowNull: true
   },
-  created_at: {
+  expires_at: { // Nuevo campo para la expiración
     type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW
+    allowNull: true
+  },
+  seen: { // Nuevo campo para marcar si fue vista
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   }
 }, {
   tableName: 'notifications_log',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: false // No necesitamos updated_at aquí, ya que no se actualiza después de creado
+  timestamps: true, // Habilitamos timestamps para usar createdAt y updatedAt automáticamente
+  createdAt: 'created_at', // Usamos created_at como nombre del campo
+  updatedAt: 'updated_at' // Añadimos updated_at para posibles actualizaciones futuras
 });
 
 module.exports = NotificationLog;
