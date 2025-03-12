@@ -32,60 +32,62 @@ class NotificationManager {
     const { User, CommunicationPreference } = require('../models/Associations');
 
     if (!User || typeof User.findAll !== 'function') {
-      loggerUtils.logCriticalError(new Error('Modelo User no está definido en notifyAdmins'));
-      throw new Error('Modelo User no está definido o no tiene el método findAll');
+        loggerUtils.logCriticalError(new Error('Modelo User no está definido en notifyAdmins'));
+        throw new Error('Modelo User no está definido o no tiene el método findAll');
     }
 
     const admins = await User.findAll({
-      where: { user_type: 'administrador' },
-      include: [{ model: CommunicationPreference }], // Incluir preferencias de comunicación
-      attributes: ['user_id', 'email']
+        where: { user_type: 'administrador' },
+        include: [{ model: CommunicationPreference }],
+        attributes: ['user_id', 'email']
     });
 
     if (!admins.length) {
-      loggerUtils.logUserActivity(null, 'no_admins_found', 'No hay administradores para notificar');
-      return;
+        loggerUtils.logUserActivity(null, 'no_admins_found', 'No hay administradores para notificar');
+        return;
     }
 
     const notifiedUsers = new Set();
 
     for (const admin of admins) {
-      if (notifiedUsers.has(admin.user_id)) continue;
-      notifiedUsers.add(admin.user_id);
+        if (notifiedUsers.has(admin.user_id)) continue;
+        notifiedUsers.add(admin.user_id);
 
-      const preferences = admin.CommunicationPreference || {
-        methods: ['email'], // Valor por defecto si no hay preferencias
-        categories: {
-          special_offers: true,
-          event_reminders: true,
-          news_updates: true,
-          order_updates: true,
-          urgent_orders: false,
-          design_reviews: true,
-          stock_alerts: false
+        const preferences = admin.CommunicationPreference || {
+            methods: ['email'],
+            categories: {
+                special_offers: true,
+                event_reminders: true,
+                news_updates: true,
+                order_updates: true,
+                urgent_orders: false,
+                design_reviews: true,
+                stock_alerts: false
+            }
+        };
+
+        // Corrección: no necesitamos una variable category ya que ambas condiciones usan 'stock_alerts'
+        // Simplemente verificamos si stock_alerts está habilitado
+        if (!preferences.categories.stock_alerts) {
+            loggerUtils.logUserActivity(admin.user_id, 'skip_notification', 
+                `Notificación de stock omitida para ${admin.user_id} por preferencias`);
+            continue;
         }
-      };
 
-      const category = stockStatus === 'out_of_stock' ? 'stock_alerts' : 'stock_alerts';
-      if (!preferences.categories[category]) {
-        loggerUtils.logUserActivity(admin.user_id, 'skip_notification', `Notificación de ${category} omitida para ${admin.user_id} por preferencias`);
-        continue;
-      }
+        const title = stockStatus === 'out_of_stock'
+            ? `¡Alerta! ${productName} se ha agotado`
+            : `¡Advertencia! ${productName} tiene stock bajo (${stock} unidades)`;
+        const message = stockStatus === 'out_of_stock'
+            ? `La variante ${productName} (ID: ${variantId}) se ha quedado sin stock.`
+            : `La variante ${productName} (ID: ${variantId}) tiene solo ${stock} unidades restantes.`;
 
-      const title = stockStatus === 'out_of_stock'
-        ? `¡Alerta! ${productName} se ha agotado`
-        : `¡Advertencia! ${productName} tiene stock bajo (${stock} unidades)`;
-      const message = stockStatus === 'out_of_stock'
-        ? `La variante ${productName} (ID: ${variantId}) se ha quedado sin stock.`
-        : `La variante ${productName} (ID: ${variantId}) tiene solo ${stock} unidades restantes.`;
-
-      // Enviar según métodos permitidos
-      if (preferences.methods.includes('email')) {
-        await this.emailService.notifyStockEmail(admin.email, title, message);
-      }
-      if (preferences.methods.includes('push')) {
-        await this.notificationService.notifyStock(admin.user_id, title, message);
-      }
+        // Enviar según métodos permitidos
+        if (preferences.methods.includes('email')) {
+            await this.emailService.notifyStockEmail(admin.email, title, message);
+        }
+        if (preferences.methods.includes('push')) {
+            await this.notificationService.notifyStock(admin.user_id, title, message);
+        }
     }
   }
 }
