@@ -12,19 +12,22 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 
-// Ruta para obtener todos los usuarios con su sesión más reciente 
+//Crear tipo de email 
 router.post('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,roleMiddleware(['administrador']), emailTypeController.createEmailType);
 
-// Ruta para que un administrador pueda eliminar un cliente
+// Obtener tipo por ID
 router.get('/:id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), emailTypeController.getEmailTypeById);
 
-// Ruta para que un administrador pueda eliminar un cliente
+// Obtener todos los tipos activos
 router.get('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), emailTypeController.getAllEmailTypes);
 
-// Ruta para actualizar el número máximo de intentos fallidos de login en todas las cuentas
+// Obtener todos los tipos activos con paginacion
+router.get('/pag', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), emailTypeController.getEmailTypes);
+
+// Actualizar tipo de email
 router.put('/:id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,  roleMiddleware(['administrador']), emailTypeController.updateEmailType);
 
-// Ruta para actualizar el número máximo de intentos fallidos de login en todas las cuentas
+//Eliminación lógica
 router.delete('/:id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,  roleMiddleware(['administrador']), emailTypeController.deleteEmailType);
 
 module.exports = router; 

@@ -74,6 +74,44 @@ exports.getAllEmailTemplates = async (req, res) => {
     res.status(500).json({ message: 'Error al obtener plantillas', error: error.message });
   }
 };
+// Obtener todas las plantillas activas con paginación
+exports.getEmailTemplates = async (req, res) => {
+  try {
+    const { page: pageParam, pageSize: pageSizeParam } = req.query;
+    const page = parseInt(pageParam) || 1;
+    const pageSize = parseInt(pageSizeParam) || 10;
+
+    // Validación de parámetros de paginación
+    if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
+      return res.status(400).json({
+        message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos'
+      });
+    }
+
+    // Consulta a la base de datos con paginación
+    const { count, rows: templates } = await EmailTemplate.findAndCountAll({
+      where: { active: true }, // Filtro fijo para plantillas activas
+      include: [{
+        model: EmailType,
+        attributes: ['name', 'token'],
+        required: true
+      }],
+      attributes: { exclude: ['email_type_id', 'created_by', 'updated_by'] },
+      limit: pageSize,
+      offset: (page - 1) * pageSize
+    });
+
+    res.status(200).json({
+      templates,
+      total: count,
+      page,
+      pageSize
+    });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener plantillas', error: error.message });
+  }
+};
 
 // Obtener plantilla por ID
 exports.getEmailTemplateById = async (req, res) => {
@@ -125,7 +163,7 @@ exports.updateEmailTemplate = [
       if (html_content !== undefined) template.html_content = html_content;
       if (text_content !== undefined) template.text_content = text_content;
       if (variables !== undefined) template.variables = variables;
-      
+
       template.updated_by = req.user.user_id;
 
       await template.save();

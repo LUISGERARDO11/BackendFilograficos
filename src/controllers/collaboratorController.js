@@ -62,7 +62,8 @@ exports.getAllCollaborators = async (req, res) => {
     res.status(500).json({ message: 'Error al obtener colaboradores', error: error.message });
   }
 };
-// Obtener todos los colaboradores con paginación
+
+// Obtener todos los colaboradores activos con paginación
 exports.getCollaborators = async (req, res) => {
   try {
     const { page: pageParam, pageSize: pageSizeParam } = req.query;
@@ -76,11 +77,11 @@ exports.getCollaborators = async (req, res) => {
       });
     }
 
-    // Consulta a la base de datos SIN filtrar por "active"
+    // Consulta a la base de datos con paginación
     const { count, rows: collaborators } = await Collaborator.findAndCountAll({
+      where: { active: true }, // Filtro fijo para colaboradores activos
       limit: pageSize,
-      offset: (page - 1) * pageSize,
-      order: [['createdAt', 'DESC']]
+      offset: (page - 1) * pageSize
     });
 
     res.status(200).json({
