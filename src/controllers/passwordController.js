@@ -2,9 +2,12 @@ const { body, validationResult } = require('express-validator');
 const { User, Account, Session, PasswordStatus, PasswordHistory, PasswordRecovery } = require('../models/Associations');
 const authService = require('../services/authService');
 const userService = require('../services/userServices');
-const emailService = require('../services/emailService');
+const EmailService = require('../services/emailService'); // Importamos la clase directamente
 const loggerUtils = require('../utils/loggerUtils');
 const authUtils = require('../utils/authUtils');
+
+// Instanciamos el servicio de email
+const emailService = new EmailService();
 
 // ** GESTION DE CONTRASEÑAS **
 
@@ -79,7 +82,7 @@ exports.changePassword = [
         emailResult = await emailService.sendPasswordChangeNotification(user.email);
         if (!emailResult.success) {
           loggerUtils.logUserActivity(userId, 'password_change_notification_failed', 'Fallo al enviar notificación de cambio de contraseña');
-          console.error('Error al enviar notificación de cambio de contraseña:', emailResult.messageId);
+          console.error('Error al enviar notificación de cambio de contraseña:', emailResult.messageId || 'No se recibió información del error');
         }
       }
 
@@ -142,7 +145,10 @@ exports.initiatePasswordRecovery = async (req, res) => {
     const emailResult = await emailService.sendOTPEmail(user.email, recoveryToken);
     if (!emailResult.success) {
       loggerUtils.logUserActivity(user.user_id, 'password_recovery_email_failed', 'Fallo al enviar OTP de recuperación');
-      return res.status(500).json({ message: 'Error al enviar el código de recuperación.', error: emailResult.messageId });
+      return res.status(500).json({ 
+        message: 'Error al enviar el código de recuperación.', 
+        error: emailResult.messageId || 'No se recibió información del error' 
+      });
     }
 
     res.status(200).json({
@@ -306,7 +312,7 @@ exports.resetPassword = [
       const emailResult = await emailService.sendPasswordChangeNotification(user.email);
       if (!emailResult.success) {
         loggerUtils.logUserActivity(user.user_id, 'password_reset_notification_failed', 'Fallo al enviar notificación de cambio de contraseña');
-        console.error('Error al enviar notificación de cambio de contraseña:', emailResult.messageId);
+        console.error('Error al enviar notificación de cambio de contraseña:', emailResult.messageId || 'No se recibió información del error');
       }
 
       // Registrar el cambio de contraseña exitoso
