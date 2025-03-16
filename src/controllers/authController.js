@@ -2,10 +2,10 @@
 logout, and two-factor authentication (2FA) using OTP (One-Time Password). Here is a summary of the
 main functionalities: */
 const { body, validationResult } = require('express-validator');
-const { User, Account, Session, TwoFactorConfig, PasswordStatus } = require('../models/Associations');
+const { User, Account, Session, TwoFactorConfig, PasswordStatus, CommunicationPreference } = require('../models/Associations');
 const Config = require('../models/Systemconfig');
 const authService = require('../services/authService');
-const EmailService = require('../services/emailService'); // Importamos la clase directamente
+const EmailService = require('../services/emailService');
 const loggerUtils = require('../utils/loggerUtils');
 const authUtils = require('../utils/authUtils');
 const crypto = require('crypto');
@@ -14,6 +14,7 @@ require('dotenv').config();
 
 // Instanciamos el servicio de email
 const emailService = new EmailService();
+
 // ** GESTION DE USUARIOS **
 
 // Registro de usuarios
@@ -67,6 +68,21 @@ exports.register = [
         last_change_date: new Date(),
       });
 
+      // Crear las preferencias de comunicación por defecto
+      await CommunicationPreference.create({
+        user_id: newUser.user_id,
+        methods: ['email'], // Valor por defecto obligatorio
+        categories: {
+          special_offers: true,
+          event_reminders: true,
+          news_updates: true,
+          order_updates: true,
+          urgent_orders: false,
+          design_reviews: true,
+          stock_alerts: false
+        }
+      });
+
       // Generar token de verificación
       const verificationToken = crypto.randomBytes(32).toString('hex');
 
@@ -92,7 +108,7 @@ exports.register = [
         loggerUtils.logUserActivity(newUser.user_id, 'email_verification_failed', `Fallo al enviar correo de verificación a ${newUser.email}`);
         return res.status(500).json({
           message: 'Usuario registrado, pero fallo al enviar el correo de verificación.',
-          error: emailResult.message || 'No se recibió información del error',
+          error: emailResult.messageId || 'No se recibió información del error',
         });
       }
 
