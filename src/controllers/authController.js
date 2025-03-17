@@ -71,16 +71,7 @@ exports.register = [
       // Crear las preferencias de comunicación por defecto
       await CommunicationPreference.create({
         user_id: newUser.user_id,
-        methods: ['email'], // Valor por defecto obligatorio
-        categories: {
-          special_offers: true,
-          event_reminders: true,
-          news_updates: true,
-          order_updates: true,
-          urgent_orders: false,
-          design_reviews: true,
-          stock_alerts: false
-        }
+        methods: ['email']
       });
 
       // Generar token de verificación
