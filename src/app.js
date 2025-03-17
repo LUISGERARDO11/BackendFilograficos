@@ -32,6 +32,7 @@ const productAtributeRoutes = require('./routes/productAttributeRoutes');
 const productRoutes = require('./routes/productRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const communicationRoutes = require('./routes/communicationRoutes');
+const bannerRoutes = require('./routes/bannerRoutes');
 //Hailie
 const collaboratorRoutes = require('./routes/collaboratorsRoutes');
 const categoryRoutes = require('./routes/categoriesRoutes');
@@ -92,6 +93,7 @@ app.use('/api/product-attributes', productAtributeRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/communication', communicationRoutes);
+app.use('/api/banners', bannerRoutes);
 // Hailie
 app.use('/api/collaborators', collaboratorRoutes);
 app.use('/api/categories', categoryRoutes);

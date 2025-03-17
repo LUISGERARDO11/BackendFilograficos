@@ -6,6 +6,7 @@ process, the Promise is rejected with the error. Finally, the function is export
 module. */
 const cloudinary = require('../config/cloudinaryConfig');
 
+// Función para subir archivos a cloduinary sin carpeta
 const uploadToCloudinary = (fileBuffer) => {
     return new Promise((resolve, reject) => {
       cloudinary.uploader.upload_stream((error, result) => {
@@ -17,7 +18,7 @@ const uploadToCloudinary = (fileBuffer) => {
     });
 };
 
-// Función para subir archivos a Cloudinary
+// Función para subir archivos de documentos regulatorios a Cloudinary sin carpeta
 const uploadFilesToCloudinary = (fileBuffer, options = {}) => {
   return new Promise((resolve, reject) => {
     cloudinary.uploader
@@ -35,6 +36,7 @@ const uploadFilesToCloudinary = (fileBuffer, options = {}) => {
   });
 };
 
+// Función paa subir imagenes de productos a la carpeta ProductImages 
 const uploadProductImagesToCloudinary = (fileBuffer, fileName = '') => {
   return new Promise((resolve, reject) => {
     const options = {
@@ -56,8 +58,50 @@ const uploadProductImagesToCloudinary = (fileBuffer, fileName = '') => {
   });
 };
 
+const uploadBannerToCloudinary = (fileBuffer, fileName = '') => {
+  return new Promise((resolve, reject) => {
+    const options = {
+      folder: 'Banners',
+      resource_type: 'image',
+      public_id: fileName.split('.')[0] || `banner_${Date.now()}`,
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+      transformation: [
+        { width: 1920, height: 1080, crop: 'fill' },
+        { quality: 'auto', format: 'webp' }
+      ]
+    };
+
+    cloudinary.uploader
+      .upload_stream(options, (error, result) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve({
+            secure_url: result.secure_url,
+            public_id: result.public_id // Devolvemos también el public_id
+          });
+        }
+      })
+      .end(fileBuffer);
+  });
+};
+
+const deleteFromCloudinary = (publicId) => {
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader.destroy(publicId, (error, result) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve(result); // Resultado de la eliminación (ej. { result: 'ok' })
+      }
+    });
+  });
+};
+
 module.exports = {
     uploadToCloudinary,
     uploadFilesToCloudinary,
-    uploadProductImagesToCloudinary
+    uploadProductImagesToCloudinary,
+    uploadBannerToCloudinary,
+    deleteFromCloudinary
 };
