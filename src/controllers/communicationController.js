@@ -1,4 +1,4 @@
-const { CommunicationPreference, NotificationLog } = require('../models/Associations'); // Importamos los modelos desde Associations.js
+const { CommunicationPreference, NotificationLog, PushSubscription } = require('../models/Associations'); // Añadimos PushSubscription
 const loggerUtils = require('../utils/loggerUtils');
 
 // Controlador para obtener las preferencias de comunicación de un usuario
@@ -11,18 +11,18 @@ exports.getCommunicationPreferences = async (req, res) => {
     });
 
     if (!preferences) {
-      // Si no existe, devolvemos las preferencias por defecto
+      // Si no existe, devolvemos las preferencias por defecto con categorías en false
       return res.status(200).json({
         success: true,
         preferences: {
-          methods: ['email'], // Email siempre obligatorio por defecto
+          methods: ['email'],
           categories: {
-            special_offers: true,
-            event_reminders: true,
-            news_updates: true,
-            order_updates: true,
+            special_offers: false,
+            event_reminders: false,
+            news_updates: false,
+            order_updates: false,
             urgent_orders: false,
-            design_reviews: true,
+            design_reviews: false,
             stock_alerts: false
           }
         }
@@ -62,26 +62,45 @@ exports.updateCommunicationPreferences = async (req, res) => {
     // Validar que 'email' siempre esté presente en methods
     const updatedMethods = Array.isArray(methods) && methods.length > 0
       ? ['email', ...methods.filter(method => method === 'push')] // Solo permitimos 'push' como adicional
-      : ['email']; // Si no se proporciona methods, usamos el valor por defecto
+      : ['email'];
 
-    // Validar que categories sea un objeto y no esté vacío
-    const updatedCategories = categories && typeof categories === 'object' && Object.keys(categories).length > 0
-      ? categories
-      : {
-          special_offers: true,
-          event_reminders: true,
-          news_updates: true,
-          order_updates: true,
-          urgent_orders: false,
-          design_reviews: true,
-          stock_alerts: false
-        };
+    // Validar que categories sea un objeto válido
+    const defaultCategories = {
+      special_offers: false,
+      event_reminders: false,
+      news_updates: false,
+      order_updates: false,
+      urgent_orders: false,
+      design_reviews: false,
+      stock_alerts: false
+    };
+    const updatedCategories = categories && typeof categories === 'object'
+      ? { ...defaultCategories, ...categories } // Mezclamos con valores por defecto
+      : defaultCategories;
+
+    // Verificar consistencia con PushSubscription
+    const hasPush = updatedMethods.includes('push');
+    const pushSubscriptions = await PushSubscription.findAll({ where: { user_id: userId } });
+
+    if (hasPush && pushSubscriptions.length === 0) {
+      // Si se intenta incluir 'push' pero no hay suscripciones, rechazamos la actualización
+      return res.status(400).json({
+        success: false,
+        message: 'No se puede incluir "push" en methods sin una suscripción activa en PushSubscription'
+      });
+    }
+
+    if (!hasPush && pushSubscriptions.length > 0) {
+      // Si 'push' no está en methods pero hay suscripciones, las eliminamos
+      await PushSubscription.destroy({ where: { user_id: userId } });
+      loggerUtils.logUserActivity(userId, 'remove_push_subscriptions', `Suscripciones push eliminadas para el usuario ${userId} al quitar "push" de methods`);
+    }
 
     if (preferences) {
       await preferences.update({
         methods: updatedMethods,
         categories: updatedCategories,
-        updated_at: new Date() // Actualizamos el timestamp manualmente para forzar la actualización
+        updated_at: new Date()
       });
     } else {
       preferences = await CommunicationPreference.create({

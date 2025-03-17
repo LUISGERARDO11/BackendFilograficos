@@ -25,12 +25,12 @@ const CommunicationPreference = sequelize.define('CommunicationPreference', {
   categories: {
     type: DataTypes.JSON,
     defaultValue: {
-      special_offers: true,
-      event_reminders: true,
-      news_updates: true,
-      order_updates: true,
+      special_offers: false,
+      event_reminders: false,
+      news_updates: false,
+      order_updates: false,
       urgent_orders: false,
-      design_reviews: true,
+      design_reviews: false,
       stock_alerts: false
     }
   }
