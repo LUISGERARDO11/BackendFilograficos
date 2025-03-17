@@ -1,0 +1,246 @@
+const { body, param, validationResult } = require('express-validator');
+const { Banner } = require('../models/Associations');
+const loggerUtils = require('../utils/loggerUtils');
+const { uploadBannerToCloudinary, deleteFromCloudinary } = require('../services/cloudinaryService');
+
+// Crear banners (subir de 1 a 5 imágenes)
+exports.createBanners = [
+  // Validaciones
+  body('title').trim().notEmpty().withMessage('El título es obligatorio'),
+  body('description').optional().trim().isString().withMessage('La descripción debe ser una cadena de texto'),
+  body('cta_text').optional().trim().isString().withMessage('El texto del CTA debe ser una cadena de texto'),
+  body('cta_link').optional().trim().isString().withMessage('El enlace del CTA debe ser una cadena de texto'),
+  body('is_active').optional().isBoolean().withMessage('El estado debe ser un valor booleano'),
+
+  async (req, res) => {
+    const userId = req.user.user_id; // Proveniente de authMiddleware
+
+    try {
+      // Verificar errores de validación
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, message: 'Errores de validación', errors: errors.array() });
+      }
+
+      const { title, description, cta_text, cta_link, is_active } = req.body;
+
+      // Validar imágenes (mínimo 1, máximo 5)
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ success: false, message: 'Debe subir al menos una imagen para el banner' });
+      }
+      if (req.files.length > 5) {
+        return res.status(400).json({ success: false, message: 'No se pueden subir más de 5 imágenes a la vez' });
+      }
+
+      // Contar banners existentes
+      const totalBanners = await Banner.count();
+      const newBannersCount = req.files.length;
+      if (totalBanners + newBannersCount > 5) {
+        return res.status(400).json({
+          success: false,
+          message: `No se pueden registrar más de 5 banners en total. Actualmente hay ${totalBanners} banners`
+        });
+      }
+
+      // Subir imágenes a Cloudinary y crear registros
+      const banners = [];
+      for (let i = 0; i < req.files.length; i++) {
+        const file = req.files[i];
+        const result = await uploadBannerToCloudinary(file.buffer, file.originalname);
+        const order = totalBanners + i + 1; // Asignar orden secuencial
+
+        const banner = await Banner.create({
+          title,
+          description: description || null,
+          image_url: result.secure_url,
+          public_id: result.public_id,
+          cta_text: cta_text || null,
+          cta_link: cta_link || null,
+          order,
+          is_active: is_active === 'true' || is_active === true || false, // Convertir string/booolean
+          created_by: userId
+        });
+
+        banners.push(banner);
+      }
+
+      loggerUtils.logUserActivity(userId, 'create_banners', `Se crearon ${banners.length} banners por el usuario ${userId}`);
+      res.status(201).json({
+        success: true,
+        message: 'Banners creados exitosamente',
+        banners
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al crear los banners',
+        error: error.message
+      });
+    }
+  }
+];
+
+// Obtener todos los banners (para admin)
+exports.getAllBanners = async (req, res) => {
+  try {
+    const banners = await Banner.findAll({
+      order: [['order', 'ASC']],
+      attributes: { exclude: ['created_by', 'updated_by'] }
+    });
+
+    res.status(200).json({
+      success: true,
+      banners
+    });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener los banners',
+      error: error.message
+    });
+  }
+};
+
+// Obtener banners activos (para frontend público)
+exports.getActiveBanners = async (req, res) => {
+  try {
+    const banners = await Banner.findAll({
+      where: { is_active: true },
+      order: [['order', 'ASC']],
+      attributes: ['banner_id', 'title', 'description', 'image_url', 'cta_text', 'cta_link', 'order']
+    });
+
+    res.status(200).json({
+      success: true,
+      banners
+    });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener los banners activos',
+      error: error.message
+    });
+  }
+};
+
+// Actualizar un banner
+exports.updateBanner = [
+  // Validaciones
+  param('bannerId').isInt({ min: 1 }).withMessage('El ID del banner debe ser un número entero positivo'),
+  body('title').optional().trim().notEmpty().withMessage('El título no puede estar vacío'),
+  body('description').optional().trim().isString().withMessage('La descripción debe ser una cadena de texto'),
+  body('cta_text').optional().trim().isString().withMessage('El texto del CTA debe ser una cadena de texto'),
+  body('cta_link').optional().trim().isString().withMessage('El enlace del CTA debe ser una cadena de texto'),
+  body('is_active').optional().isBoolean().withMessage('El estado debe ser un valor booleano'),
+  body('order').optional().isInt({ min: 1, max: 5 }).withMessage('El orden debe ser un número entre 1 y 5'),
+
+  async (req, res) => {
+    const { bannerId } = req.params;
+    const userId = req.user.user_id;
+    const { title, description, cta_text, cta_link, is_active, order } = req.body;
+
+    try {
+      // Verificar errores de validación
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, message: 'Errores de validación', errors: errors.array() });
+      }
+
+      const banner = await Banner.findByPk(bannerId);
+      if (!banner) {
+        return res.status(404).json({ success: false, message: 'Banner no encontrado' });
+      }
+
+      // Validar imágenes si se subieron (máximo 1 en actualización)
+      if (req.files && req.files.length > 1) {
+        return res.status(400).json({ success: false, message: 'Solo se puede subir una imagen al actualizar un banner' });
+      }
+
+      // Si se subió una nueva imagen, eliminar la anterior de Cloudinary y subir la nueva
+      if (req.files && req.files.length === 1) {
+        await deleteFromCloudinary(banner.public_id);
+        const result = await uploadBannerToCloudinary(req.files[0].buffer, req.files[0].originalname);
+        banner.image_url = result.secure_url;
+        banner.public_id = result.public_id;
+      }
+
+      // Actualizar campos si se proporcionan
+      if (title) banner.title = title;
+      if (description !== undefined) banner.description = description;
+      if (cta_text !== undefined) banner.cta_text = cta_text;
+      if (cta_link !== undefined) banner.cta_link = cta_link;
+      if (is_active !== undefined) banner.is_active = is_active === 'true' || is_active === true;
+      if (order !== undefined) banner.order = parseInt(order, 10);
+
+      banner.updated_by = userId;
+      await banner.save();
+
+      loggerUtils.logUserActivity(userId, 'update_banner', `Banner actualizado: ID ${bannerId}`);
+      res.status(200).json({
+        success: true,
+        message: 'Banner actualizado exitosamente',
+        banner
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al actualizar el banner',
+        error: error.message
+      });
+    }
+  }
+];
+
+// Eliminar un banner (eliminación física)
+exports.deleteBanner = [
+  // Validaciones
+  param('bannerId').isInt({ min: 1 }).withMessage('El ID del banner debe ser un número entero positivo'),
+
+  async (req, res) => {
+    const { bannerId } = req.params;
+    const userId = req.user.user_id;
+
+    try {
+      // Verificar errores de validación
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, message: 'Errores de validación', errors: errors.array() });
+      }
+
+      const banner = await Banner.findByPk(bannerId);
+      if (!banner) {
+        return res.status(404).json({ success: false, message: 'Banner no encontrado' });
+      }
+
+      // Eliminar imagen de Cloudinary
+      await deleteFromCloudinary(banner.public_id);
+
+      // Eliminar registro de la base de datos
+      await banner.destroy();
+
+      // Reordenar los banners restantes
+      const remainingBanners = await Banner.findAll({ order: [['order', 'ASC']] });
+      for (let i = 0; i < remainingBanners.length; i++) {
+        remainingBanners[i].order = i + 1;
+        await remainingBanners[i].save();
+      }
+
+      loggerUtils.logUserActivity(userId, 'delete_banner', `Banner eliminado: ID ${bannerId}`);
+      res.status(200).json({
+        success: true,
+        message: 'Banner eliminado exitosamente'
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al eliminar el banner',
+        error: error.message
+      });
+    }
+  }
+];

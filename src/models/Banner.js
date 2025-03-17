@@ -20,6 +20,10 @@ const Banner = sequelize.define('Banner', {
     type: DataTypes.STRING(255),
     allowNull: false
   },
+  public_id: { // Nuevo campo para almacenar el public_id de Cloudinary
+    type: DataTypes.STRING(255),
+    allowNull: false
+  },
   cta_text: {
     type: DataTypes.STRING(100),
     allowNull: true
@@ -28,37 +32,29 @@ const Banner = sequelize.define('Banner', {
     type: DataTypes.STRING(255),
     allowNull: true
   },
-  priority: {
+  order: {
     type: DataTypes.INTEGER,
     defaultValue: 1,
     allowNull: false
   },
-  status: {
-    type: DataTypes.ENUM('active', 'inactive'), 
-    defaultValue: 'active' 
-  },
-  start_date: {
-    type: DataTypes.DATE,
-    allowNull: false
-  },
-  end_date: {
-    type: DataTypes.DATE,
+  is_active: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
     allowNull: false
   }
 }, {
   tableName: 'banners',
-  timestamps: true, // Sequelize manejará automáticamente createdAt y updatedAt
+  timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
   indexes: [
     {
-      fields: ['status']
+      fields: ['is_active'],
+      name: 'idx_is_active'
     },
     {
-      fields: ['start_date']
-    },
-    {
-      fields: ['end_date']
+      fields: ['order'],
+      name: 'idx_order'
     }
   ]
 });
