@@ -54,6 +54,11 @@ const SystemConfig = sequelize.define('SystemConfig', {
     type: DataTypes.INTEGER,
     allowNull: false,
     defaultValue: 30
+  },
+  show_banners_to_users: { // Nuevo campo
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false // Por defecto, los banners no se muestran
   }
 }, {
   tableName: 'systemconfig',
