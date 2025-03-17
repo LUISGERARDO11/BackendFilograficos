@@ -46,6 +46,7 @@ const PushSubscription = require('./PushSubscription');
 const NotificationLog = require('./NotificationLog');
 const CategoryAttributes = require('./CategoryAttributes');
 const CommunicationPreference = require('./CommunicationPreference');
+const SystemConfig = require('./Systemconfig');
 
 // Relaciones de Usuarios
 User.hasOne(Account, { foreignKey: 'user_id' });
@@ -278,5 +279,6 @@ module.exports = {
   PushSubscription,
   NotificationLog,
   CategoryAttributes,
-  CommunicationPreference
+  CommunicationPreference,
+  SystemConfig
 };

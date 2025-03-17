@@ -16,7 +16,7 @@ router.post(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  uploadBannerImages, // Configuración de Multer para 1-5 imágenes
+  uploadBannerImages,
   bannerController.createBanners
 );
 
@@ -41,7 +41,7 @@ router.put(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  uploadBannerImages, // Configuración de Multer para 1 imagen (opcional en actualización)
+  uploadBannerImages,
   bannerController.updateBanner
 );
 
@@ -52,6 +52,23 @@ router.delete(
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
   bannerController.deleteBanner
+);
+
+// Nuevas rutas para visibilidad
+router.put(
+  '/visibility',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  bannerController.toggleBannersVisibility
+);
+
+router.get(
+  '/visibility',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  bannerController.getBannersVisibility
 );
 
 module.exports = router;
