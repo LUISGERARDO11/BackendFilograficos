@@ -34,6 +34,12 @@ router.get(
   validateGetProducts, // Validación de parámetros de consulta
   productCatalogController.getAllProducts
 );
+// Ruta para obtener todos los productos para publico (HAILIE)
+router.get(
+  '/catalogPublico',
+  authMiddleware,
+  productCatalogController.getPublicProducts
+);
 
 // Ruta para eliminar lógicamente un producto (solo administradores)
 router.delete(
