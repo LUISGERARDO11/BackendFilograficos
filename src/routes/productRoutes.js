@@ -39,7 +39,12 @@ router.get(
   '/catalogPublico',
   productCatalogController.getPublicProducts
 );
-
+// Ruta para obtener todos los productos para autenticados (HAILIE)
+router.get(
+  '/catalogAuth',
+  authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,
+  productCatalogController.getAuthenticatedProducts
+);
 // Ruta para eliminar lógicamente un producto (solo administradores)
 router.delete(
   '/:product_id',
