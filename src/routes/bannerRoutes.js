@@ -10,6 +10,24 @@ const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 const uploadBannerImages = require('../config/multerBannerConfig');
 
+// Cambiar visibilidad de los banners para los usuarios (ESTÁTICA, DEFINIR PRIMERO)
+router.put(
+  '/visibility',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  bannerController.toggleBannersVisibility
+);
+
+// Obtener la configuración de visibilidad de banners (ESTÁTICA)
+router.get(
+  '/visibility',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  bannerController.getBannersVisibility
+);
+
 // Ruta para crear banners (solo administradores)
 router.post(
   '/',
@@ -52,23 +70,6 @@ router.delete(
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
   bannerController.deleteBanner
-);
-
-// Nuevas rutas para visibilidad
-router.put(
-  '/visibility',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  roleMiddleware(['administrador']),
-  bannerController.toggleBannersVisibility
-);
-
-router.get(
-  '/visibility',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  roleMiddleware(['administrador']),
-  bannerController.getBannersVisibility
 );
 
 module.exports = router;
