@@ -273,6 +273,36 @@ exports.getAllProducts = async (req, res) => {
   }
 };
 
+// Obtener todos los productos activos del catálogo para publico (HAILIE)
+exports.getPublicProducts = async (req, res) => {
+  try {
+    const { page = 1, pageSize = 10, sort } = req.query;
+    const { count, rows: products } = await Product.findAndCountAll({
+      where: { status: 'active' },
+      attributes: ['product_id', 'name', [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'], [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price']],
+      include: [{ model: Category, attributes: ['name'] }, { model: ProductVariant, attributes: [] }],
+      group: ['Product.product_id', 'Product.name', 'Category.category_id', 'Category.name'],
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      order: sort ? [sort.split(':')] : [['product_id', 'ASC']],
+      subQuery: false
+    });
+
+    const formattedProducts = products.map(p => ({
+      product_id: p.product_id,
+      name: p.name,
+      min_price: parseFloat(p.get('min_price')) || 0,
+      max_price: parseFloat(p.get('max_price')) || 0,
+      category_name: p.Category?.name || null
+    }));
+
+    res.status(200).json({ products: formattedProducts, total: count.length, page, pageSize });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener productos públicos', error: error.message });
+  }
+};
+
 // Eliminar lógicamente un producto
 exports.deleteProduct = async (req, res) => {
   const { product_id } = req.params;
