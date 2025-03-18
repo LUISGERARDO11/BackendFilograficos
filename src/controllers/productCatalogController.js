@@ -276,15 +276,44 @@ exports.getAllProducts = async (req, res) => {
 // Obtener todos los productos activos del catálogo para publico (HAILIE)
 exports.getPublicProducts = async (req, res) => {
   try {
-    const { page = 1, pageSize = 10, sort } = req.query;
+    const { page: pageParam = 1, pageSize: pageSizeParam = 10, sort } = req.query;
+    const page = parseInt(pageParam, 10);
+    const pageSize = parseInt(pageSizeParam, 10);
+
+    // Validar parámetros de paginación
+    if (isNaN(page) || isNaN(pageSize) || page < 1 || pageSize < 1) {
+      return res.status(400).json({ message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' });
+    }
+
+    // Manejar ordenamiento
+    let order = [['product_id', 'ASC']];
+    if (sort) {
+      const sortParams = sort.split(':');
+      if (sortParams.length === 2) {
+        const [column, direction] = sortParams;
+        const validColumns = ['product_id', 'name', 'min_price', 'max_price']; // Ajusta según las columnas disponibles
+        const validDirections = ['ASC', 'DESC'];
+        if (validColumns.includes(column) && validDirections.includes(direction.toUpperCase())) {
+          order = [[column, direction.toUpperCase()]];
+        } else {
+          return res.status(400).json({ message: 'Columna o dirección de ordenamiento inválida' });
+        }
+      }
+    }
+
     const { count, rows: products } = await Product.findAndCountAll({
       where: { status: 'active' },
-      attributes: ['product_id', 'name', [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'], [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price']],
+      attributes: [
+        'product_id',
+        'name',
+        [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
+        [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price']
+      ],
       include: [{ model: Category, attributes: ['name'] }, { model: ProductVariant, attributes: [] }],
       group: ['Product.product_id', 'Product.name', 'Category.category_id', 'Category.name'],
+      order,
       limit: pageSize,
       offset: (page - 1) * pageSize,
-      order: sort ? [sort.split(':')] : [['product_id', 'ASC']],
       subQuery: false
     });
 
@@ -296,7 +325,13 @@ exports.getPublicProducts = async (req, res) => {
       category_name: p.Category?.name || null
     }));
 
-    res.status(200).json({ products: formattedProducts, total: count.length, page, pageSize });
+    res.status(200).json({
+      message: 'Productos obtenidos exitosamente',
+      products: formattedProducts,
+      total: count.length,
+      page,
+      pageSize
+    });
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener productos públicos', error: error.message });
