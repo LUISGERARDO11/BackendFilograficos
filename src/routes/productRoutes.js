@@ -37,7 +37,6 @@ router.get(
 // Ruta para obtener todos los productos para publico (HAILIE)
 router.get(
   '/catalogPublico',
-  authMiddleware,
   productCatalogController.getPublicProducts
 );
 
