@@ -31,6 +31,10 @@ router.get('/',
     roleMiddleware(['administrador']),
     collaboratorController.getAllCollaborators
 );
+// Obtiene todos los colaboradores para publico HAILIE
+router.get('/public',
+    collaboratorController.getAllCollaborators
+);
 // Obtiene todos los colaboradores con paginacion.
 router.get('/pag',
     authMiddleware,
