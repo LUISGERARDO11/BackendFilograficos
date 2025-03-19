@@ -5,6 +5,7 @@ const router = express.Router();
 const productCatalogController = require('../controllers/productCatalogController');
 const productStockController = require('../controllers/productStockController'); // Nuevo controlador
 const productPriceController = require('../controllers/productPriceController');
+const publicProductCatalogController = require('../controllers/publicProductCatalogController');//(HAILIE)
 
 // Importar middlewares
 const authMiddleware = require('../middlewares/authMiddleware');
@@ -111,5 +112,14 @@ router.put(
   roleMiddleware(['administrador']),
   productPriceController.updateVariantPrice
 );
+//(HAILIE)
+//Rutas para visitantes (públicas):
+router.get(
+  '/catalog',
+  publicProductCatalogController.getAllProducts);
+
+router.get(
+  '/catalog/:product_id',
+  publicProductCatalogController.getProductById);
 
 module.exports = router;
