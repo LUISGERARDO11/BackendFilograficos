@@ -8,12 +8,12 @@ const PriceHistory = sequelize.define('PriceHistory', {
     autoIncrement: true,
     allowNull: false
   },
-  product_id: {
+  variant_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'products',
-      key: 'product_id'
+      model: 'product_variants', // Cambiado de 'products' a 'product_variants'
+      key: 'variant_id'
     }
   },
   previous_price: {
@@ -21,7 +21,7 @@ const PriceHistory = sequelize.define('PriceHistory', {
     allowNull: false
   },
   new_price: {
-    type: DataTypes.DECIMAL(10,2),
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: false
   },
   change_type: {
@@ -49,8 +49,14 @@ const PriceHistory = sequelize.define('PriceHistory', {
   tableName: 'price_history',
   timestamps: false,
   indexes: [
-    { fields: ['product_id'] },
-    { fields: ['change_date'] }
+    { 
+      fields: ['variant_id'],
+      name: 'idx_variant_id'
+    },
+    { 
+      fields: ['change_date'],
+      name: 'idx_change_date'
+    }
   ]
 });
 

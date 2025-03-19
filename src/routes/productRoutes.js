@@ -4,6 +4,7 @@ const router = express.Router();
 // Importar controladores
 const productCatalogController = require('../controllers/productCatalogController');
 const productStockController = require('../controllers/productStockController'); // Nuevo controlador
+const productPriceController = require('../controllers/productPriceController');
 
 // Importar middlewares
 const authMiddleware = require('../middlewares/authMiddleware');
@@ -82,6 +83,33 @@ router.put(
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
   productStockController.updateStock // Validaciones ya están en el controlador
+);
+
+// Ruta para obtener todas las variantes con filtros y ordenamiento (requiere autenticación y rol de administrador)
+router.get(
+  '/price',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productPriceController.getAllVariants
+);
+
+// Ruta para obtener una variante por ID (requiere autenticación y rol de administrador)
+router.get(
+  '/price/:id',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productPriceController.getVariantById
+);
+
+// Ruta para actualizar el precio de una variante (requiere autenticación y rol de administrador)
+router.put(
+  '/price/:id',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productPriceController.updateVariantPrice
 );
 
 module.exports = router;
