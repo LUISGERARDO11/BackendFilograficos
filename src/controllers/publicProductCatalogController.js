@@ -99,7 +99,6 @@ exports.getAllProducts = async (req, res) => {
         res.status(500).json({ message: 'Error al obtener los productos', error: error.message });
     }
 };
-
 exports.getProductById = async (req, res) => {
     try {
         const { product_id } = req.params;
