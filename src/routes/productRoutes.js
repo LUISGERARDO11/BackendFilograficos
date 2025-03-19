@@ -112,6 +112,16 @@ router.put(
   roleMiddleware(['administrador']),
   productPriceController.updateVariantPrice
 );
+
+// Ruta para obtener el historial de precios de una variante (requiere autenticación y rol de administrador)
+router.get(
+  '/price/history/:variant_id',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productPriceController.getPriceHistoryByVariantId
+);
+
 //(HAILIE)
 // Rutas para visitantes (públicas):
 router.get(

@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const { body, query, param, validationResult } = require('express-validator');
-const { Product, ProductVariant, ProductImage, PriceHistory, Category } = require('../models/Associations');
+const { Product, ProductVariant, ProductImage, PriceHistory, Category, User } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 
 // Middleware de validación
@@ -35,6 +35,10 @@ const validateUpdateVariantPrice = [
   body('profit_margin')
     .isFloat({ min: 0 })
     .withMessage('El margen de ganancia debe ser un número positivo')
+];
+
+const validateGetPriceHistory = [
+    param('variant_id').isInt({ min: 1 }).withMessage('El ID de la variante debe ser un entero positivo')
 ];
 
 // Controlador para obtener todas las variantes
@@ -229,6 +233,87 @@ exports.getVariantById = [
     } catch (error) {
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error al obtener la variante', error: error.message });
+    }
+  }
+];
+
+// Método para obtener el historial de precios de una variante
+exports.getPriceHistoryByVariantId = [
+  validateGetPriceHistory,
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
+      }
+
+      const { variant_id } = req.params;
+
+      // Verificar si la variante existe
+      const variant = await ProductVariant.findByPk(variant_id);
+      if (!variant) {
+        return res.status(404).json({ message: 'Variante no encontrada' });
+      }
+
+      // Obtener el historial de precios con información del usuario
+      const priceHistory = await PriceHistory.findAll({
+        where: { variant_id },
+        attributes: ['price_history_id', 'production_cost', 'profit_margin', 'calculated_price', 'change_date'],
+        order: [['change_date', 'DESC']],
+        include: [
+          {
+            model: ProductVariant,
+            attributes: ['sku'],
+            include: [
+              {
+                model: Product,
+                attributes: ['name']
+              }
+            ]
+          },
+          {
+            model: User,
+            attributes: ['user_id', 'name', 'email'] // Campos del usuario que queremos incluir
+          }
+        ]
+      });
+
+      if (!priceHistory.length) {
+        return res.status(200).json({
+          message: 'No se encontraron cambios de precio para esta variante',
+          history: []
+        });
+      }
+
+      // Formatear la respuesta
+      const formattedHistory = priceHistory.map(entry => ({
+        price_history_id: entry.price_history_id,
+        product_name: entry.ProductVariant.Product.name,
+        sku: entry.ProductVariant.sku,
+        production_cost: parseFloat(entry.production_cost).toFixed(2),
+        profit_margin: parseFloat(entry.profit_margin).toFixed(2),
+        calculated_price: parseFloat(entry.calculated_price).toFixed(2),
+        change_date: entry.change_date.toLocaleDateString('es-MX', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+        changed_by: {
+          user_id: entry.User.user_id,
+          name: entry.User.name,
+          email: entry.User.email
+        }
+      }));
+
+      res.status(200).json({
+        message: 'Historial de precios obtenido exitosamente',
+        history: formattedHistory
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al obtener el historial de precios', error: error.message });
     }
   }
 ];
