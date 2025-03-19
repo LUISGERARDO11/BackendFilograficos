@@ -6,16 +6,19 @@ const { Op } = require('sequelize');
 
 exports.getAllProducts = async (req, res) => {
     try {
+        // Convertir page y pageSize a números enteros
         const page = parseInt(req.query.page, 10) || 1;
         const pageSize = parseInt(req.query.pageSize, 10) || 10;
-        const { sort, categoryId, search, minPrice, maxPrice, brand, attributes } = req.query;
+        const { sort, categoryId, search } = req.query;
 
+        // Validar page y pageSize
         if (page < 1 || pageSize < 1) {
             return res.status(400).json({ message: 'Parámetros de paginación inválidos' });
         }
 
         const offset = (page - 1) * pageSize;
 
+        // Configurar ordenamiento
         let order = [['product_id', 'ASC']];
         if (sort) {
             const sortParams = sort.split(',').map(param => param.trim().split(':'));
@@ -32,35 +35,13 @@ exports.getAllProducts = async (req, res) => {
             });
         }
 
+        // Construir cláusula WHERE
         const whereClause = { status: 'active' };
         if (categoryId) {
             whereClause.category_id = parseInt(categoryId, 10);
         }
         if (search) {
             whereClause.name = { [Op.iLike]: `%${search}%` };
-        }
-
-        const variantWhereClause = {};
-        if (minPrice || maxPrice) {
-            variantWhereClause.calculated_price = {};
-            if (minPrice) {
-                variantWhereClause.calculated_price[Op.gte] = parseFloat(minPrice);
-            }
-            if (maxPrice) {
-                variantWhereClause.calculated_price[Op.lte] = parseFloat(maxPrice);
-            }
-        }
-
-        // Filtrar por atributos (como marca, color, etc.)
-        let attributeConditions = [];
-        if (attributes) {
-            const attributeFilters = JSON.parse(attributes); // Ejemplo: { "brand": ["Nike"], "color": ["Red"] }
-            for (const [attributeName, values] of Object.entries(attributeFilters)) {
-                attributeConditions.push({
-                    '$ProductVariants.ProductAttributeValues.ProductAttribute.attribute_name$': attributeName,
-                    '$ProductVariants.ProductAttributeValues.value$': { [Op.in]: values }
-                });
-            }
         }
 
         // Consulta ajustada
@@ -70,37 +51,19 @@ exports.getAllProducts = async (req, res) => {
                 'product_id',
                 'name',
                 'product_type',
+                // Usar alias claros para las funciones de agregación
                 [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
                 [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
                 [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock']
             ],
             include: [
                 { model: Category, attributes: ['category_id', 'name'] },
-                {
-                    model: ProductVariant,
-                    attributes: [],
-                    where: variantWhereClause,
-                    required: false,
-                    include: [
-                        {
-                            model: ProductAttributeValue,
-                            include: [{ model: ProductAttribute }],
-                            required: attributeConditions.length > 0,
-                            where: attributeConditions.length > 0 ? { [Op.and]: attributeConditions } : undefined
-                        }
-                    ]
-                }
+                { model: ProductVariant, attributes: [], required: false }
             ],
-            group: [
-                'Product.product_id',
-                'Product.name',
-                'Product.product_type',
-                'Category.category_id',
-                'Category.name'
-            ],
+            group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name'],
             order,
-            limit: pageSize,
-            offset,
+            limit: pageSize, // Asegura que sea un número
+            offset: offset,  // Asegura que sea un número
             subQuery: false
         });
 
