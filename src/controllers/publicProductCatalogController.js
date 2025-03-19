@@ -62,23 +62,25 @@ exports.getAllProducts = async (req, res) => {
                 'product_type',
                 [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
                 [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
-                [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock']
+                [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock'],
+                [Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')), 'variantCount']
             ],
             include: [
                 { model: Category, attributes: ['category_id', 'name'] },
                 {
-                  model: ProductVariant,
-                  attributes: [],
-                  where: variantWhereClause,
-                  required: true // Solo productos con variantes que cumplan el filtro
-                },
-                {
-                  model: Collaborator,
-                  attributes: ['collaborator_id', 'name'], // Incluimos el nombre del colaborador
-                  required: false // No requerido, para que funcione incluso si no hay colaborador
-                }
+                    model: ProductVariant,
+                    attributes: [],
+                    where: variantWhereClause,
+                    required: true
+                  },
+                  {
+                    model: Collaborator,
+                    attributes: ['collaborator_id', 'name'],
+                    required: false
+                  }
               ],
             group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name','Collaborator.collaborator_id','Collaborator.name'],
+            having: Product.sequelize.literal('SUM("ProductVariants"."stock") > 0'), // Excluir productos con stock 0
             order,
             limit: pageSize,
             offset: offset,
@@ -100,10 +102,11 @@ exports.getAllProducts = async (req, res) => {
                 min_price: parseFloat(product.get('min_price')) || 0,
                 max_price: parseFloat(product.get('max_price')) || 0,
                 total_stock: parseInt(product.get('total_stock')) || 0,
+                variant_count: parseInt(product.get('variantCount')) || 0,
                 image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null,
-                collaborator: product.Collaborator ? { id: product.Collaborator.collaborator_id, name: product.Collaborator.name } : null 
-            };
-        }));
+                collaborator: product.Collaborator ? { id: product.Collaborator.collaborator_id, name: product.Collaborator.name } : null
+              };
+            }));
 
         res.status(200).json({
             message: 'Productos obtenidos exitosamente',
