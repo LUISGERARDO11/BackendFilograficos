@@ -1,6 +1,6 @@
 // publicProductCatalogController.js
 
-const { Product, ProductVariant, Category, ProductAttributeValue, ProductAttribute, ProductImage, CustomizationOption } = require('../models/Associations');
+const { Product, ProductVariant, Category, Collaborator,ProductAttributeValue, ProductAttribute, ProductImage, CustomizationOption } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');
 
@@ -67,13 +67,18 @@ exports.getAllProducts = async (req, res) => {
             include: [
                 { model: Category, attributes: ['category_id', 'name'] },
                 {
-                    model: ProductVariant,
-                    attributes: [],
-                    where: variantWhereClause,
-                    required: true // Solo productos con variantes que cumplan el filtro
+                  model: ProductVariant,
+                  attributes: [],
+                  where: variantWhereClause,
+                  required: true // Solo productos con variantes que cumplan el filtro
+                },
+                {
+                  model: Collaborator,
+                  attributes: ['collaborator_id', 'name'], // Incluimos el nombre del colaborador
+                  required: false // No requerido, para que funcione incluso si no hay colaborador
                 }
-            ],
-            group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name'],
+              ],
+            group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name','Collaborator.collaborator_id','Collaborator.name'],
             order,
             limit: pageSize,
             offset: offset,
@@ -95,7 +100,8 @@ exports.getAllProducts = async (req, res) => {
                 min_price: parseFloat(product.get('min_price')) || 0,
                 max_price: parseFloat(product.get('max_price')) || 0,
                 total_stock: parseInt(product.get('total_stock')) || 0,
-                image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null
+                image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null,
+                collaborator: product.Collaborator ? { id: product.Collaborator.collaborator_id, name: product.Collaborator.name } : null 
             };
         }));
 
