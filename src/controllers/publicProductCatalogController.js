@@ -51,7 +51,7 @@ exports.getAllProducts = async (req, res) => {
             variantWhereClause.calculated_price[Op.lte] = parseFloat(maxPrice);
         }
         if (collaboratorId) {
-            whereClause.collaborator_id = parseInt(collaboratorId, 10); // Filtro por colaborador
+            whereClause.collaborator_id = parseInt(collaboratorId, 10); 
         }
 
         const { count, rows: products } = await Product.findAndCountAll({
@@ -65,7 +65,7 @@ exports.getAllProducts = async (req, res) => {
                 [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock']
             ],
             include: [
-                { GROWmodel: Category, attributes: ['category_id', 'name'] },
+                { model: Category, attributes: ['category_id', 'name'] },
                 {
                     model: ProductVariant,
                     attributes: [],
