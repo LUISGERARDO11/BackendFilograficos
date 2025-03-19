@@ -89,11 +89,8 @@ exports.getAllVariants = [
         if (sortBy === 'product_name') {
           order = [[Product, 'name', sortOrder]];
         } else if (sortBy === 'updated_at') {
-          // Ordenar por ISNULL primero (NULL al final), luego por change_date
-          order = [
-            [ProductVariant.sequelize.fn('ISNULL', ProductVariant.sequelize.col('PriceHistory.change_date')), 'ASC'],
-            [PriceHistory, 'change_date', sortOrder]
-          ];
+          // Ordenar por el change_date de PriceHistory directamente
+          order = [[{ model: PriceHistory }, 'change_date', sortOrder]];
         } else {
           order = [[sortBy, sortOrder]];
         }
@@ -125,7 +122,7 @@ exports.getAllVariants = [
           {
             model: PriceHistory,
             attributes: ['change_date'],
-            order: [['change_date', 'DESC']],
+            order: [['change_date', 'DESC']], // Orden interno para obtener el más reciente
             limit: 1,
             required: false
           }
