@@ -1,6 +1,6 @@
 // publicProductCatalogController.js
 
-const { Product, ProductVariant, Category, ProductAttributeValue, ProductAttribute, ProductImage, CustomizationOption } = require('../models/Associations');
+const { Product, ProductVariant, Category, Collaborator,ProductAttributeValue, ProductAttribute, ProductImage, CustomizationOption } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');
 
@@ -8,9 +8,9 @@ exports.getAllProducts = async (req, res) => {
     try {
         const page = parseInt(req.query.page, 10) || 1;
         const pageSize = parseInt(req.query.pageSize, 10) || 10;
-        const { sort, categoryId, search, minPrice, maxPrice } = req.query;
+        const { sort, categoryId, search, minPrice, maxPrice, collaboratorId } = req.query;
 
-        console.log('Filtros recibidos:', { sort, categoryId, search, minPrice, maxPrice });
+        console.log('Filtros recibidos:', { sort, categoryId, search, minPrice, maxPrice, collaboratorId });
 
         if (page < 1 || pageSize < 1) {
             return res.status(400).json({ message: 'Parámetros de paginación inválidos' });
@@ -50,6 +50,9 @@ exports.getAllProducts = async (req, res) => {
             variantWhereClause.calculated_price = variantWhereClause.calculated_price || {};
             variantWhereClause.calculated_price[Op.lte] = parseFloat(maxPrice);
         }
+        if (collaboratorId) {
+            whereClause.collaborator_id = parseInt(collaboratorId, 10); 
+        }
 
         const { count, rows: products } = await Product.findAndCountAll({
             where: whereClause,
@@ -63,14 +66,19 @@ exports.getAllProducts = async (req, res) => {
             ],
             include: [
                 { model: Category, attributes: ['category_id', 'name'] },
-                { 
-                    model: ProductVariant, 
-                    attributes: [],
-                    where: variantWhereClause,
-                    required: true // Solo productos con variantes que cumplan el filtro
+                {
+                  model: ProductVariant,
+                  attributes: [],
+                  where: variantWhereClause,
+                  required: true // Solo productos con variantes que cumplan el filtro
+                },
+                {
+                  model: Collaborator,
+                  attributes: ['collaborator_id', 'name'], // Incluimos el nombre del colaborador
+                  required: false // No requerido, para que funcione incluso si no hay colaborador
                 }
-            ],
-            group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name'],
+              ],
+            group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name','Collaborator.collaborator_id','Collaborator.name'],
             order,
             limit: pageSize,
             offset: offset,
@@ -92,7 +100,8 @@ exports.getAllProducts = async (req, res) => {
                 min_price: parseFloat(product.get('min_price')) || 0,
                 max_price: parseFloat(product.get('max_price')) || 0,
                 total_stock: parseInt(product.get('total_stock')) || 0,
-                image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null
+                image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null,
+                collaborator: product.Collaborator ? { id: product.Collaborator.collaborator_id, name: product.Collaborator.name } : null 
             };
         }));
 
@@ -108,6 +117,7 @@ exports.getAllProducts = async (req, res) => {
         res.status(500).json({ message: 'Error al obtener los productos', error: error.message });
     }
 };
+
 exports.getProductById = async (req, res) => {
     try {
         const { product_id } = req.params;
