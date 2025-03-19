@@ -100,9 +100,6 @@ exports.getAllProducts = async (req, res) => {
     }
 };
 
-const { Product, ProductVariant, Category, ProductAttributeValue, ProductAttribute, ProductImage, CustomizationOption } = require('../models/Associations');
-const loggerUtils = require('../utils/loggerUtils');
-
 exports.getProductById = async (req, res) => {
     try {
         const { product_id } = req.params;
