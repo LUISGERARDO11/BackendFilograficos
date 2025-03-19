@@ -113,13 +113,14 @@ router.put(
   productPriceController.updateVariantPrice
 );
 //(HAILIE)
-//Rutas para visitantes (públicas):
+// Rutas para visitantes (públicas):
 router.get(
-  '/catalog',
-  publicProductCatalogController.getAllProducts);
+  '/public-catalog', 
+  publicProductCatalogController.getAllProducts
+);
 
 router.get(
-  '/catalog/:product_id',
-  publicProductCatalogController.getProductById);
-
+  '/public-catalog/:product_id', 
+  publicProductCatalogController.getProductById
+);
 module.exports = router;
