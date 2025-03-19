@@ -6,74 +6,99 @@ const { Op } = require('sequelize');
 
 exports.getAllProducts = async (req, res) => {
     try {
-      const { page = 1, pageSize = 10, categoryId, priceMin, priceMax, search } = req.query;
-      const offset = (page - 1) * pageSize;
-      const limit = parseInt(pageSize);
-  
-      // Construir las condiciones de búsqueda
-      const where = { status: 'active' };
-      const variantWhere = {};
-  
-      // Filtro por categoría
-      if (categoryId) {
-        where.category_id = categoryId;
-      }
-  
-      // Filtro por rango de precios
-      if (priceMin || priceMax) {
-        variantWhere.calculated_price = {};
-        if (priceMin) {
-          variantWhere.calculated_price[Op.gte] = parseFloat(priceMin);
+        // Convertir page y pageSize a números enteros
+        const page = parseInt(req.query.page, 10) || 1;
+        const pageSize = parseInt(req.query.pageSize, 10) || 10;
+        const { sort, categoryId, search } = req.query;
+
+        // Validar page y pageSize
+        if (page < 1 || pageSize < 1) {
+            return res.status(400).json({ message: 'Parámetros de paginación inválidos' });
         }
-        if (priceMax) {
-          variantWhere.calculated_price[Op.lte] = parseFloat(priceMax);
+
+        const offset = (page - 1) * pageSize;
+
+        // Configurar ordenamiento
+        let order = [['product_id', 'ASC']];
+        if (sort) {
+            const sortParams = sort.split(',').map(param => param.trim().split(':'));
+            const validColumns = ['name', 'product_id', 'min_price', 'max_price', 'total_stock'];
+            const validDirections = ['ASC', 'DESC'];
+            order = sortParams.map(([column, direction]) => {
+                if (!validColumns.includes(column)) {
+                    throw new Error(`Columna de ordenamiento inválida: ${column}`);
+                }
+                if (!direction || !validDirections.includes(direction.toUpperCase())) {
+                    throw new Error(`Dirección de ordenamiento inválida: ${direction}`);
+                }
+                return [column, direction.toUpperCase()];
+            });
         }
-      }
-  
-      // Búsqueda por nombre
-      if (search) {
-        where.name = { [Op.like]: `%${search}%` };
-      }
-  
-      const { count, rows } = await Product.findAndCountAll({
-        where,
-        offset,
-        limit,
-        include: [
-          { model: Category, attributes: ['category_id', 'name'] },
-          {
-            model: ProductVariant,
-            where: variantWhere,
-            required: true,
-            attributes: [['calculated_price', 'min_price'], ['calculated_price', 'max_price'], ['stock', 'total_stock']],
-            include: [{ model: ProductImage, attributes: ['image_url'], limit: 1 }]
-          }
-        ],
-        group: ['Product.product_id', 'Category.category_id']
-      });
-  
-      const formattedProducts = rows.map(product => ({
-        product_id: product.product_id,
-        name: product.name,
-        category: product.Category ? { category_id: product.Category.category_id, name: product.Category.name } : null,
-        min_price: product.ProductVariants[0]?.min_price,
-        max_price: product.ProductVariants[0]?.max_price,
-        total_stock: product.ProductVariants.reduce((sum, variant) => sum + (variant.total_stock || 0), 0),
-        image_url: product.ProductVariants[0]?.ProductImages[0]?.image_url
-      }));
-  
-      res.status(200).json({
-        message: 'Productos obtenidos exitosamente',
-        products: formattedProducts,
-        total: count.length,
-        page: parseInt(page),
-        pageSize: parseInt(pageSize)
-      });
+
+        // Construir cláusula WHERE
+        const whereClause = { status: 'active' };
+        if (categoryId) {
+            whereClause.category_id = parseInt(categoryId, 10);
+        }
+        if (search) {
+            whereClause.name = { [Op.iLike]: `%${search}%` };
+        }
+
+        // Consulta ajustada
+        const { count, rows: products } = await Product.findAndCountAll({
+            where: whereClause,
+            attributes: [
+                'product_id',
+                'name',
+                'product_type',
+                // Usar alias claros para las funciones de agregación
+                [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
+                [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
+                [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock']
+            ],
+            include: [
+                { model: Category, attributes: ['category_id', 'name'] },
+                { model: ProductVariant, attributes: [], required: false }
+            ],
+            group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name'],
+            order,
+            limit: pageSize, // Asegura que sea un número
+            offset: offset,  // Asegura que sea un número
+            subQuery: false
+        });
+
+        // Formatear productos
+        const formattedProducts = await Promise.all(products.map(async (product) => {
+            const firstVariant = await ProductVariant.findOne({
+                where: { product_id: product.product_id },
+                include: [{ model: ProductImage, attributes: ['image_url'], where: { order: 1 }, required: false }],
+                order: [['variant_id', 'ASC']]
+            });
+
+            return {
+                product_id: product.product_id,
+                name: product.name,
+                category: product.Category ? product.Category.name : null,
+                product_type: product.product_type,
+                min_price: parseFloat(product.get('min_price')) || 0,
+                max_price: parseFloat(product.get('max_price')) || 0,
+                total_stock: parseInt(product.get('total_stock')) || 0,
+                image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null
+            };
+        }));
+
+        res.status(200).json({
+            message: 'Productos obtenidos exitosamente',
+            products: formattedProducts,
+            total: count.length,
+            page,
+            pageSize
+        });
     } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error al obtener productos', error: error.message });
+        loggerUtils.logCriticalError(error);
+        res.status(500).json({ message: 'Error al obtener los productos', error: error.message });
     }
-  };
+};
 exports.getProductById = async (req, res) => {
     try {
         const { product_id } = req.params;
