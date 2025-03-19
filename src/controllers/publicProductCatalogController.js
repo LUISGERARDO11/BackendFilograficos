@@ -34,6 +34,7 @@ exports.getAllProducts = async (req, res) => {
                 return [column, direction.toUpperCase()];
             });
         }
+
         // Construir cláusula WHERE
         const whereClause = { status: 'active' };
         if (categoryId) {
@@ -66,9 +67,9 @@ exports.getAllProducts = async (req, res) => {
             ],
             include: [
                 { model: Category, attributes: ['category_id', 'name'] },
-                {
-                    model: ProductVariant,
-                    attributes: [],
+                { 
+                    model: ProductVariant, 
+                    attributes: [], 
                     required: false,
                     where: Object.keys(priceFilter).length ? { calculated_price: priceFilter } : undefined
                 }
@@ -112,6 +113,7 @@ exports.getAllProducts = async (req, res) => {
         res.status(500).json({ message: 'Error al obtener los productos', error: error.message });
     }
 };
+
 exports.getProductById = async (req, res) => {
     try {
         const { product_id } = req.params;
