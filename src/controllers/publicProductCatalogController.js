@@ -6,19 +6,16 @@ const { Op } = require('sequelize');
 
 exports.getAllProducts = async (req, res) => {
     try {
-        // Convertir parámetros de consulta a números enteros
         const page = parseInt(req.query.page, 10) || 1;
         const pageSize = parseInt(req.query.pageSize, 10) || 10;
         const { sort, categoryId, search, minPrice, maxPrice, brand, attributes } = req.query;
 
-        // Validar page y pageSize
         if (page < 1 || pageSize < 1) {
             return res.status(400).json({ message: 'Parámetros de paginación inválidos' });
         }
 
         const offset = (page - 1) * pageSize;
 
-        // Configurar ordenamiento
         let order = [['product_id', 'ASC']];
         if (sort) {
             const sortParams = sort.split(',').map(param => param.trim().split(':'));
@@ -35,7 +32,6 @@ exports.getAllProducts = async (req, res) => {
             });
         }
 
-        // Construir cláusula WHERE para Product
         const whereClause = { status: 'active' };
         if (categoryId) {
             whereClause.category_id = parseInt(categoryId, 10);
@@ -44,7 +40,6 @@ exports.getAllProducts = async (req, res) => {
             whereClause.name = { [Op.iLike]: `%${search}%` };
         }
 
-        // Construir condiciones para ProductVariant (precio y atributos)
         const variantWhereClause = {};
         if (minPrice || maxPrice) {
             variantWhereClause.calculated_price = {};
@@ -96,7 +91,13 @@ exports.getAllProducts = async (req, res) => {
                     ]
                 }
             ],
-            group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name'],
+            group: [
+                'Product.product_id',
+                'Product.name',
+                'Product.product_type',
+                'Category.category_id',
+                'Category.name'
+            ],
             order,
             limit: pageSize,
             offset,
