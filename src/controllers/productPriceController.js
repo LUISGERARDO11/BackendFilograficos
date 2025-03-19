@@ -3,7 +3,7 @@ const { body, query, param, validationResult } = require('express-validator');
 const { Product, ProductVariant, ProductImage, PriceHistory, Category } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 
-// Middleware de validación para cada método
+// Middleware de validación
 const validateGetAllVariants = [
   query('search').optional().trim().escape(),
   query('category_id').optional().isInt({ min: 1 }).withMessage('El ID de la categoría debe ser un entero positivo'),
@@ -15,8 +15,8 @@ const validateGetAllVariants = [
   query('limit').optional().isInt({ min: 1 }).withMessage('El límite debe ser un entero positivo'),
   query('sortBy')
     .optional()
-    .isIn(['sku', 'calculated_price', 'production_cost', 'profit_margin', 'product_name']) // Añadido product_name
-    .withMessage('El campo de ordenamiento debe ser "sku", "calculated_price", "production_cost", "profit_margin" o "product_name"'),
+    .isIn(['sku', 'calculated_price', 'production_cost', 'profit_margin', 'product_name', 'updated_at'])
+    .withMessage('El campo de ordenamiento debe ser "sku", "calculated_price", "production_cost", "profit_margin", "product_name" o "updated_at"'),
   query('sortOrder')
     .optional()
     .isIn(['ASC', 'DESC'])
@@ -37,7 +37,7 @@ const validateUpdateVariantPrice = [
     .withMessage('El margen de ganancia debe ser un número positivo')
 ];
 
-// Controlador exportado como objeto
+// Controlador para obtener todas las variantes
 exports.getAllVariants = [
   validateGetAllVariants,
   async (req, res) => {
@@ -47,7 +47,15 @@ exports.getAllVariants = [
         return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
       }
 
-      const { search, category_id, product_type, page = 1, limit = 50, sortBy, sortOrder = 'DESC' } = req.query;
+      const {
+        search,
+        category_id,
+        product_type,
+        page = 1,
+        limit = 50,
+        sortBy,
+        sortOrder = 'DESC'
+      } = req.query;
 
       // Filtros
       const where = {};
@@ -55,8 +63,8 @@ exports.getAllVariants = [
 
       if (search) {
         where[Op.or] = [
-          { sku: { [Op.like]: `%${search}%` } }, // Cambiado de iLike a like para MySQL
-          { '$Product.name$': { [Op.like]: `%${search}%` } } // Cambiado de iLike a like para MySQL
+          { sku: { [Op.like]: `%${search}%` } },
+          { '$Product.name$': { [Op.like]: `%${search}%` } }
         ];
         if (!isNaN(parseInt(search))) {
           productWhere.category_id = parseInt(search);
@@ -79,12 +87,16 @@ exports.getAllVariants = [
       let order = [];
       if (sortBy) {
         if (sortBy === 'product_name') {
-          order = [[{ model: Product, as: 'Product' }, 'name', sortOrder]];
+          order = [[Product, 'name', sortOrder]]; // Sin alias, usamos el modelo directamente
+        } else if (sortBy === 'updated_at') {
+          order = [
+            [PriceHistory, 'change_date', sortOrder, { NULLS: 'LAST' }] // Sin alias, orden por change_date
+          ];
         } else {
-          order = [[sortBy, sortOrder]];
+          order = [[sortBy, sortOrder]]; // Otros campos directamente en ProductVariant
         }
       } else {
-        order = [['variant_id', 'DESC']]; // Por defecto ordenar por variant_id DESC
+        order = [['variant_id', 'DESC']]; // Orden por defecto
       }
 
       // Consulta con paginación
@@ -95,7 +107,12 @@ exports.getAllVariants = [
             model: Product,
             where: productWhere,
             attributes: ['name', 'description', 'category_id', 'product_type'],
-            include: [{ model: Category, attributes: ['name'] }]
+            include: [
+              {
+                model: Category,
+                attributes: ['name']
+              }
+            ]
           },
           {
             model: ProductImage,
@@ -114,7 +131,8 @@ exports.getAllVariants = [
         attributes: ['variant_id', 'sku', 'production_cost', 'profit_margin', 'calculated_price'],
         limit: parseInt(limit),
         offset: (parseInt(page) - 1) * parseInt(limit),
-        order
+        order,
+        subQuery: false // Evita problemas con ORDER BY en subconsultas
       });
 
       // Formatear respuesta
@@ -130,7 +148,7 @@ exports.getAllVariants = [
           production_cost: parseFloat(variant.production_cost).toFixed(2),
           profit_margin: parseFloat(variant.profit_margin).toFixed(2),
           category: variant.Product.Category ? variant.Product.Category.name : null,
-          product_type: variant.Product.product_type, // Añadido product_type
+          product_type: variant.Product.product_type,
           updated_at: lastPriceChange
             ? lastPriceChange.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
             : 'Sin cambios de precio'
