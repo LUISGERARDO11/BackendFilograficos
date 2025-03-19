@@ -6,12 +6,12 @@ const { Op } = require('sequelize');
 
 exports.getAllProducts = async (req, res) => {
     try {
-        // Convertir `page` y `pageSize` a números enteros
+        // Convertir page y pageSize a números enteros
         const page = parseInt(req.query.page, 10) || 1;
         const pageSize = parseInt(req.query.pageSize, 10) || 10;
-        const { sort, categoryId, search, minPrice, maxPrice } = req.query;
+        const { sort, categoryId, search } = req.query;
 
-        // Validar `page` y `pageSize`
+        // Validar page y pageSize
         if (page < 1 || pageSize < 1) {
             return res.status(400).json({ message: 'Parámetros de paginación inválidos' });
         }
@@ -34,6 +34,7 @@ exports.getAllProducts = async (req, res) => {
                 return [column, direction.toUpperCase()];
             });
         }
+
         // Construir cláusula WHERE
         const whereClause = { status: 'active' };
         if (categoryId) {
@@ -43,40 +44,26 @@ exports.getAllProducts = async (req, res) => {
             whereClause.name = { [Op.iLike]: `%${search}%` };
         }
 
-        // Agregar filtros de precio
-        const priceFilter = {};
-        if (minPrice) {
-            priceFilter[Op.gte] = parseFloat(minPrice);
-        }
-        if (maxPrice) {
-            priceFilter[Op.lte] = parseFloat(maxPrice);
-        }
-
-        // Consulta con filtros aplicados
+        // Consulta ajustada
         const { count, rows: products } = await Product.findAndCountAll({
             where: whereClause,
             attributes: [
                 'product_id',
                 'name',
                 'product_type',
-                // Alias para los precios y stock
+                // Usar alias claros para las funciones de agregación
                 [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
                 [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
                 [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock']
             ],
             include: [
                 { model: Category, attributes: ['category_id', 'name'] },
-                {
-                    model: ProductVariant,
-                    attributes: [],
-                    required: false,
-                    where: Object.keys(priceFilter).length ? { calculated_price: priceFilter } : undefined
-                }
+                { model: ProductVariant, attributes: [], required: false }
             ],
             group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name'],
             order,
-            limit: pageSize,
-            offset: offset,
+            limit: pageSize, // Asegura que sea un número
+            offset: offset,  // Asegura que sea un número
             subQuery: false
         });
 
