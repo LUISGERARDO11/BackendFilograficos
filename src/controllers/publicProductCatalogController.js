@@ -115,7 +115,7 @@ exports.getProductById = async (req, res) => {
                         { model: ProductImage, attributes: ['image_url', 'order'] }
                     ]
                 },
-                { model: CustomizationOption, attributes: ['type', 'description'] }
+                { model: CustomizationOption, attributes: ['option_type', 'description'] } // Cambiado de 'type' a 'option_type'
             ]
         });
 
@@ -146,7 +146,7 @@ exports.getProductById = async (req, res) => {
                 }))
             })),
             customizations: product.CustomizationOptions.map(cust => ({
-                type: cust.type,
+                type: cust.option_type, 
                 description: cust.description
             }))
         };
