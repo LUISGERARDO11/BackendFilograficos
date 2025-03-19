@@ -6,104 +6,45 @@ const { Op } = require('sequelize');
 
 exports.getAllProducts = async (req, res) => {
     try {
-        // Convertir `page` y `pageSize` a números enteros
-        const page = parseInt(req.query.page, 10) || 1;
-        const pageSize = parseInt(req.query.pageSize, 10) || 10;
-        const { sort, categoryId, search, minPrice, maxPrice } = req.query;
-
-        // Validar `page` y `pageSize`
-        if (page < 1 || pageSize < 1) {
-            return res.status(400).json({ message: 'Parámetros de paginación inválidos' });
-        }
-
+        const { page = 1, pageSize = 10, sort, categoryId, search, minPrice, maxPrice } = req.query;
         const offset = (page - 1) * pageSize;
 
-        // Configurar ordenamiento
-        let order = [['product_id', 'ASC']];
-        if (sort) {
-            const sortParams = sort.split(',').map(param => param.trim().split(':'));
-            const validColumns = ['name', 'product_id', 'min_price', 'max_price', 'total_stock'];
-            const validDirections = ['ASC', 'DESC'];
-            order = sortParams.map(([column, direction]) => {
-                if (!validColumns.includes(column)) {
-                    throw new Error(`Columna de ordenamiento inválida: ${column}`);
-                }
-                if (!direction || !validDirections.includes(direction.toUpperCase())) {
-                    throw new Error(`Dirección de ordenamiento inválida: ${direction}`);
-                }
-                return [column, direction.toUpperCase()];
-            });
-        }
+        const order = sort ? sort.split(',').map(param => param.trim().split(':')) : [['product_id', 'ASC']];
 
-        // Construir cláusula WHERE
         const whereClause = { status: 'active' };
-        if (categoryId) {
-            whereClause.category_id = parseInt(categoryId, 10);
-        }
-        if (search) {
-            whereClause.name = { [Op.iLike]: `%${search}%` };
-        }
+        if (categoryId) whereClause.category_id = parseInt(categoryId, 10);
+        if (search) whereClause.name = { [Op.iLike]: `%${search}%` };
 
-        // Agregar filtros de precio
-        const priceFilter = {};
-        if (minPrice) {
-            priceFilter[Op.gte] = parseFloat(minPrice);
-        }
-        if (maxPrice) {
-            priceFilter[Op.lte] = parseFloat(maxPrice);
-        }
+        // Agregar filtros de precio usando `HAVING`
+        const havingClause = {};
+        if (minPrice) havingClause.min_price = { [Op.gte]: parseFloat(minPrice) };
+        if (maxPrice) havingClause.max_price = { [Op.lte]: parseFloat(maxPrice) };
 
-        // Consulta con filtros aplicados
         const { count, rows: products } = await Product.findAndCountAll({
             where: whereClause,
             attributes: [
                 'product_id',
                 'name',
                 'product_type',
-                // Alias para los precios y stock
                 [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
                 [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
                 [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock']
             ],
             include: [
                 { model: Category, attributes: ['category_id', 'name'] },
-                { 
-                    model: ProductVariant, 
-                    attributes: [], 
-                    required: false,
-                    where: Object.keys(priceFilter).length ? { calculated_price: priceFilter } : undefined
-                }
+                { model: ProductVariant, attributes: [], required: false }
             ],
             group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name'],
+            having: havingClause,  // 🔥 Filtra después de agrupar
             order,
             limit: pageSize,
-            offset: offset,
+            offset,
             subQuery: false
         });
 
-        // Formatear productos
-        const formattedProducts = await Promise.all(products.map(async (product) => {
-            const firstVariant = await ProductVariant.findOne({
-                where: { product_id: product.product_id },
-                include: [{ model: ProductImage, attributes: ['image_url'], where: { order: 1 }, required: false }],
-                order: [['variant_id', 'ASC']]
-            });
-
-            return {
-                product_id: product.product_id,
-                name: product.name,
-                category: product.Category ? product.Category.name : null,
-                product_type: product.product_type,
-                min_price: parseFloat(product.get('min_price')) || 0,
-                max_price: parseFloat(product.get('max_price')) || 0,
-                total_stock: parseInt(product.get('total_stock')) || 0,
-                image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null
-            };
-        }));
-
         res.status(200).json({
             message: 'Productos obtenidos exitosamente',
-            products: formattedProducts,
+            products,
             total: count.length,
             page,
             pageSize
