@@ -6,19 +6,16 @@ const { Op } = require('sequelize');
 
 exports.getAllProducts = async (req, res) => {
     try {
-        // Convertir page y pageSize a números enteros
         const page = parseInt(req.query.page, 10) || 1;
         const pageSize = parseInt(req.query.pageSize, 10) || 10;
-        const { sort, categoryId, search } = req.query;
+        const { sort, categoryId, search, minPrice, maxPrice } = req.query;
 
-        // Validar page y pageSize
         if (page < 1 || pageSize < 1) {
             return res.status(400).json({ message: 'Parámetros de paginación inválidos' });
         }
 
         const offset = (page - 1) * pageSize;
 
-        // Configurar ordenamiento
         let order = [['product_id', 'ASC']];
         if (sort) {
             const sortParams = sort.split(',').map(param => param.trim().split(':'));
@@ -35,39 +32,49 @@ exports.getAllProducts = async (req, res) => {
             });
         }
 
-        // Construir cláusula WHERE
         const whereClause = { status: 'active' };
+        const variantWhereClause = {}; // Para filtrar variantes por precio
+
         if (categoryId) {
             whereClause.category_id = parseInt(categoryId, 10);
         }
         if (search) {
             whereClause.name = { [Op.iLike]: `%${search}%` };
         }
+        if (minPrice) {
+            variantWhereClause.calculated_price = { [Op.gte]: parseFloat(minPrice) };
+        }
+        if (maxPrice) {
+            variantWhereClause.calculated_price = variantWhereClause.calculated_price || {};
+            variantWhereClause.calculated_price[Op.lte] = parseFloat(maxPrice);
+        }
 
-        // Consulta ajustada
         const { count, rows: products } = await Product.findAndCountAll({
             where: whereClause,
             attributes: [
                 'product_id',
                 'name',
                 'product_type',
-                // Usar alias claros para las funciones de agregación
                 [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
                 [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
                 [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock']
             ],
             include: [
                 { model: Category, attributes: ['category_id', 'name'] },
-                { model: ProductVariant, attributes: [], required: false }
+                { 
+                    model: ProductVariant, 
+                    attributes: [], 
+                    required: true, // Requiere que haya al menos una variante que cumpla el filtro
+                    where: variantWhereClause 
+                }
             ],
             group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name'],
             order,
-            limit: pageSize, // Asegura que sea un número
-            offset: offset,  // Asegura que sea un número
+            limit: pageSize,
+            offset: offset,
             subQuery: false
         });
 
-        // Formatear productos
         const formattedProducts = await Promise.all(products.map(async (product) => {
             const firstVariant = await ProductVariant.findOne({
                 where: { product_id: product.product_id },
