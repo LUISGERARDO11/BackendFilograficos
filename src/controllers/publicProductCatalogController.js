@@ -100,6 +100,9 @@ exports.getAllProducts = async (req, res) => {
     }
 };
 
+const { Product, ProductVariant, Category, ProductAttributeValue, ProductAttribute, ProductImage, CustomizationOption } = require('../models/Associations');
+const loggerUtils = require('../utils/loggerUtils');
+
 exports.getProductById = async (req, res) => {
     try {
         const { product_id } = req.params;
@@ -109,13 +112,12 @@ exports.getProductById = async (req, res) => {
                 { model: Category, attributes: ['category_id', 'name'] },
                 {
                     model: ProductVariant,
-                    where: { status: 'active' },
                     include: [
                         { model: ProductAttributeValue, include: [{ model: ProductAttribute, attributes: ['attribute_name', 'data_type', 'allowed_values'] }] },
                         { model: ProductImage, attributes: ['image_url', 'order'] }
                     ]
                 },
-                { model: CustomizationOption, attributes: ['option_type', 'description'] } // Cambiado de 'type' a 'option_type'
+                { model: CustomizationOption, attributes: ['option_type', 'description'] }
             ]
         });
 
@@ -146,7 +148,7 @@ exports.getProductById = async (req, res) => {
                 }))
             })),
             customizations: product.CustomizationOptions.map(cust => ({
-                type: cust.option_type, 
+                type: cust.option_type,
                 description: cust.description
             }))
         };
