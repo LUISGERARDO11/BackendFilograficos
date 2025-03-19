@@ -4,36 +4,103 @@ const { Product, ProductVariant, Category, ProductAttributeValue, ProductAttribu
 const loggerUtils = require('../utils/loggerUtils');
 
 exports.getAllProducts = async (req, res) => {
-    try {
-      const products = await Product.findAll({
-        where: { status: 'active' },
-        attributes: ['product_id', 'name', 'product_type']
-      });
-  
-      const formattedProducts = await Promise.all(products.map(async (product) => {
-        const firstVariant = await ProductVariant.findOne({
-          where: { product_id: product.product_id },
-          include: [{ model: ProductImage, attributes: ['image_url'], where: { order: 1 }, required: false }],
-          order: [['variant_id', 'ASC']]
-        });
-  
-        return {
-          product_id: product.product_id,
-          name: product.name,
-          product_type: product.product_type,
-          image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null
-        };
-      }));
-  
-      res.status(200).json({
-        message: 'Productos obtenidos exitosamente',
-        products: formattedProducts
-      });
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error al obtener los productos', error: error.message });
+  try {
+    const { page = 1, pageSize = 10, sort, categoryId, search } = req.query;
+    const offset = (page - 1) * pageSize;
+
+    if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
+      return res.status(400).json({ message: 'Parámetros de paginación inválidos' });
     }
-  };
+
+    let order = [['product_id', 'ASC']];
+    if (sort) {
+      const sortParams = sort.split(',').map(param => param.trim().split(':'));
+      const validColumns = ['name', 'product_id', 'min_price', 'max_price', 'total_stock'];
+      const validDirections = ['ASC', 'DESC'];
+      order = sortParams.map(([column, direction]) => {
+        if (!validColumns.includes(column)) {
+          throw new Error(`Columna de ordenamiento inválida: ${column}`);
+        }
+        if (!direction || !validDirections.includes(direction.toUpperCase())) {
+          throw new Error(`Dirección de ordenamiento inválida: ${direction}`);
+        }
+        return [column, direction.toUpperCase()];
+      });
+    }
+
+    const whereClause = { status: 'active' };
+    if (categoryId) {
+      whereClause.category_id = parseInt(categoryId, 10);
+    }
+    if (search) {
+      whereClause.name = { [Op.iLike]: `%${search}%` };
+    }
+
+    const { count, rows: products } = await Product.findAndCountAll({
+      where: whereClause,
+      attributes: [
+        'product_id',
+        'name',
+        'product_type',
+        [
+          Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')),
+          'min_price'
+        ],
+        [
+          Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')),
+          'max_price'
+        ],
+        [
+          Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')),
+          'total_stock'
+        ]
+      ],
+      include: [
+        { model: Category, attributes: ['category_id', 'name'] },
+        {
+          model: ProductVariant,
+          attributes: [],
+          required: false
+        }
+      ],
+      group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name'],
+      order,
+      limit: pageSize,
+      offset,
+      subQuery: false
+    });
+
+    const formattedProducts = await Promise.all(products.map(async (product) => {
+      const firstVariant = await ProductVariant.findOne({
+        where: { product_id: product.product_id },
+        include: [{ model: ProductImage, attributes: ['image_url'], where: { order: 1 }, required: false }],
+        order: [['variant_id', 'ASC']]
+      });
+
+      return {
+        product_id: product.product_id,
+        name: product.name,
+        category: product.Category ? product.Category.name : null,
+        product_type: product.product_type,
+        min_price: parseFloat(product.get('min_price')) || 0,
+        max_price: parseFloat(product.get('max_price')) || 0,
+        total_stock: parseInt(product.get('total_stock')) || 0,
+        image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null
+      };
+    }));
+
+    res.status(200).json({
+      message: 'Productos obtenidos exitosamente',
+      products: formattedProducts,
+      total: count.length,
+      page,
+      pageSize
+    });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener los productos', error: error.message });
+  }
+};
 
 exports.getProductById = async (req, res) => {
   try {
