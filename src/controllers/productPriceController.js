@@ -87,16 +87,18 @@ exports.getAllVariants = [
       let order = [];
       if (sortBy) {
         if (sortBy === 'product_name') {
-          order = [[Product, 'name', sortOrder]]; // Sin alias, usamos el modelo directamente
+          order = [[Product, 'name', sortOrder]];
         } else if (sortBy === 'updated_at') {
+          // Ordenar por ISNULL primero (NULL al final), luego por change_date
           order = [
-            [PriceHistory, 'change_date', sortOrder, { NULLS: 'LAST' }] // Sin alias, orden por change_date
+            [ProductVariant.sequelize.fn('ISNULL', ProductVariant.sequelize.col('PriceHistory.change_date')), 'ASC'],
+            [PriceHistory, 'change_date', sortOrder]
           ];
         } else {
-          order = [[sortBy, sortOrder]]; // Otros campos directamente en ProductVariant
+          order = [[sortBy, sortOrder]];
         }
       } else {
-        order = [['variant_id', 'DESC']]; // Orden por defecto
+        order = [['variant_id', 'DESC']];
       }
 
       // Consulta con paginación
@@ -132,7 +134,7 @@ exports.getAllVariants = [
         limit: parseInt(limit),
         offset: (parseInt(page) - 1) * parseInt(limit),
         order,
-        subQuery: false // Evita problemas con ORDER BY en subconsultas
+        subQuery: false
       });
 
       // Formatear respuesta
@@ -168,72 +170,6 @@ exports.getAllVariants = [
     }
   }
 ];
-
-exports.getVariantById = [
-  validateGetVariantById,
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
-      }
-
-      const { id } = req.params;
-
-      const variant = await ProductVariant.findByPk(id, {
-        include: [
-          {
-            model: Product,
-            where: { status: 'active' },
-            attributes: ['name', 'description']
-          },
-          {
-            model: ProductImage,
-            attributes: ['image_url'],
-            where: { order: 1 },
-            required: false
-          },
-          {
-            model: PriceHistory,
-            attributes: ['change_date'],
-            order: [['change_date', 'DESC']],
-            limit: 1,
-            required: false
-          }
-        ],
-        attributes: ['variant_id', 'sku', 'production_cost', 'profit_margin', 'calculated_price']
-      });
-
-      if (!variant) {
-        return res.status(404).json({ message: 'Variante no encontrada' });
-      }
-
-      const lastPriceChange = variant.PriceHistories.length > 0 ? variant.PriceHistories[0].change_date : null;
-      const formattedVariant = {
-        variant_id: variant.variant_id,
-        product_name: variant.Product.name,
-        description: variant.Product.description,
-        sku: variant.sku,
-        image_url: variant.ProductImages.length > 0 ? variant.ProductImages[0].image_url : null,
-        calculated_price: parseFloat(variant.calculated_price).toFixed(2),
-        production_cost: parseFloat(variant.production_cost).toFixed(2),
-        profit_margin: parseFloat(variant.profit_margin).toFixed(2),
-        updated_at: lastPriceChange
-          ? lastPriceChange.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
-          : 'Sin cambios de precio'
-      };
-
-      res.status(200).json({
-        message: 'Variante obtenida exitosamente',
-        variant: formattedVariant
-      });
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error al obtener la variante', error: error.message });
-    }
-  }
-];
-
 exports.updateVariantPrice = [
   validateUpdateVariantPrice,
   async (req, res) => {
