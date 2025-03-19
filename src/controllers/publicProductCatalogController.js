@@ -10,6 +10,8 @@ exports.getAllProducts = async (req, res) => {
         const pageSize = parseInt(req.query.pageSize, 10) || 10;
         const { sort, categoryId, search, minPrice, maxPrice } = req.query;
 
+        console.log('Filtros recibidos:', { sort, categoryId, search, minPrice, maxPrice });
+
         if (page < 1 || pageSize < 1) {
             return res.status(400).json({ message: 'Parámetros de paginación inválidos' });
         }
@@ -33,7 +35,7 @@ exports.getAllProducts = async (req, res) => {
         }
 
         const whereClause = { status: 'active' };
-        const variantWhereClause = {}; // Para filtrar variantes por precio
+        const variantWhereClause = {};
 
         if (categoryId) {
             whereClause.category_id = parseInt(categoryId, 10);
@@ -63,9 +65,9 @@ exports.getAllProducts = async (req, res) => {
                 { model: Category, attributes: ['category_id', 'name'] },
                 { 
                     model: ProductVariant, 
-                    attributes: [], 
-                    required: true, // Requiere que haya al menos una variante que cumpla el filtro
-                    where: variantWhereClause 
+                    attributes: [],
+                    where: variantWhereClause,
+                    required: true // Solo productos con variantes que cumplan el filtro
                 }
             ],
             group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name'],
