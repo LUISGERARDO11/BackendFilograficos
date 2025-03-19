@@ -15,8 +15,8 @@ const validateGetAllVariants = [
   query('limit').optional().isInt({ min: 1 }).withMessage('El límite debe ser un entero positivo'),
   query('sortBy')
     .optional()
-    .isIn(['sku', 'calculated_price', 'production_cost', 'profit_margin'])
-    .withMessage('El campo de ordenamiento debe ser "sku", "calculated_price", "production_cost" o "profit_margin"'),
+    .isIn(['sku', 'calculated_price', 'production_cost', 'profit_margin', 'product_name']) // Añadido product_name
+    .withMessage('El campo de ordenamiento debe ser "sku", "calculated_price", "production_cost", "profit_margin" o "product_name"'),
   query('sortOrder')
     .optional()
     .isIn(['ASC', 'DESC'])
@@ -55,8 +55,8 @@ exports.getAllVariants = [
 
       if (search) {
         where[Op.or] = [
-          { sku: { [Op.iLike]: `%${search}%` } },
-          { '$Product.name$': { [Op.iLike]: `%${search}%` } }
+          { sku: { [Op.like]: `%${search}%` } }, // Cambiado de iLike a like para MySQL
+          { '$Product.name$': { [Op.like]: `%${search}%` } } // Cambiado de iLike a like para MySQL
         ];
         if (!isNaN(parseInt(search))) {
           productWhere.category_id = parseInt(search);
@@ -76,7 +76,16 @@ exports.getAllVariants = [
       }
 
       // Determinar ordenamiento
-      const order = sortBy ? [[sortBy, sortOrder]] : [['variant_id', 'DESC']]; // Por defecto ordenar por variant_id DESC
+      let order = [];
+      if (sortBy) {
+        if (sortBy === 'product_name') {
+          order = [[{ model: Product, as: 'Product' }, 'name', sortOrder]];
+        } else {
+          order = [[sortBy, sortOrder]];
+        }
+      } else {
+        order = [['variant_id', 'DESC']]; // Por defecto ordenar por variant_id DESC
+      }
 
       // Consulta con paginación
       const { count, rows: variants } = await ProductVariant.findAndCountAll({
@@ -121,6 +130,7 @@ exports.getAllVariants = [
           production_cost: parseFloat(variant.production_cost).toFixed(2),
           profit_margin: parseFloat(variant.profit_margin).toFixed(2),
           category: variant.Product.Category ? variant.Product.Category.name : null,
+          product_type: variant.Product.product_type, // Añadido product_type
           updated_at: lastPriceChange
             ? lastPriceChange.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
             : 'Sin cambios de precio'
