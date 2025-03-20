@@ -27,6 +27,26 @@ const CartDetail = sequelize.define('CartDetail', {
     },
     field: 'product_id'
   },
+  //HAILIE
+  variant_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'product_variants',
+      key: 'variant_id'
+    },
+    field: 'variant_id'
+  },
+  customization_option_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'customization_options',
+      key: 'option_id'
+    },
+    field: 'customization_option_id'
+  },
+  //
   quantity: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -42,8 +62,14 @@ const CartDetail = sequelize.define('CartDetail', {
     field: 'subtotal'
   }
 }, {
-  tableName: 'cart_details', // Nombre de la tabla en inglés
-  timestamps: false // Añadir si necesitas campos de timestamp
+  tableName: 'cart_details',
+  timestamps: false,
+  hooks: {
+    beforeSave: (cartDetail) => {
+      // Calcular el subtotal automáticamente antes de guardar
+      cartDetail.subtotal = cartDetail.quantity * cartDetail.unit_price;
+    }
+  }
 });
 
 module.exports = CartDetail;

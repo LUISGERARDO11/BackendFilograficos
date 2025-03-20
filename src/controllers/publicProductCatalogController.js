@@ -1,5 +1,3 @@
-// publicProductCatalogController.js
-
 const { Product, ProductVariant, Category, Collaborator,ProductAttributeValue, ProductAttribute, ProductImage, CustomizationOption } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');
