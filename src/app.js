@@ -36,6 +36,7 @@ const bannerRoutes = require('./routes/bannerRoutes');
 //Hailie
 const collaboratorRoutes = require('./routes/collaboratorsRoutes');
 const categoryRoutes = require('./routes/categoriesRoutes');
+const cartRoutes = require('./routes/cartRoutes');
 
 const app = express();
 
@@ -97,6 +98,7 @@ app.use('/api/banners', bannerRoutes);
 // Hailie
 app.use('/api/collaborators', collaboratorRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/cart', cartRoutes);
 
 // Middleware para manejar errores
 app.use(errorHandler);
