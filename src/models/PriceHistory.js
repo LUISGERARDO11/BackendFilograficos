@@ -12,15 +12,31 @@ const PriceHistory = sequelize.define('PriceHistory', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'product_variants', // Cambiado de 'products' a 'product_variants'
+      model: 'product_variants',
       key: 'variant_id'
     }
   },
-  previous_price: {
-    type: DataTypes.DECIMAL(10,2),
+  previous_production_cost: {
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: false
   },
-  new_price: {
+  new_production_cost: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false
+  },
+  previous_profit_margin: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: false
+  },
+  new_profit_margin: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: false
+  },
+  previous_calculated_price: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false
+  },
+  new_calculated_price: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false
   },

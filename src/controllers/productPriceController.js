@@ -3,7 +3,7 @@ const { body, query, param, validationResult } = require('express-validator');
 const { Product, ProductVariant, ProductImage, PriceHistory, Category, User } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 
-// Middleware de validación
+// Middleware de validación (sin cambios)
 const validateGetAllVariants = [
   query('search').optional().trim().escape(),
   query('category_id').optional().isInt({ min: 1 }).withMessage('El ID de la categoría debe ser un entero positivo'),
@@ -258,7 +258,18 @@ exports.getPriceHistoryByVariantId = [
       // Obtener el historial de precios con información del usuario
       const priceHistory = await PriceHistory.findAll({
         where: { variant_id },
-        attributes: ['price_history_id', 'production_cost', 'profit_margin', 'calculated_price', 'change_date'],
+        attributes: [
+          'history_id', // Cambiado de 'price_history_id' a 'history_id' para coincidir con el modelo
+          'previous_production_cost',
+          'new_production_cost',
+          'previous_profit_margin',
+          'new_profit_margin',
+          'previous_calculated_price',
+          'new_calculated_price',
+          'change_type',
+          'change_description',
+          'change_date'
+        ],
         order: [['change_date', 'DESC']],
         include: [
           {
@@ -287,12 +298,21 @@ exports.getPriceHistoryByVariantId = [
 
       // Formatear la respuesta
       const formattedHistory = priceHistory.map(entry => ({
-        price_history_id: entry.price_history_id,
+        history_id: entry.history_id,
         product_name: entry.ProductVariant.Product.name,
         sku: entry.ProductVariant.sku,
-        production_cost: parseFloat(entry.production_cost).toFixed(2),
-        profit_margin: parseFloat(entry.profit_margin).toFixed(2),
-        calculated_price: parseFloat(entry.calculated_price).toFixed(2),
+        previous: {
+          production_cost: parseFloat(entry.previous_production_cost).toFixed(2),
+          profit_margin: parseFloat(entry.previous_profit_margin).toFixed(2),
+          calculated_price: parseFloat(entry.previous_calculated_price).toFixed(2)
+        },
+        new: {
+          production_cost: parseFloat(entry.new_production_cost).toFixed(2),
+          profit_margin: parseFloat(entry.new_profit_margin).toFixed(2),
+          calculated_price: parseFloat(entry.new_calculated_price).toFixed(2)
+        },
+        change_type: entry.change_type,
+        change_description: entry.change_description || 'Sin descripción',
         change_date: entry.change_date.toLocaleDateString('es-MX', {
           day: '2-digit',
           month: '2-digit',
@@ -347,11 +367,15 @@ exports.updateVariantPrice = [
       const newProfitMargin = parseFloat(profit_margin);
       const newCalculatedPrice = newProductionCost * (1 + newProfitMargin / 100);
 
-      // Registrar en PriceHistory
+      // Registrar en PriceHistory con la nueva estructura
       await PriceHistory.create({
         variant_id: variant.variant_id,
-        previous_price: variant.calculated_price,
-        new_price: newCalculatedPrice,
+        previous_production_cost: variant.production_cost,
+        new_production_cost: newProductionCost,
+        previous_profit_margin: variant.profit_margin,
+        new_profit_margin: newProfitMargin,
+        previous_calculated_price: variant.calculated_price,
+        new_calculated_price: newCalculatedPrice,
         change_type: 'manual',
         changed_by: userId,
         change_date: new Date()
