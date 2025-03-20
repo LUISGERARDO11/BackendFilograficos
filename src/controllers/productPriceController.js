@@ -583,7 +583,16 @@ exports.batchUpdateVariantPricesIndividual = [
       const variantIds = variants.map(v => v.variant_id);
       const dbVariants = await ProductVariant.findAll({
         where: { variant_id: { [Op.in]: variantIds } },
-        include: [{ model: Product, attributes: ['name', 'status'] }]
+        include: [
+          {
+            model: Product,
+            attributes: ['name', 'description', 'status', 'product_type', 'category_id'],
+            include: [
+              { model: Category, attributes: ['name'] }, // Para obtener el nombre de la categoría
+              { model: ProductImage, attributes: ['image_url'], limit: 1 } // Primera imagen
+            ]
+          }
+        ]
       });
 
       if (dbVariants.length === 0) {
@@ -640,11 +649,15 @@ exports.batchUpdateVariantPricesIndividual = [
           updatedVariants.push({
             variant_id: variant.variant_id,
             product_name: variant.Product.name,
+            description: variant.Product.description || null,
             sku: variant.sku,
+            image_url: variant.Product.ProductImages?.[0]?.image_url || null,
             production_cost: newProductionCost.toFixed(2),
             profit_margin: newProfitMargin.toFixed(2),
             calculated_price: newCalculatedPrice.toFixed(2),
-            updated_at: new Date().toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            category: variant.Product.Category?.name || null,
+            updated_at: variant.updated_at.toISOString(), // Formato ISO 8601
+            product_type: variant.Product.product_type
           });
 
           loggerUtils.logUserActivity(
@@ -656,11 +669,15 @@ exports.batchUpdateVariantPricesIndividual = [
           updatedVariants.push({
             variant_id: variant.variant_id,
             product_name: variant.Product.name,
+            description: variant.Product.description || null,
             sku: variant.sku,
+            image_url: variant.Product.ProductImages?.[0]?.image_url || null,
             production_cost: variant.production_cost.toFixed(2),
             profit_margin: variant.profit_margin.toFixed(2),
             calculated_price: variant.calculated_price.toFixed(2),
-            updated_at: variant.updated_at.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            category: variant.Product.Category?.name || null,
+            updated_at: variant.updated_at.toISOString(), // Formato ISO 8601
+            product_type: variant.Product.product_type
           });
         }
       }
