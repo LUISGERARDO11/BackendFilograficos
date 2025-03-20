@@ -18,6 +18,7 @@ router.get('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,
 router.get('/get-categories', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), categoryController.getCategories);
 //Obtiene todas las categorías publicas HAILIE
 router.get('/public-categories', categoryController.getCategories);
+router.get('/auth-categories', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, categoryController.getCategories);
 //Elimina una categoría de la base de datos.
 router.delete('/:id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), categoryController.deleteCategory);
 //Obtiene una categoría por su ID.
