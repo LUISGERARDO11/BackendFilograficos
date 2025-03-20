@@ -131,6 +131,7 @@ router.get(
 );
 router.get(
   '/auth-catalog',
+  authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,
   authProductCatalogController.getAllProducts
 );
 
