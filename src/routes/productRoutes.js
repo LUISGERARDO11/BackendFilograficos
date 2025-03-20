@@ -3,7 +3,7 @@ const router = express.Router();
 
 // Importar controladores
 const productCatalogController = require('../controllers/productCatalogController');
-const productStockController = require('../controllers/productStockController'); // Nuevo controlador
+const productStockController = require('../controllers/productStockController');
 const productPriceController = require('../controllers/productPriceController');
 const publicProductCatalogController = require('../controllers/publicProductCatalogController');//(HAILIE)
 
@@ -36,6 +36,7 @@ router.get(
   validateGetProducts, // Validación de parámetros de consulta
   productCatalogController.getAllProducts
 );
+
 // Ruta para eliminar lógicamente un producto (solo administradores)
 router.delete(
   '/:product_id',
@@ -74,7 +75,7 @@ router.get(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  productStockController.getStockVariants // Validaciones ya están en el controlador
+  productStockController.getStockVariants
 );
 
 // Ruta para actualizar el stock de una variante (requiere autenticación y rol de administrador)
@@ -83,7 +84,7 @@ router.put(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  productStockController.updateStock // Validaciones ya están en el controlador
+  productStockController.updateStock
 );
 
 // Ruta para obtener todas las variantes con filtros y ordenamiento (requiere autenticación y rol de administrador)
@@ -122,6 +123,24 @@ router.get(
   productPriceController.getPriceHistoryByVariantId
 );
 
+// Nueva ruta para actualización en lote de precios (uniforme)
+router.put(
+  '/price/batch-update',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productPriceController.batchUpdateVariantPrices
+);
+
+// Nueva ruta para actualización en lote de precios individual
+router.put(
+  '/price/batch-update-individual',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productPriceController.batchUpdateVariantPricesIndividual
+);
+
 //(HAILIE)
 // Rutas para visitantes (públicas):
 router.get(
@@ -133,4 +152,5 @@ router.get(
   '/public-catalog/:product_id', 
   publicProductCatalogController.getProductById
 );
+
 module.exports = router;
