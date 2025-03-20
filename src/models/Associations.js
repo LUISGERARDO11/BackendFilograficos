@@ -78,7 +78,7 @@ RestorationLog.belongsTo(User, { foreignKey: 'performed_by' });
 
 // Nueva relación: PriceHistory y User
 User.hasMany(PriceHistory, { foreignKey: 'changed_by' });
-PriceHistory.belongsTo(User, { foreignKey: 'changed_by'});
+PriceHistory.belongsTo(User, { foreignKey: 'changed_by' });
 
 // Relaciones de Cuentas
 Account.hasMany(TwoFactorConfig, { foreignKey: 'account_id' });
@@ -139,7 +139,7 @@ PriceHistory.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
 Product.hasMany(Customization, { foreignKey: 'product_id' });
 Customization.belongsTo(Product, { foreignKey: 'product_id' });
 
-Product.hasMany(CustomizationOption, { foreignKey: 'product_id' }); 
+Product.hasMany(CustomizationOption, { foreignKey: 'product_id' });
 CustomizationOption.belongsTo(Product, { foreignKey: 'product_id' });
 
 Product.hasMany(ShippingOption, { foreignKey: 'product_id' });
@@ -162,12 +162,22 @@ Customization.belongsTo(Order, { foreignKey: 'order_id' });
 ShippingOption.hasMany(DeliveryPoint, { foreignKey: 'shipping_option_id' });
 DeliveryPoint.belongsTo(ShippingOption, { foreignKey: 'shipping_option_id' });
 
+//HAILIE
 // Relaciones de Carrito
 Cart.hasMany(CartDetail, { foreignKey: 'cart_id' });
 CartDetail.belongsTo(Cart, { foreignKey: 'cart_id' });
 
-ProductVariant.hasMany(CartDetail, { foreignKey: 'product_id' });
-CartDetail.belongsTo(ProductVariant, { foreignKey: 'product_id' });
+Cart.belongsTo(User, { foreignKey: 'user_id' });
+User.hasMany(Cart, { foreignKey: 'user_id' });
+
+CartDetail.belongsTo(Product, { foreignKey: 'product_id' });
+Product.hasMany(CartDetail, { foreignKey: 'product_id' });
+
+CartDetail.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
+ProductVariant.hasMany(CartDetail, { foreignKey: 'variant_id' });
+
+CartDetail.belongsTo(CustomizationOption, { foreignKey: 'option_id' });
+CustomizationOption.hasMany(CartDetail, { foreignKey: 'option_id' });
 
 // Relaciones de Pedidos
 Order.hasMany(OrderDetail, { foreignKey: 'order_id' });
