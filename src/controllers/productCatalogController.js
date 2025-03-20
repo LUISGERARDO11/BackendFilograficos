@@ -2,6 +2,23 @@ const { Op } = require('sequelize');
 const { Product, ProductVariant, Category, Collaborator, ProductAttribute, ProductAttributeValue, CustomizationOption, ProductImage } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { uploadProductImagesToCloudinary } = require('../services/cloudinaryService');
+const { query, validationResult } = require('express-validator');
+
+const validateGetAllProducts = [
+  query('search').optional().trim().escape(),
+  query('collaborator_id').optional().isInt({ min: 1 }).withMessage('El ID del colaborador debe ser un entero positivo'),
+  query('category_id').optional().isInt({ min: 1 }).withMessage('El ID de la categoría debe ser un entero positivo'),
+  query('product_type')
+    .optional()
+    .isIn(['Existencia', 'semi_personalizado', 'personalizado'])
+    .withMessage('El tipo de producto debe ser "Existencia", "semi_personalizado" o "personalizado"'),
+  query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser un entero positivo'),
+  query('pageSize').optional().isInt({ min: 1 }).withMessage('El tamaño de página debe ser un entero positivo'),
+  query('sort')
+    .optional()
+    .matches(/^([a-zA-Z_]+:(ASC|DESC),?)+$/i)
+    .withMessage('El parámetro sort debe tener el formato "column:direction,column:direction" (ejemplo: "name:ASC,total_stock:DESC")')
+];
 
 // Crear un producto con variantes
 exports.createProduct = async (req, res) => {
@@ -167,111 +184,180 @@ exports.createProduct = async (req, res) => {
 };
 
 // Obtener todos los productos activos del catálogo
-exports.getAllProducts = async (req, res) => {
-  try {
-    const { page: pageParam, pageSize: pageSizeParam, sort } = req.query;
-    const page = parseInt(pageParam) || 1;
-    const pageSize = parseInt(pageSizeParam) || 10;
+exports.getAllProducts = [
+  validateGetAllProducts,
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
+      }
 
-    if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
-      return res.status(400).json({ message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' });
-    }
+      const {
+        search,
+        collaborator_id,
+        category_id,
+        product_type,
+        page: pageParam = 1,
+        pageSize: pageSizeParam = 10,
+        sort
+      } = req.query;
 
-    let order = [['product_id', 'ASC']];
-    if (sort) {
-      const sortParams = sort.split(',').map(param => param.trim().split(':'));
-      const validColumns = ['name', 'product_id', 'variant_count', 'min_price', 'max_price', 'total_stock'];
-      const validDirections = ['ASC', 'DESC'];
+      const page = parseInt(pageParam);
+      const pageSize = parseInt(pageSizeParam);
 
-      order = sortParams.map(([column, direction]) => {
-        if (!validColumns.includes(column)) {
-          throw new Error(`Columna de ordenamiento inválida: ${column}. Use: ${validColumns.join(', ')}`);
+      if (page < 1 || pageSize < 1) {
+        return res.status(400).json({ message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' });
+      }
+
+      // Filtros
+      const where = { status: 'active' };
+
+      if (search) {
+        where[Op.or] = [
+          { name: { [Op.like]: `%${search}%` } },
+          { '$Category.name$': { [Op.like]: `%${search}%` } }
+        ];
+        if (!isNaN(parseFloat(search))) {
+          where[Op.or].push(
+            { '$ProductVariants.calculated_price$': { [Op.between]: [parseFloat(search) - 0.01, parseFloat(search) + 0.01] } },
+            { '$ProductVariants.stock$': parseInt(search) }
+          );
         }
-        if (!direction || !validDirections.includes(direction.toUpperCase())) {
-          throw new Error(`Dirección de ordenamiento inválida: ${direction}. Use: ASC o DESC`);
+      }
+
+      if (collaborator_id) {
+        where.collaborator_id = parseInt(collaborator_id);
+        const collaboratorExists = await Collaborator.findByPk(collaborator_id);
+        if (!collaboratorExists) {
+          return res.status(404).json({ message: 'Colaborador no encontrado' });
         }
-        // Usar sequelize.literal para columnas agregadas, y array simple para columnas base
-        if (['variant_count', 'min_price', 'max_price', 'total_stock'].includes(column)) {
-          return [Product.sequelize.literal(column), direction.toUpperCase()];
+      }
+
+      if (category_id) {
+        where.category_id = parseInt(category_id);
+        const categoryExists = await Category.findByPk(category_id);
+        if (!categoryExists) {
+          return res.status(404).json({ message: 'Categoría no encontrada' });
         }
-        return [column, direction.toUpperCase()];
+      }
+
+      if (product_type) {
+        where.product_type = product_type;
+      }
+
+      // Ordenamiento
+      let order = [['product_id', 'ASC']];
+      if (sort) {
+        const sortParams = sort.split(',').map(param => param.trim().split(':'));
+        const validColumns = ['name', 'variant_count', 'min_price', 'max_price', 'total_stock'];
+        const validDirections = ['ASC', 'DESC'];
+
+        order = sortParams.map(([column, direction]) => {
+          if (!validColumns.includes(column)) {
+            throw new Error(`Columna de ordenamiento inválida: ${column}. Use: ${validColumns.join(', ')}`);
+          }
+          if (!direction || !validDirections.includes(direction.toUpperCase())) {
+            throw new Error(`Dirección de ordenamiento inválida: ${direction}. Use: ASC o DESC`);
+          }
+          if (['variant_count', 'min_price', 'max_price', 'total_stock'].includes(column)) {
+            return [Product.sequelize.literal(column), direction.toUpperCase()];
+          }
+          return [column, direction.toUpperCase()];
+        });
+      }
+
+      const { count, rows: products } = await Product.findAndCountAll({
+        where,
+        attributes: [
+          'product_id',
+          'name',
+          'product_type',
+          'created_at',
+          'updated_at',
+          [
+            Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')),
+            'variant_count'
+          ],
+          [
+            Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')),
+            'min_price'
+          ],
+          [
+            Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')),
+            'max_price'
+          ],
+          [
+            Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')),
+            'total_stock'
+          ]
+        ],
+        include: [
+          { model: Category, attributes: ['name'] },
+          {
+            model: ProductVariant,
+            attributes: [],
+            required: false
+          },
+          {
+            model: Collaborator,
+            attributes: ['name'],
+            required: false
+          }
+        ],
+        group: [
+          'Product.product_id',
+          'Product.name',
+          'Product.product_type',
+          'Product.created_at',
+          'Product.updated_at',
+          'Category.category_id',
+          'Category.name',
+          'Collaborator.collaborator_id',
+          'Collaborator.name'
+        ],
+        order,
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+        subQuery: false
       });
-    }
 
-    const { count, rows: products } = await Product.findAndCountAll({
-      where: { status: 'active' },
-      attributes: [
-        'product_id',
-        'name',
-        'product_type',
-        'created_at',
-        'updated_at',
-        [
-          Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')),
-          'variant_count'
-        ],
-        [
-          Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')),
-          'min_price'
-        ],
-        [
-          Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')),
-          'max_price'
-        ],
-        [
-          Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')),
-          'total_stock'
-        ]
-      ],
-      include: [
-        { model: Category, attributes: ['name'] },
-        {
-          model: ProductVariant,
-          attributes: [],
-          required: false
-        }
-      ],
-      group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Product.created_at', 'Product.updated_at', 'Category.category_id', 'Category.name'],
-      order,
-      limit: pageSize,
-      offset: (page - 1) * pageSize,
-      subQuery: false
-    });
+      const formattedProducts = await Promise.all(products.map(async (product) => {
+        const firstVariant = await ProductVariant.findOne({
+          where: { product_id: product.product_id },
+          include: [{ model: ProductImage, attributes: ['image_url'], where: { order: 1 }, required: false }],
+          order: [['variant_id', 'ASC']]
+        });
 
-    const formattedProducts = await Promise.all(products.map(async (product) => {
-      const firstVariant = await ProductVariant.findOne({
-        where: { product_id: product.product_id },
-        include: [{ model: ProductImage, attributes: ['image_url'], where: { order: 1 }, required: false }],
-        order: [['variant_id', 'ASC']]
+        return {
+          product_id: product.product_id,
+          name: product.name,
+          category: product.Category ? product.Category.name : null,
+          product_type: product.product_type,
+          variant_count: parseInt(product.get('variant_count')) || 0,
+          min_price: parseFloat(product.get('min_price')) || 0,
+          max_price: parseFloat(product.get('max_price')) || 0,
+          total_stock: parseInt(product.get('total_stock')) || 0,
+          created_at: product.created_at,
+          updated_at: product.updated_at,
+          image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null,
+          collaborator: product.Collaborator ? product.Collaborator.name : null
+        };
+      }));
+
+      res.status(200).json({
+        message: 'Productos obtenidos exitosamente',
+        products: formattedProducts,
+        total: count.length,
+        page,
+        pageSize
       });
-
-      return {
-        product_id: product.product_id,
-        name: product.name,
-        category: product.Category ? product.Category.name : null,
-        product_type: product.product_type,
-        variant_count: parseInt(product.get('variant_count')) || 0,
-        min_price: parseFloat(product.get('min_price')) || 0,
-        max_price: parseFloat(product.get('max_price')) || 0,
-        total_stock: parseInt(product.get('total_stock')) || 0,
-        created_at: product.created_at,
-        updated_at: product.updated_at,
-        image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null
-      };
-    }));
-
-    res.status(200).json({
-      message: 'Productos obtenidos exitosamente',
-      products: formattedProducts,
-      total: count.length,
-      page,
-      pageSize
-    });
-  } catch (error) {
-    loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al obtener los productos', error: error.message });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al obtener los productos', error: error.message });
+    }
   }
-};
+];
 
 // Eliminar lógicamente un producto
 exports.deleteProduct = async (req, res) => {
