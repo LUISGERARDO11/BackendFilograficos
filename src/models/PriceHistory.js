@@ -41,7 +41,7 @@ const PriceHistory = sequelize.define('PriceHistory', {
     allowNull: false
   },
   change_type: {
-    type: DataTypes.ENUM('manual', 'promotion', 'discount', 'adjustment'),
+    type: DataTypes.ENUM('manual', 'promotion', 'discount', 'adjustment', 'batch_update_individual', 'batch_update'),
     allowNull: false
   },
   change_description: {
