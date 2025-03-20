@@ -137,7 +137,6 @@ router.get(
 
 router.get(
   '/public-catalog/:product_id',
-  authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,
   publicProductCatalogController.getProductById
 );
 router.get(
