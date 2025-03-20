@@ -73,19 +73,11 @@ const validateBatchUpdateVariantPricesIndividual = [
     .isInt({ min: 1 })
     .withMessage('El ID de la variante debe ser un entero positivo'),
   body('variants.*.production_cost')
-    .optional()
-    .isFloat({ min: 0 })
+    .isFloat({ min: 0.01 }) // Requerido, positivo
     .withMessage('El costo de producción debe ser un número positivo'),
   body('variants.*.profit_margin')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('El margen de ganancia debe ser un número positivo'),
-  body('variants.*').custom((variant) => {
-    if (!variant.production_cost && !variant.profit_margin) {
-      throw new Error('Cada variante debe tener al menos un valor para actualizar: production_cost o profit_margin');
-    }
-    return true;
-  })
+    .isFloat({ min: 0.01 }) // Requerido, positivo
+    .withMessage('El margen de ganancia debe ser un número positivo')
 ];
 
 // Métodos existentes (sin cambios)
@@ -585,7 +577,7 @@ exports.batchUpdateVariantPricesIndividual = [
         return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
       }
 
-      const { variants } = req.body; // Array de objetos: [{variant_id, production_cost?, profit_margin?}, ...]
+      const { variants } = req.body; // Array de objetos: [{variant_id, production_cost, profit_margin}, ...]
       const userId = req.user.user_id;
 
       const variantIds = variants.map(v => v.variant_id);
@@ -617,8 +609,8 @@ exports.batchUpdateVariantPricesIndividual = [
 
       for (const variantData of variants) {
         const variant = dbVariants.find(v => v.variant_id === variantData.variant_id);
-        const newProductionCost = variantData.production_cost !== undefined ? parseFloat(variantData.production_cost) : variant.production_cost;
-        const newProfitMargin = variantData.profit_margin !== undefined ? parseFloat(variantData.profit_margin) : variant.profit_margin;
+        const newProductionCost = parseFloat(variantData.production_cost);
+        const newProfitMargin = parseFloat(variantData.profit_margin);
         const newCalculatedPrice = newProductionCost * (1 + newProfitMargin / 100);
 
         if (
