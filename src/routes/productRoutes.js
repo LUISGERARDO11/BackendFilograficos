@@ -6,6 +6,7 @@ const productCatalogController = require('../controllers/productCatalogControlle
 const productStockController = require('../controllers/productStockController'); // Nuevo controlador
 const productPriceController = require('../controllers/productPriceController');
 const publicProductCatalogController = require('../controllers/publicProductCatalogController');//(HAILIE)
+const authProductCatalogController = require('../controllers/authProductCatalogController');//(HAILIE)
 
 // Importar middlewares
 const authMiddleware = require('../middlewares/authMiddleware');
@@ -130,12 +131,17 @@ router.get(
 );
 router.get(
   '/auth-catalog',
-  publicProductCatalogController.getAllProducts
+  authProductCatalogController.getAllProducts
 );
 
 router.get(
   '/public-catalog/:product_id',
   authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,
   publicProductCatalogController.getProductById
+);
+router.get(
+  '/auth-catalog/:product_id',
+  authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,
+  authProductCatalogController.getProductById
 );
 module.exports = router;
