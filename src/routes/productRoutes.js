@@ -22,9 +22,9 @@ router.post(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  uploadProductImages, // Configuración de Multer para múltiples imágenes por variante
-  validateProductImages, // Validación de imágenes (1-10 por variante)
-  validateProduct, // Validación de datos del producto y variantes
+  uploadProductImages,
+  validateProductImages,
+  validateProduct,
   productCatalogController.createProduct
 );
 
@@ -34,7 +34,7 @@ router.get(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  validateGetProducts, // Validación de parámetros de consulta
+  validateGetProducts,
   productCatalogController.getAllProducts
 );
 
@@ -44,7 +44,7 @@ router.delete(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  validateDeleteProduct, // Validación del parámetro product_id
+  validateDeleteProduct,
   productCatalogController.deleteProduct
 );
 
@@ -54,7 +54,7 @@ router.get(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  validateGetProductById, // Validación del parámetro product_id
+  validateGetProductById,
   productCatalogController.getProductById
 );
 
@@ -64,9 +64,9 @@ router.put(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  uploadProductImages, // Configuración de Multer para múltiples imágenes por variante
-  validateProductImages, // Validación de imágenes (1-10 por variante)
-  validateUpdateProduct, // Validación de datos del producto y variantes
+  uploadProductImages,
+  validateProductImages,
+  validateUpdateProduct,
   productCatalogController.updateProduct
 );
 
@@ -88,40 +88,13 @@ router.put(
   productStockController.updateStock
 );
 
-// Ruta para obtener todas las variantes con filtros y ordenamiento (requiere autenticación y rol de administrador)
+// Rutas de precios (estáticas primero)
 router.get(
   '/price',
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
   productPriceController.getAllVariants
-);
-
-// Ruta para obtener una variante por ID (requiere autenticación y rol de administrador)
-router.get(
-  '/price/:id',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  roleMiddleware(['administrador']),
-  productPriceController.getVariantById
-);
-
-// Ruta para actualizar el precio de una variante (requiere autenticación y rol de administrador)
-router.put(
-  '/price/:id',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  roleMiddleware(['administrador']),
-  productPriceController.updateVariantPrice
-);
-
-// Ruta para obtener el historial de precios de una variante (requiere autenticación y rol de administrador)
-router.get(
-  '/price/history/:variant_id',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  roleMiddleware(['administrador']),
-  productPriceController.getPriceHistoryByVariantId
 );
 
 // Nueva ruta para actualización en lote de precios (uniforme)
@@ -142,15 +115,41 @@ router.put(
   productPriceController.batchUpdateVariantPricesIndividual
 );
 
-//(HAILIE)
-// Rutas para visitantes (públicas):
+// Rutas dinámicas de precios (después de las estáticas)
+router.get(
+  '/price/:id',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productPriceController.getVariantById
+);
+
+router.put(
+  '/price/:id',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productPriceController.updateVariantPrice
+);
+
+router.get(
+  '/price/history/:variant_id',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  productPriceController.getPriceHistoryByVariantId
+);
+
+// Rutas públicas y autenticadas (HAILIE)
 router.get(
   '/public-catalog',
   publicProductCatalogController.getAllProducts
 );
+
 router.get(
   '/auth-catalog',
-  authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
   authProductCatalogController.getAllProducts
 );
 
@@ -158,9 +157,12 @@ router.get(
   '/public-catalog/:product_id',
   publicProductCatalogController.getProductById
 );
+
 router.get(
   '/auth-catalog/:product_id',
-  authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
   authProductCatalogController.getProductById
 );
+
 module.exports = router;
