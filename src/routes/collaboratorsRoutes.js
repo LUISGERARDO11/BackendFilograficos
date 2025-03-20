@@ -35,6 +35,10 @@ router.get('/',
 router.get('/public',
     collaboratorController.getAllCollaborators
 );
+router.get('/auth',
+    authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,
+    collaboratorController.getAllCollaborators
+);
 // Obtiene todos los colaboradores con paginacion.
 router.get('/pag',
     authMiddleware,

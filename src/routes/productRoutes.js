@@ -115,12 +115,17 @@ router.put(
 //(HAILIE)
 // Rutas para visitantes (públicas):
 router.get(
-  '/public-catalog', 
+  '/public-catalog',
+  publicProductCatalogController.getAllProducts
+);
+router.get(
+  '/auth-catalog',
   publicProductCatalogController.getAllProducts
 );
 
 router.get(
-  '/public-catalog/:product_id', 
+  '/public-catalog/:product_id',
+  authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,
   publicProductCatalogController.getProductById
 );
 module.exports = router;
