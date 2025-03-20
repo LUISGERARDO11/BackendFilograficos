@@ -1,9 +1,9 @@
 const { Op } = require('sequelize');
 const { body, query, param, validationResult } = require('express-validator');
-const { Product, ProductVariant, ProductImage, PriceHistory, Category } = require('../models/Associations');
+const { Product, ProductVariant, ProductImage, PriceHistory, Category, User } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 
-// Middleware de validación
+// Middleware de validación (sin cambios)
 const validateGetAllVariants = [
   query('search').optional().trim().escape(),
   query('category_id').optional().isInt({ min: 1 }).withMessage('El ID de la categoría debe ser un entero positivo'),
@@ -35,6 +35,10 @@ const validateUpdateVariantPrice = [
   body('profit_margin')
     .isFloat({ min: 0 })
     .withMessage('El margen de ganancia debe ser un número positivo')
+];
+
+const validateGetPriceHistory = [
+    param('variant_id').isInt({ min: 1 }).withMessage('El ID de la variante debe ser un entero positivo')
 ];
 
 // Controlador para obtener todas las variantes
@@ -89,11 +93,8 @@ exports.getAllVariants = [
         if (sortBy === 'product_name') {
           order = [[Product, 'name', sortOrder]];
         } else if (sortBy === 'updated_at') {
-          // Ordenar por ISNULL primero (NULL al final), luego por change_date
-          order = [
-            [ProductVariant.sequelize.fn('ISNULL', ProductVariant.sequelize.col('PriceHistory.change_date')), 'ASC'],
-            [PriceHistory, 'change_date', sortOrder]
-          ];
+          // Ordenar por el change_date de PriceHistory directamente
+          order = [[{ model: PriceHistory }, 'change_date', sortOrder]];
         } else {
           order = [[sortBy, sortOrder]];
         }
@@ -125,7 +126,7 @@ exports.getAllVariants = [
           {
             model: PriceHistory,
             attributes: ['change_date'],
-            order: [['change_date', 'DESC']],
+            order: [['change_date', 'DESC']], // Orden interno para obtener el más reciente
             limit: 1,
             required: false
           }
@@ -236,6 +237,107 @@ exports.getVariantById = [
   }
 ];
 
+// Método para obtener el historial de precios de una variante
+exports.getPriceHistoryByVariantId = [
+  validateGetPriceHistory,
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
+      }
+
+      const { variant_id } = req.params;
+
+      // Verificar si la variante existe
+      const variant = await ProductVariant.findByPk(variant_id);
+      if (!variant) {
+        return res.status(404).json({ message: 'Variante no encontrada' });
+      }
+
+      // Obtener el historial de precios con información del usuario
+      const priceHistory = await PriceHistory.findAll({
+        where: { variant_id },
+        attributes: [
+          'history_id', // Cambiado de 'price_history_id' a 'history_id' para coincidir con el modelo
+          'previous_production_cost',
+          'new_production_cost',
+          'previous_profit_margin',
+          'new_profit_margin',
+          'previous_calculated_price',
+          'new_calculated_price',
+          'change_type',
+          'change_description',
+          'change_date'
+        ],
+        order: [['change_date', 'DESC']],
+        include: [
+          {
+            model: ProductVariant,
+            attributes: ['sku'],
+            include: [
+              {
+                model: Product,
+                attributes: ['name']
+              }
+            ]
+          },
+          {
+            model: User,
+            attributes: ['user_id', 'name', 'email'] // Campos del usuario que queremos incluir
+          }
+        ]
+      });
+
+      if (!priceHistory.length) {
+        return res.status(200).json({
+          message: 'No se encontraron cambios de precio para esta variante',
+          history: []
+        });
+      }
+
+      // Formatear la respuesta
+      const formattedHistory = priceHistory.map(entry => ({
+        history_id: entry.history_id,
+        product_name: entry.ProductVariant.Product.name,
+        sku: entry.ProductVariant.sku,
+        previous: {
+          production_cost: parseFloat(entry.previous_production_cost).toFixed(2),
+          profit_margin: parseFloat(entry.previous_profit_margin).toFixed(2),
+          calculated_price: parseFloat(entry.previous_calculated_price).toFixed(2)
+        },
+        new: {
+          production_cost: parseFloat(entry.new_production_cost).toFixed(2),
+          profit_margin: parseFloat(entry.new_profit_margin).toFixed(2),
+          calculated_price: parseFloat(entry.new_calculated_price).toFixed(2)
+        },
+        change_type: entry.change_type,
+        change_description: entry.change_description || 'Sin descripción',
+        change_date: entry.change_date.toLocaleDateString('es-MX', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+        changed_by: {
+          user_id: entry.User.user_id,
+          name: entry.User.name,
+          email: entry.User.email
+        }
+      }));
+
+      res.status(200).json({
+        message: 'Historial de precios obtenido exitosamente',
+        history: formattedHistory
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al obtener el historial de precios', error: error.message });
+    }
+  }
+];
+
 exports.updateVariantPrice = [
   validateUpdateVariantPrice,
   async (req, res) => {
@@ -265,11 +367,15 @@ exports.updateVariantPrice = [
       const newProfitMargin = parseFloat(profit_margin);
       const newCalculatedPrice = newProductionCost * (1 + newProfitMargin / 100);
 
-      // Registrar en PriceHistory
+      // Registrar en PriceHistory con la nueva estructura
       await PriceHistory.create({
         variant_id: variant.variant_id,
-        previous_price: variant.calculated_price,
-        new_price: newCalculatedPrice,
+        previous_production_cost: variant.production_cost,
+        new_production_cost: newProductionCost,
+        previous_profit_margin: variant.profit_margin,
+        new_profit_margin: newProfitMargin,
+        previous_calculated_price: variant.calculated_price,
+        new_calculated_price: newCalculatedPrice,
         change_type: 'manual',
         changed_by: userId,
         change_date: new Date()

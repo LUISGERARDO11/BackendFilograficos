@@ -76,6 +76,10 @@ BackupLog.belongsTo(User, { foreignKey: 'performed_by' });
 User.hasMany(RestorationLog, { foreignKey: 'performed_by' });
 RestorationLog.belongsTo(User, { foreignKey: 'performed_by' });
 
+// Nueva relación: PriceHistory y User
+User.hasMany(PriceHistory, { foreignKey: 'changed_by' });
+PriceHistory.belongsTo(User, { foreignKey: 'changed_by'});
+
 // Relaciones de Cuentas
 Account.hasMany(TwoFactorConfig, { foreignKey: 'account_id' });
 TwoFactorConfig.belongsTo(Account, { foreignKey: 'account_id' });
