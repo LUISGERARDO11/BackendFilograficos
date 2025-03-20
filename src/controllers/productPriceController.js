@@ -588,9 +588,13 @@ exports.batchUpdateVariantPricesIndividual = [
             model: Product,
             attributes: ['name', 'description', 'status', 'product_type', 'category_id'],
             include: [
-              { model: Category, attributes: ['name'] }, // Para obtener el nombre de la categoría
-              { model: ProductImage, attributes: ['image_url'], limit: 1 } // Primera imagen
+              { model: Category, attributes: ['name'] }
             ]
+          },
+          {
+            model: ProductImage,
+            attributes: ['image_url'],
+            limit: 1 // Primera imagen
           }
         ]
       });
@@ -651,12 +655,12 @@ exports.batchUpdateVariantPricesIndividual = [
             product_name: variant.Product.name,
             description: variant.Product.description || null,
             sku: variant.sku,
-            image_url: variant.Product.ProductImages?.[0]?.image_url || null,
+            image_url: variant.ProductImages?.[0]?.image_url || null, // Acceso directo desde ProductVariant
             production_cost: newProductionCost.toFixed(2),
             profit_margin: newProfitMargin.toFixed(2),
             calculated_price: newCalculatedPrice.toFixed(2),
             category: variant.Product.Category?.name || null,
-            updated_at: variant.updated_at.toISOString(), // Formato ISO 8601
+            updated_at: variant.updated_at.toISOString(),
             product_type: variant.Product.product_type
           });
 
@@ -671,12 +675,12 @@ exports.batchUpdateVariantPricesIndividual = [
             product_name: variant.Product.name,
             description: variant.Product.description || null,
             sku: variant.sku,
-            image_url: variant.Product.ProductImages?.[0]?.image_url || null,
+            image_url: variant.ProductImages?.[0]?.image_url || null, // Acceso directo desde ProductVariant
             production_cost: variant.production_cost.toFixed(2),
             profit_margin: variant.profit_margin.toFixed(2),
             calculated_price: variant.calculated_price.toFixed(2),
             category: variant.Product.Category?.name || null,
-            updated_at: variant.updated_at.toISOString(), // Formato ISO 8601
+            updated_at: variant.updated_at.toISOString(),
             product_type: variant.Product.product_type
           });
         }
