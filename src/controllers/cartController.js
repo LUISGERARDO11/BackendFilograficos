@@ -119,3 +119,59 @@ exports.addToCart = async (req, res) => {
     res.status(500).json({ message: 'Error al añadir al carrito', error: error.message });
   }
 };
+// Añadir al final de cartController.js
+
+exports.getCart = async (req, res) => {
+  try {
+    // Obtener el user_id del usuario autenticado
+    const user_id = req.user?.user_id;
+    if (!user_id) {
+      return res.status(401).json({ message: 'Usuario no autenticado' });
+    }
+
+    // Buscar un carrito activo para el usuario
+    const cart = await Cart.findOne({
+      where: { user_id, status: 'active' },
+      include: [
+        {
+          model: CartDetail,
+          include: [
+            { model: Product, attributes: ['product_id', 'name'] },
+            { model: ProductVariant, attributes: ['variant_id', 'sku', 'calculated_price', 'stock'] },
+            { model: CustomizationOption, attributes: ['option_id', 'option_type', 'description'], required: false }
+          ]
+        }
+      ]
+    });
+
+    if (!cart) {
+      return res.status(200).json({ items: [], total: 0 });
+    }
+
+    // Formatear los ítems del carrito
+    const items = cart.CartDetails.map(detail => ({
+      cart_detail_id: detail.cart_detail_id,
+      product_id: detail.product_id,
+      product_name: detail.Product.name,
+      variant_id: detail.variant_id,
+      variant_sku: detail.ProductVariant.sku,
+      calculated_price: detail.ProductVariant.calculated_price,
+      quantity: detail.quantity,
+      unit_price: detail.unit_price,
+      subtotal: detail.subtotal,
+      customization: detail.CustomizationOption ? {
+        option_id: detail.CustomizationOption.option_id,
+        option_type: detail.CustomizationOption.option_type,
+        description: detail.CustomizationOption.description
+      } : null
+    }));
+
+    res.status(200).json({
+      items,
+      total: items.reduce((sum, item) => sum + item.quantity, 0)
+    });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener el carrito', error: error.message });
+  }
+};
