@@ -146,7 +146,6 @@ exports.getCart = async (req, res) => {
     if (!cart) {
       return res.status(200).json({ items: [], total: 0 });
     }
-
     // Formatear los ítems del carrito
     const items = cart.CartDetails.map(detail => ({
       cart_detail_id: detail.cart_detail_id,
@@ -154,10 +153,10 @@ exports.getCart = async (req, res) => {
       product_name: detail.Product.name,
       variant_id: detail.variant_id,
       variant_sku: detail.ProductVariant.sku,
-      calculated_price: detail.ProductVariant.calculated_price,
+      calculated_price: parseFloat(detail.ProductVariant.calculated_price), // Convertir a número
       quantity: detail.quantity,
-      unit_price: detail.unit_price,
-      subtotal: detail.subtotal,
+      unit_price: parseFloat(detail.unit_price), // Convertir a número
+      subtotal: parseFloat(detail.subtotal), // Convertir a número
       customization: detail.CustomizationOption ? {
         option_id: detail.CustomizationOption.option_id,
         option_type: detail.CustomizationOption.option_type,
