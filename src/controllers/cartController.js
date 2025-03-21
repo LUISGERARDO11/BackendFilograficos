@@ -120,7 +120,6 @@ exports.addToCart = async (req, res) => {
   }
 };
 // Añadir al final de cartController.js
-
 exports.getCart = async (req, res) => {
   try {
     // Obtener el user_id del usuario autenticado
@@ -173,5 +172,99 @@ exports.getCart = async (req, res) => {
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener el carrito', error: error.message });
+  }
+};
+// Actualizar la cantidad de un ítem en el carrito
+exports.updateCartItem = async (req, res) => {
+  const transaction = await Cart.sequelize.transaction();
+  try {
+    const { cart_detail_id, quantity } = req.body;
+    const user_id = req.user?.user_id;
+
+    if (!user_id) {
+      await transaction.rollback();
+      return res.status(401).json({ message: 'Usuario no autenticado' });
+    }
+
+    if (!cart_detail_id || !quantity) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'Faltan datos requeridos: cart_detail_id y quantity son obligatorios' });
+    }
+
+    if (quantity <= 0) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'La cantidad debe ser mayor que 0' });
+    }
+
+    // Buscar el detalle del carrito
+    const cartDetail = await CartDetail.findByPk(cart_detail_id, {
+      include: [
+        { model: Cart, where: { user_id, status: 'active' } },
+        { model: ProductVariant }
+      ],
+      transaction
+    });
+
+    if (!cartDetail) {
+      await transaction.rollback();
+      return res.status(404).json({ message: 'Ítem no encontrado en el carrito' });
+    }
+
+    // Verificar stock
+    if (cartDetail.ProductVariant.stock < quantity) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'Stock insuficiente' });
+    }
+
+    // Actualizar la cantidad y el subtotal
+    await cartDetail.update(
+      {
+        quantity,
+        subtotal: quantity * cartDetail.unit_price
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+    res.status(200).json({ message: 'Cantidad actualizada exitosamente' });
+  } catch (error) {
+    await transaction.rollback();
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al actualizar la cantidad', error: error.message });
+  }
+};
+
+// Eliminar un ítem del carrito
+exports.removeCartItem = async (req, res) => {
+  const transaction = await Cart.sequelize.transaction();
+  try {
+    const cart_detail_id = req.params.cartDetailId;
+    const user_id = req.user?.user_id;
+
+    if (!user_id) {
+      await transaction.rollback();
+      return res.status(401).json({ message: 'Usuario no autenticado' });
+    }
+
+    // Buscar el detalle del carrito
+    const cartDetail = await CartDetail.findByPk(cart_detail_id, {
+      include: [{ model: Cart, where: { user_id, status: 'active' } }],
+      transaction
+    });
+
+    if (!cartDetail) {
+      await transaction.rollback();
+      return res.status(404).json({ message: 'Ítem no encontrado en el carrito' });
+    }
+
+    // Eliminar el ítem
+    await cartDetail.destroy({ transaction });
+
+    await transaction.commit();
+    res.status(200).json({ message: 'Ítem eliminado del carrito exitosamente' });
+  } catch (error) {
+    await transaction.rollback();
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al eliminar el ítem', error: error.message });
   }
 };
