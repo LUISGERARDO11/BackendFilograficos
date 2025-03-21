@@ -49,19 +49,11 @@ const validateBatchUpdateVariantPrices = [
     .custom((value) => value.every(id => Number.isInteger(id) && id > 0))
     .withMessage('Todos los IDs de variantes deben ser enteros positivos'),
   body('production_cost')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('El costo de producción debe ser un número positivo'),
+    .isFloat({ min: 0.01 })
+    .withMessage('El costo de producción debe ser un número positivo mayor a 0.01'),
   body('profit_margin')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('El margen de ganancia debe ser un número positivo'),
-  body().custom((body) => {
-    if (!body.production_cost && !body.profit_margin) {
-      throw new Error('Debe proporcionar al menos un valor para actualizar: production_cost o profit_margin');
-    }
-    return true;
-  })
+    .isFloat({ min: 0.01 })
+    .withMessage('El margen de ganancia debe ser un número positivo mayor a 0.01')
 ];
 
 // Nueva validación para actualización en lote individual
@@ -469,23 +461,36 @@ exports.batchUpdateVariantPrices = [
       const { variant_ids, production_cost, profit_margin } = req.body;
       const userId = req.user.user_id;
 
-      const variants = await ProductVariant.findAll({
+      const dbVariants = await ProductVariant.findAll({
         where: { variant_id: { [Op.in]: variant_ids } },
-        include: [{ model: Product, attributes: ['name', 'status'] }]
+        include: [
+          {
+            model: Product,
+            attributes: ['name', 'description', 'status', 'product_type', 'category_id'],
+            include: [
+              { model: Category, attributes: ['name'] }
+            ]
+          },
+          {
+            model: ProductImage,
+            attributes: ['image_url'],
+            limit: 1 // Primera imagen
+          }
+        ]
       });
 
-      if (variants.length === 0) {
+      if (dbVariants.length === 0) {
         return res.status(404).json({ message: 'No se encontraron variantes para los IDs proporcionados' });
       }
 
-      const missingIds = variant_ids.filter(id => !variants.some(v => v.variant_id === id));
+      const missingIds = variant_ids.filter(id => !dbVariants.some(v => v.variant_id === id));
       if (missingIds.length > 0) {
         return res.status(404).json({
           message: `Las siguientes variantes no fueron encontradas: ${missingIds.join(', ')}`
         });
       }
 
-      const inactiveProducts = variants.filter(v => v.Product.status === 'inactive');
+      const inactiveProducts = dbVariants.filter(v => v.Product.status === 'inactive');
       if (inactiveProducts.length > 0) {
         return res.status(400).json({
           message: `No se pueden actualizar precios de variantes de productos inactivos: ${inactiveProducts.map(v => v.sku).join(', ')}`
@@ -495,28 +500,37 @@ exports.batchUpdateVariantPrices = [
       const updatedVariants = [];
       const priceHistoryEntries = [];
 
-      for (const variant of variants) {
-        const newProductionCost = production_cost !== undefined ? parseFloat(production_cost) : variant.production_cost;
-        const newProfitMargin = profit_margin !== undefined ? parseFloat(profit_margin) : variant.profit_margin;
-        const newCalculatedPrice = newProductionCost * (1 + newProfitMargin / 100);
+      const newProductionCost = parseFloat(production_cost);
+      const newProfitMargin = parseFloat(profit_margin);
+      const newCalculatedPrice = newProductionCost * (1 + newProfitMargin / 100);
 
-        if (
-          newProductionCost !== parseFloat(variant.production_cost) ||
-          newProfitMargin !== parseFloat(variant.profit_margin)
-        ) {
+      for (const variant of dbVariants) {
+        // Convertir valores actuales a números para comparación y operaciones
+        const currentProductionCost = parseFloat(variant.production_cost) || 0;
+        const currentProfitMargin = parseFloat(variant.profit_margin) || 0;
+        const currentCalculatedPrice = parseFloat(variant.calculated_price) || 0;
+
+        // Comparar con tolerancia para evitar diferencias por redondeo
+        const hasChanges =
+          Math.abs(newProductionCost - currentProductionCost) > 0.01 ||
+          Math.abs(newProfitMargin - currentProfitMargin) > 0.01;
+
+        if (hasChanges) {
+          // Registrar en el historial si hay cambios
           priceHistoryEntries.push({
             variant_id: variant.variant_id,
-            previous_production_cost: variant.production_cost,
+            previous_production_cost: currentProductionCost,
             new_production_cost: newProductionCost,
-            previous_profit_margin: variant.profit_margin,
+            previous_profit_margin: currentProfitMargin,
             new_profit_margin: newProfitMargin,
-            previous_calculated_price: variant.calculated_price,
+            previous_calculated_price: currentCalculatedPrice,
             new_calculated_price: newCalculatedPrice,
             change_type: 'batch_update',
             changed_by: userId,
             change_date: new Date()
           });
 
+          // Actualizar la variante
           await variant.update({
             production_cost: newProductionCost,
             profit_margin: newProfitMargin,
@@ -524,14 +538,19 @@ exports.batchUpdateVariantPrices = [
             updated_at: new Date()
           });
 
+          // Añadir a la respuesta con valores actualizados
           updatedVariants.push({
             variant_id: variant.variant_id,
             product_name: variant.Product.name,
+            description: variant.Product.description || null,
             sku: variant.sku,
+            image_url: variant.ProductImages?.[0]?.image_url || null,
             production_cost: newProductionCost.toFixed(2),
             profit_margin: newProfitMargin.toFixed(2),
             calculated_price: newCalculatedPrice.toFixed(2),
-            updated_at: new Date().toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            category: variant.Product.Category?.name || null,
+            updated_at: variant.updated_at.toISOString(),
+            product_type: variant.Product.product_type
           });
 
           loggerUtils.logUserActivity(
@@ -540,14 +559,19 @@ exports.batchUpdateVariantPrices = [
             `Precio actualizado en lote para variante ${variant.sku} (${variant.variant_id}): $${newCalculatedPrice.toFixed(2)}`
           );
         } else {
+          // Incluir variantes sin cambios en la respuesta
           updatedVariants.push({
             variant_id: variant.variant_id,
             product_name: variant.Product.name,
+            description: variant.Product.description || null,
             sku: variant.sku,
-            production_cost: variant.production_cost.toFixed(2),
-            profit_margin: variant.profit_margin.toFixed(2),
-            calculated_price: variant.calculated_price.toFixed(2),
-            updated_at: variant.updated_at.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            image_url: variant.ProductImages?.[0]?.image_url || null,
+            production_cost: currentProductionCost.toFixed(2),
+            profit_margin: currentProfitMargin.toFixed(2),
+            calculated_price: currentCalculatedPrice.toFixed(2),
+            category: variant.Product.Category?.name || null,
+            updated_at: variant.updated_at.toISOString(),
+            product_type: variant.Product.product_type
           });
         }
       }
