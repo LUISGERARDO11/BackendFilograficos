@@ -73,10 +73,10 @@ const validateBatchUpdateVariantPricesIndividual = [
     .isInt({ min: 1 })
     .withMessage('El ID de la variante debe ser un entero positivo'),
   body('variants.*.production_cost')
-    .isFloat({ min: 0.01 }) // Requerido, positivo
+    .isFloat({ min: 0.01 })
     .withMessage('El costo de producción debe ser un número positivo'),
   body('variants.*.profit_margin')
-    .isFloat({ min: 0.01 }) // Requerido, positivo
+    .isFloat({ min: 0.01 })
     .withMessage('El margen de ganancia debe ser un número positivo')
 ];
 
@@ -622,27 +622,37 @@ exports.batchUpdateVariantPricesIndividual = [
 
       for (const variantData of variants) {
         const variant = dbVariants.find(v => v.variant_id === variantData.variant_id);
+
+        // Convertir valores actuales y enviados a números para comparación y operaciones
+        const currentProductionCost = parseFloat(variant.production_cost) || 0;
+        const currentProfitMargin = parseFloat(variant.profit_margin) || 0;
+        const currentCalculatedPrice = parseFloat(variant.calculated_price) || 0;
+
         const newProductionCost = parseFloat(variantData.production_cost);
         const newProfitMargin = parseFloat(variantData.profit_margin);
         const newCalculatedPrice = newProductionCost * (1 + newProfitMargin / 100);
 
-        if (
-          newProductionCost !== parseFloat(variant.production_cost) ||
-          newProfitMargin !== parseFloat(variant.profit_margin)
-        ) {
+        // Comparar con tolerancia para evitar diferencias por redondeo
+        const hasChanges =
+          Math.abs(newProductionCost - currentProductionCost) > 0.01 ||
+          Math.abs(newProfitMargin - currentProfitMargin) > 0.01;
+
+        if (hasChanges) {
+          // Registrar en el historial si hay cambios
           priceHistoryEntries.push({
             variant_id: variant.variant_id,
-            previous_production_cost: variant.production_cost,
+            previous_production_cost: currentProductionCost,
             new_production_cost: newProductionCost,
-            previous_profit_margin: variant.profit_margin,
+            previous_profit_margin: currentProfitMargin,
             new_profit_margin: newProfitMargin,
-            previous_calculated_price: variant.calculated_price,
+            previous_calculated_price: currentCalculatedPrice,
             new_calculated_price: newCalculatedPrice,
             change_type: 'batch_update_individual',
             changed_by: userId,
             change_date: new Date()
           });
 
+          // Actualizar la variante
           await variant.update({
             production_cost: newProductionCost,
             profit_margin: newProfitMargin,
@@ -650,12 +660,13 @@ exports.batchUpdateVariantPricesIndividual = [
             updated_at: new Date()
           });
 
+          // Añadir a la respuesta con valores actualizados
           updatedVariants.push({
             variant_id: variant.variant_id,
             product_name: variant.Product.name,
             description: variant.Product.description || null,
             sku: variant.sku,
-            image_url: variant.ProductImages?.[0]?.image_url || null, // Acceso directo desde ProductVariant
+            image_url: variant.ProductImages?.[0]?.image_url || null,
             production_cost: newProductionCost.toFixed(2),
             profit_margin: newProfitMargin.toFixed(2),
             calculated_price: newCalculatedPrice.toFixed(2),
@@ -670,15 +681,16 @@ exports.batchUpdateVariantPricesIndividual = [
             `Precio actualizado en lote individual para variante ${variant.sku} (${variant.variant_id}): $${newCalculatedPrice.toFixed(2)}`
           );
         } else {
+          // Incluir variantes sin cambios en la respuesta, pero sin actualizarlas
           updatedVariants.push({
             variant_id: variant.variant_id,
             product_name: variant.Product.name,
             description: variant.Product.description || null,
             sku: variant.sku,
-            image_url: variant.ProductImages?.[0]?.image_url || null, // Acceso directo desde ProductVariant
-            production_cost: variant.production_cost.toFixed(2),
-            profit_margin: variant.profit_margin.toFixed(2),
-            calculated_price: variant.calculated_price.toFixed(2),
+            image_url: variant.ProductImages?.[0]?.image_url || null,
+            production_cost: currentProductionCost.toFixed(2),
+            profit_margin: currentProfitMargin.toFixed(2),
+            calculated_price: currentCalculatedPrice.toFixed(2),
             category: variant.Product.Category?.name || null,
             updated_at: variant.updated_at.toISOString(),
             product_type: variant.Product.product_type
