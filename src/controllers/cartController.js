@@ -8,14 +8,14 @@ exports.addToCart = async (req, res) => {
     // Obtener datos del cuerpo de la solicitud
     const { product_id, variant_id, quantity, customization_option_id } = req.body;
 
-    // Obtener el user_id del usuario autenticado (asumiendo que usas un middleware de autenticación)
-    const user_id = req.user?.id; // Ajusta esto según tu middleware de autenticación (por ejemplo, req.user.id si usas JWT)
-
-    // Validar datos de entrada
+    // Obtener el user_id del usuario autenticado (ajustado para usar req.user.user_id)
+    const user_id = req.user?.user_id; // Alineado con userController.js
     if (!user_id) {
       await transaction.rollback();
       return res.status(401).json({ message: 'Usuario no autenticado' });
     }
+
+    // Validar datos de entrada
     if (!product_id || !variant_id || !quantity) {
       await transaction.rollback();
       return res.status(400).json({ message: 'Faltan datos requeridos: product_id, variant_id y quantity son obligatorios' });
