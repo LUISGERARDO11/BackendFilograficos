@@ -414,8 +414,17 @@ exports.getProductById = async (req, res) => {
         {
           model: ProductVariant,
           include: [
-            { model: ProductAttributeValue, include: [{ model: ProductAttribute, attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values'] }] },
-            { model: ProductImage, attributes: ['image_url', 'order'] }
+            { 
+              model: ProductAttributeValue, 
+              include: [{ 
+                model: ProductAttribute, 
+                attributes: ['attribute_id', 'attribute_name', 'data_type', 'allowed_values'] 
+              }] 
+            },
+            { 
+              model: ProductImage, 
+              attributes: ['image_id', 'image_url', 'public_id', 'order'] // Añadimos image_id y public_id
+            }
           ]
         },
         { model: CustomizationOption, attributes: ['type', 'description'] }
@@ -450,7 +459,9 @@ exports.getProductById = async (req, res) => {
           allowed_values: attr.ProductAttribute.allowed_values
         })),
         images: variant.ProductImages.map(img => ({
+          image_id: img.image_id, // Añadimos el ID de la imagen
           image_url: img.image_url,
+          public_id: img.public_id, // Opcional, para referencia
           order: img.order
         }))
       })),
