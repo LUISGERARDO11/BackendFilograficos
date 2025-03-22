@@ -164,10 +164,11 @@ exports.createProduct = async (req, res) => {
       // Guardar imágenes
       const imagesForVariant = await Promise.all(
         variantImages.map(async (image, idx) => {
-          const imageUrl = await uploadProductImagesToCloudinary(image.buffer, `${variant.sku}-${idx + 1}-${image.originalname}`);
+          const imageData = await uploadProductImagesToCloudinary(image.buffer, `${variant.sku}-${idx + 1}-${image.originalname}`);
           return {
             variant_id: newVariant.variant_id,
-            image_url: imageUrl,
+            image_url: imageData.secure_url, // URL para mostrar la imagen
+            public_id: imageData.public_id,  // ID para gestionar en Cloudinary
             order: idx + 1
           };
         })
@@ -469,142 +470,203 @@ exports.getProductById = async (req, res) => {
   }
 };
 
-// Actualizar un producto
+// Actualizar un producto con variantes
 exports.updateProduct = async (req, res) => {
   const { product_id } = req.params;
-  const { name, description, product_type, category_id, collaborator_id, variants } = req.body;
+  let { name, description, product_type, category_id, collaborator_id, variants } = req.body;
   const files = req.files;
+  const userId = req.user?.user_id || 'system';
 
   try {
-    const product = await Product.findByPk(product_id);
-    if (!product) {
-      return res.status(404).json({ message: 'Producto no encontrado' });
-    }
+    const product = await Product.findByPk(product_id, {
+      include: [{ model: ProductVariant, include: [ProductImage] }]
+    });
+    if (!product) return res.status(404).json({ message: 'Producto no encontrado' });
 
-    // Validar categoría
-    const categoryIdNum = parseInt(category_id, 10);
-    const category = await Category.findByPk(categoryIdNum);
-    if (!category) {
-      return res.status(404).json({ message: 'Categoría no encontrada' });
+    // Actualizar datos básicos del producto si se proporcionan
+    if (category_id) {
+      const category = await Category.findByPk(parseInt(category_id, 10));
+      if (!category) return res.status(404).json({ message: 'Categoría no encontrada' });
     }
-
-    // Validar colaborador
     if (collaborator_id) {
       const collaborator = await Collaborator.findByPk(collaborator_id);
-      if (!collaborator) {
-        return res.status(404).json({ message: 'Colaborador no encontrado' });
-      }
+      if (!collaborator) return res.status(404).json({ message: 'Colaborador no encontrado' });
     }
-
-    // Actualizar producto base
     await product.update({
-      name,
-      description: description || null,
-      product_type,
-      category_id: categoryIdNum,
-      collaborator_id: collaborator_id || null
+      name: name || product.name,
+      description: description !== undefined ? description : product.description,
+      product_type: product_type || product.product_type,
+      category_id: category_id ? parseInt(category_id, 10) : product.category_id,
+      collaborator_id: collaborator_id || product.collaborator_id
     });
 
-    // Eliminar variantes existentes
-    await ProductVariant.destroy({ where: { product_id } });
-    await ProductAttributeValue.destroy({ where: { variant_id: { [Op.in]: product.ProductVariants.map(v => v.variant_id) } } });
-    await ProductImage.destroy({ where: { variant_id: { [Op.in]: product.ProductVariants.map(v => v.variant_id) } } });
-    await CustomizationOption.destroy({ where: { product_id } });
+    // Manejar variantes si se proporcionan
+    if (variants) {
+      if (typeof variants === 'string') variants = JSON.parse(variants);
+      if (!Array.isArray(variants)) return res.status(400).json({ message: 'Las variantes deben ser un arreglo' });
 
-    // Crear nuevas variantes
-    const variantRecords = [];
-    const attributeRecords = [];
-    const customizationRecords = [];
-    const imageRecords = [];
+      const priceHistoryRecords = [];
+      const existingVariants = product.ProductVariants.reduce((acc, v) => {
+        acc[v.variant_id] = v;
+        return acc;
+      }, {});
 
-    for (const [index, variant] of variants.entries()) {
-      const existingVariant = await ProductVariant.findOne({ where: { sku: variant.sku } });
-      if (existingVariant && existingVariant.product_id !== product_id) {
-        return res.status(400).json({ message: `El SKU ${variant.sku} ya existe en otro producto` });
-      }
+      for (const [index, variant] of variants.entries()) {
+        const variantImages = files ? files.filter(file => file.fieldname === `variants[${index}][images]`) : [];
 
-      // Validar imágenes: al menos 1 y máximo 10 por variante
-      const variantImages = files ? files.filter(file => file.fieldname === `variants[${index}][images]`) : [];
-      if (variantImages.length < 1) {
-        return res.status(400).json({ message: `La variante ${variant.sku} debe tener al menos 1 imagen` });
-      }
-      if (variantImages.length > 10) {
-        return res.status(400).json({ message: `La variante ${variant.sku} no puede tener más de 10 imágenes` });
-      }
+        if (variant.variant_id) {
+          // Actualizar variante existente
+          const existingVariant = existingVariants[variant.variant_id];
+          if (!existingVariant) return res.status(404).json({ message: `Variante ${variant.variant_id} no encontrada` });
 
-      const calculated_price = parseFloat((variant.production_cost * (1 + variant.profit_margin / 100)).toFixed(2));
-      const newVariant = await ProductVariant.create({
-        product_id,
-        sku: variant.sku,
-        production_cost: variant.production_cost,
-        profit_margin: variant.profit_margin,
-        calculated_price,
-        stock: variant.stock,
-        stock_threshold: variant.stock_threshold !== undefined ? variant.stock_threshold : 10
-      });
+          const newProductionCost = variant.production_cost !== undefined ? parseFloat(variant.production_cost) : existingVariant.production_cost;
+          const newProfitMargin = variant.profit_margin !== undefined ? parseFloat(variant.profit_margin) : existingVariant.profit_margin;
+          const newCalculatedPrice = parseFloat((newProductionCost * (1 + newProfitMargin / 100)).toFixed(2));
 
-      variantRecords.push(newVariant);
-
-      if (variant.attributes && variant.attributes.length > 0) {
-        const validAttributes = await ProductAttribute.findAll({
-          include: [{ model: Category, where: { category_id: categoryIdNum }, through: { attributes: [] } }],
-          where: { is_deleted: false }
-        });
-        const validAttributeIds = validAttributes.map(attr => attr.attribute_id);
-
-        for (const attr of variant.attributes) {
-          const attributeIdNum = parseInt(attr.attribute_id, 10);
-          if (!validAttributeIds.includes(attributeIdNum)) {
-            return res.status(400).json({ message: `El atributo con ID ${attributeIdNum} no pertenece a esta categoría` });
+          if (newProductionCost !== existingVariant.production_cost || newProfitMargin !== existingVariant.profit_margin) {
+            priceHistoryRecords.push({
+              variant_id: existingVariant.variant_id,
+              previous_production_cost: existingVariant.production_cost,
+              new_production_cost: newProductionCost,
+              previous_profit_margin: existingVariant.profit_margin,
+              new_profit_margin: newProfitMargin,
+              previous_calculated_price: existingVariant.calculated_price,
+              new_calculated_price: newCalculatedPrice,
+              change_type: 'manual',
+              changed_by: userId,
+              change_date: new Date()
+            });
           }
-          attributeRecords.push({
-            variant_id: newVariant.variant_id,
-            attribute_id: attributeIdNum,
-            value: attr.value
+
+          await existingVariant.update({
+            production_cost: newProductionCost,
+            profit_margin: newProfitMargin,
+            calculated_price: newCalculatedPrice,
+            stock: variant.stock !== undefined ? variant.stock : existingVariant.stock,
+            stock_threshold: variant.stock_threshold !== undefined ? variant.stock_threshold : existingVariant.stock_threshold
           });
+
+          // Eliminar imágenes
+          if (variant.imagesToDelete && Array.isArray(variant.imagesToDelete)) {
+            for (const imageId of variant.imagesToDelete) {
+              const image = await ProductImage.findByPk(imageId);
+              if (image && image.variant_id === existingVariant.variant_id) {
+                await deleteFromCloudinary(image.public_id); // Eliminar físicamente usando public_id
+                await image.destroy();
+              }
+            }
+          }
+
+          // Agregar nuevas imágenes
+          if (variantImages.length > 0) {
+            const currentImageCount = existingVariant.ProductImages.length - (variant.imagesToDelete?.length || 0);
+            if (currentImageCount + variantImages.length > 10) {
+              return res.status(400).json({ message: `La variante ${existingVariant.sku} no puede tener más de 10 imágenes` });
+            }
+            const newImages = await Promise.all(
+              variantImages.map(async (image, idx) => {
+                const imageData = await uploadProductImagesToCloudinary(image.buffer, `${existingVariant.sku}-${currentImageCount + idx + 1}-${image.originalname}`);
+                return {
+                  variant_id: existingVariant.variant_id,
+                  image_url: imageData.secure_url,
+                  public_id: imageData.public_id,
+                  order: currentImageCount + idx + 1
+                };
+              })
+            );
+            await ProductImage.bulkCreate(newImages);
+          }
+        } else {
+          // Crear nueva variante
+          const existingVariant = await ProductVariant.findOne({ where: { sku: variant.sku } });
+          if (existingVariant) return res.status(400).json({ message: `El SKU ${variant.sku} ya existe` });
+
+          if (variantImages.length < 1) return res.status(400).json({ message: `La variante ${variant.sku} debe tener al menos 1 imagen` });
+          if (variantImages.length > 10) return res.status(400).json({ message: `La variante ${variant.sku} no puede tener más de 10 imágenes` });
+
+          const calculated_price = parseFloat((variant.production_cost * (1 + variant.profit_margin / 100)).toFixed(2));
+          const newVariant = await ProductVariant.create({
+            product_id: product.product_id,
+            sku: variant.sku,
+            production_cost: variant.production_cost,
+            profit_margin: variant.profit_margin,
+            calculated_price,
+            stock: variant.stock,
+            stock_threshold: variant.stock_threshold !== undefined ? variant.stock_threshold : 10
+          });
+
+          priceHistoryRecords.push({
+            variant_id: newVariant.variant_id,
+            previous_production_cost: 0,
+            new_production_cost: parseFloat(variant.production_cost),
+            previous_profit_margin: 0,
+            new_profit_margin: parseFloat(variant.profit_margin),
+            previous_calculated_price: 0,
+            new_calculated_price: calculated_price,
+            change_type: 'initial',
+            changed_by: userId,
+            change_date: new Date()
+          });
+
+          const newImages = await Promise.all(
+            variantImages.map(async (image, idx) => {
+              const imageData = await uploadProductImagesToCloudinary(image.buffer, `${variant.sku}-${idx + 1}-${image.originalname}`);
+              return {
+                variant_id: newVariant.variant_id,
+                image_url: imageData.secure_url,
+                public_id: imageData.public_id,
+                order: idx + 1
+              };
+            })
+          );
+          await ProductImage.bulkCreate(newImages);
         }
       }
 
-      if (product_type !== 'Existencia' && variant.customizations && variant.customizations.length > 0) {
-        customizationRecords.push(...variant.customizations.map(cust => ({
-          product_id,
-          type: cust.type,
-          description: cust.description
-        })));
-      }
-
-      const imagesForVariant = await Promise.all(
-        variantImages.map(async (image, idx) => {
-          const imageUrl = await uploadProductImagesToCloudinary(image.buffer, `${variant.sku}-${idx + 1}-${image.originalname}`);
-          return {
-            variant_id: newVariant.variant_id,
-            image_url: imageUrl,
-            order: idx + 1
-          };
-        })
-      );
-      imageRecords.push(...imagesForVariant);
+      if (priceHistoryRecords.length > 0) await PriceHistory.bulkCreate(priceHistoryRecords);
     }
 
-    if (attributeRecords.length > 0) await ProductAttributeValue.bulkCreate(attributeRecords);
-    if (customizationRecords.length > 0) await CustomizationOption.bulkCreate(customizationRecords);
-    if (imageRecords.length > 0) await ProductImage.bulkCreate(imageRecords);
-
-    loggerUtils.logUserActivity(req.user?.user_id || 'system', 'update', `Producto actualizado: ${name} (${product_id})`);
-    res.status(200).json({
-      message: 'Producto actualizado exitosamente',
-      product: {
-        ...product.dataValues,
-        variants: variantRecords.map((v, i) => ({
-          ...v.dataValues,
-          attributes: variants[i].attributes || [],
-          customizations: variants[i].customizations || [],
-          images: imageRecords.filter(img => img.variant_id === v.variant_id)
-        }))
-      }
-    });
+    loggerUtils.logUserActivity(userId, 'update', `Producto actualizado: ${product.name} (${product_id})`);
+    const updatedProduct = await Product.findByPk(product_id, { include: [{ model: ProductVariant, include: [ProductImage] }] });
+    res.status(200).json({ message: 'Producto actualizado exitosamente', product: updatedProduct });
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al actualizar el producto', error: error.message });
+  }
+};
+
+// Eliminar una variante específica
+exports.deleteVariant = async (req, res) => {
+  const { product_id, variant_id } = req.params;
+  const userId = req.user?.user_id || 'system';
+
+  try {
+    const product = await Product.findByPk(product_id);
+    if (!product) return res.status(404).json({ message: 'Producto no encontrado' });
+
+    const variant = await ProductVariant.findOne({
+      where: { variant_id, product_id },
+      include: [ProductImage]
+    });
+    if (!variant) return res.status(404).json({ message: 'Variante no encontrada' });
+
+    // Eliminar imágenes asociadas físicamente
+    if (variant.ProductImages.length > 0) {
+      await Promise.all(
+        variant.ProductImages.map(async (image) => {
+          await deleteFromCloudinary(image.public_id); // Eliminar de Cloudinary usando public_id
+          await image.destroy(); // Eliminar de la base de datos
+        })
+      );
+    }
+
+    // Eliminar la variante
+    await variant.destroy();
+
+    loggerUtils.logUserActivity(userId, 'delete', `Variante ${variant.sku} eliminada del producto ${product_id}`);
+    res.status(200).json({ message: 'Variante eliminada exitosamente' });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al eliminar la variante', error: error.message });
   }
 };

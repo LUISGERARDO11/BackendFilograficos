@@ -51,7 +51,10 @@ const uploadProductImagesToCloudinary = (fileBuffer, fileName = '') => {
         if (error) {
           reject(error);
         } else {
-          resolve(result.secure_url); // Devuelve la URL segura de la imagen subida
+          resolve({
+            secure_url: result.secure_url, // URL segura de la imagen
+            public_id: result.public_id // Identificador único en Cloudinary
+          });
         }
       })
       .end(fileBuffer);
