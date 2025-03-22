@@ -14,7 +14,7 @@ const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 const validateProductImages = require('../middlewares/validateProductImages');
 const uploadProductImages = require('../config/multerProductImagesConfig');
-const { validateProduct, validateGetProducts, validateDeleteProduct, validateGetProductById, validateUpdateProduct } = require('../middlewares/productValidation');
+const { validateProduct, validateGetProducts, validateDeleteProduct, validateGetProductById, validateUpdateProduct, validateDeleteVariant } = require('../middlewares/productValidation');
 
 // Ruta para crear un producto (solo administradores)
 router.post(
@@ -58,8 +58,7 @@ router.get(
   productCatalogController.getProductById
 );
 
-// Ruta para actualizar un producto (solo administradores)
-router.put(
+router.patch(
   '/:product_id',
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
@@ -68,6 +67,16 @@ router.put(
   validateProductImages,
   validateUpdateProduct,
   productCatalogController.updateProduct
+);
+
+// Ruta para eliminar una variante específica (solo administradores)
+router.delete(
+  '/:product_id/variants/:variant_id',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  validateDeleteVariant,
+  productCatalogController.deleteVariant
 );
 
 // Ruta para obtener variantes con información de stock (requiere autenticación y rol de administrador)

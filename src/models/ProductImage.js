@@ -2,13 +2,13 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
 
 const ProductImage = sequelize.define('ProductImage', {
-  image_id: { // Cambiado de id_imagen a image_id para consistencia
+  image_id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
     autoIncrement: true,
     allowNull: false
   },
-  variant_id: { // Cambiado de id_producto a variant_id
+  variant_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
@@ -16,11 +16,15 @@ const ProductImage = sequelize.define('ProductImage', {
       key: 'variant_id'
     }
   },
-  image_url: { // Cambiado de url_imagen a image_url para consistencia
+  image_url: {
     type: DataTypes.STRING(255),
     allowNull: false
   },
-  order: { // Cambiado de orden a order para consistencia
+  public_id: { // Nuevo campo para almacenar el public_id de Cloudinary
+    type: DataTypes.STRING(255),
+    allowNull: false
+  },
+  order: {
     type: DataTypes.INTEGER,
     allowNull: false
   }
