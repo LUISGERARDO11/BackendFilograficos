@@ -7,6 +7,17 @@ const validateProduct = [
   body('product_type').isIn(['Existencia', 'semi_personalizado', 'personalizado']).withMessage('Tipo de producto no válido'),
   body('category_id').isInt().withMessage('El ID de la categoría debe ser un número entero'),
   body('collaborator_id').optional({ nullable: true }).isInt().withMessage('El ID del colaborador debe ser un número entero'),
+  // Validaciones para personalizaciones (a nivel de producto)
+  body('customizations').optional().custom((value) => {
+    if (typeof value === 'string') {
+      const parsed = JSON.parse(value);
+      if (!Array.isArray(parsed)) throw new Error('Las personalizaciones deben ser un arreglo');
+      return true;
+    }
+    return Array.isArray(value);
+  }).withMessage('Las personalizaciones deben ser un arreglo'),
+  body('customizations.*.type').optional().isIn(['text', 'image', 'file']).withMessage('Tipo de personalización no válido'),
+  body('customizations.*.description').optional().trim().notEmpty().withMessage('La descripción de la personalización es obligatoria'),
 
   // Validaciones para las variantes (al menos una es obligatoria)
   body('variants').isArray({ min: 1 }).withMessage('Debe proporcionar al menos una variante'),
@@ -18,9 +29,6 @@ const validateProduct = [
   body('variants.*.attributes').optional().isArray().withMessage('Los atributos deben ser un arreglo'),
   body('variants.*.attributes.*.attribute_id').isInt().withMessage('El ID del atributo debe ser un número entero'),
   body('variants.*.attributes.*.value').trim().notEmpty().withMessage('El valor del atributo es obligatorio'),
-  body('variants.*.customizations').optional().isArray().withMessage('Las personalizaciones deben ser un arreglo'),
-  body('variants.*.customizations.*.type').optional().isIn(['Imagen', 'Texto']).withMessage('Tipo de personalización no válido'),
-  body('variants.*.customizations.*.description').optional().trim().notEmpty().withMessage('La descripción de la personalización es obligatoria')
 ];
 
 const validateGetProducts = [

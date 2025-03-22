@@ -22,14 +22,17 @@ const validateGetAllProducts = [
 
 // Crear un producto con variantes
 exports.createProduct = async (req, res) => {
-  let { name, description, product_type, category_id, collaborator_id, variants } = req.body;
+  let { name, description, product_type, category_id, collaborator_id, variants, customizations } = req.body;
   const files = req.files;
-  const userId = req.user?.user_id || 'system'; // Obtener el ID del usuario desde el request
+  const userId = req.user?.user_id || 'system';
 
   try {
-    // Parsear variants si es una cadena JSON
+    // Parsear variants y customizations si son cadenas JSON
     if (typeof variants === 'string') {
       variants = JSON.parse(variants);
+    }
+    if (typeof customizations === 'string') {
+      customizations = JSON.parse(customizations);
     }
 
     // Validar que variants sea un array
@@ -62,10 +65,19 @@ exports.createProduct = async (req, res) => {
       status: 'active'
     });
 
+    // Validar y crear personalizaciones (solo si no es 'Existencia')
+    const customizationRecords = [];
+    if (product_type !== 'Existencia' && customizations && Array.isArray(customizations) && customizations.length > 0) {
+      customizationRecords.push(...customizations.map(cust => ({
+        product_id: newProduct.product_id,
+        option_type: cust.type.toLowerCase(), // Convertimos a minúsculas para coincidir con el ENUM
+        description: cust.description
+      })));
+    }
+
     // Validar y crear variantes
     const variantRecords = [];
     const attributeRecords = [];
-    const customizationRecords = [];
     const imageRecords = [];
     const priceHistoryRecords = [];
 
@@ -152,23 +164,14 @@ exports.createProduct = async (req, res) => {
         }
       }
 
-      // Guardar personalizaciones
-      if (product_type !== 'Existencia' && variant.customizations && variant.customizations.length > 0) {
-        customizationRecords.push(...variant.customizations.map(cust => ({
-          product_id: newProduct.product_id,
-          type: cust.type,
-          description: cust.description
-        })));
-      }
-
       // Guardar imágenes
       const imagesForVariant = await Promise.all(
         variantImages.map(async (image, idx) => {
           const imageData = await uploadProductImagesToCloudinary(image.buffer, `${variant.sku}-${idx + 1}-${image.originalname}`);
           return {
             variant_id: newVariant.variant_id,
-            image_url: imageData.secure_url, // URL para mostrar la imagen
-            public_id: imageData.public_id,  // ID para gestionar en Cloudinary
+            image_url: imageData.secure_url,
+            public_id: imageData.public_id,
             order: idx + 1
           };
         })
@@ -182,16 +185,32 @@ exports.createProduct = async (req, res) => {
     if (imageRecords.length > 0) await ProductImage.bulkCreate(imageRecords);
     if (priceHistoryRecords.length > 0) await PriceHistory.bulkCreate(priceHistoryRecords);
 
+    // Obtener el producto completo con relaciones para la respuesta
+    const createdProduct = await Product.findByPk(newProduct.product_id, {
+      include: [
+        { model: ProductVariant, include: [ProductImage, ProductAttributeValue] },
+        { model: CustomizationOption }
+      ]
+    });
+
     loggerUtils.logUserActivity(userId, 'create', `Producto creado: ${name} (${newProduct.product_id})`);
     res.status(201).json({
       message: 'Producto creado exitosamente',
       product: {
-        ...newProduct.dataValues,
-        variants: variantRecords.map((v, i) => ({
+        ...createdProduct.dataValues,
+        variants: createdProduct.ProductVariants.map(v => ({
           ...v.dataValues,
-          attributes: variants[i].attributes || [],
-          customizations: variants[i].customizations || [],
-          images: imageRecords.filter(img => img.variant_id === v.variant_id)
+          attributes: v.ProductAttributeValues.map(attr => ({
+            attribute_id: attr.attribute_id,
+            value: attr.value
+          })),
+          images: v.ProductImages,
+          customizations: [] // Las personalizaciones ahora están a nivel de producto
+        })),
+        customizations: createdProduct.CustomizationOptions.map(cust => ({
+          option_id: cust.option_id,
+          type: cust.option_type,
+          description: cust.description
         }))
       }
     });
