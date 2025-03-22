@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Product, ProductVariant, Category, Collaborator, ProductAttribute, ProductAttributeValue, CustomizationOption, ProductImage } = require('../models/Associations');
+const { Product, ProductVariant, Category, Collaborator, ProductAttribute, ProductAttributeValue, CustomizationOption, ProductImage, PriceHistory } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { uploadProductImagesToCloudinary } = require('../services/cloudinaryService');
 const { query, validationResult } = require('express-validator');
@@ -24,6 +24,7 @@ const validateGetAllProducts = [
 exports.createProduct = async (req, res) => {
   let { name, description, product_type, category_id, collaborator_id, variants } = req.body;
   const files = req.files;
+  const userId = req.user?.user_id || 'system'; // Obtener el ID del usuario desde el request
 
   try {
     // Parsear variants si es una cadena JSON
@@ -66,6 +67,7 @@ exports.createProduct = async (req, res) => {
     const attributeRecords = [];
     const customizationRecords = [];
     const imageRecords = [];
+    const priceHistoryRecords = [];
 
     for (const [index, variant] of variants.entries()) {
       // Verificar unicidad del SKU
@@ -101,6 +103,20 @@ exports.createProduct = async (req, res) => {
       });
 
       variantRecords.push(newVariant);
+
+      // Registrar en PriceHistory el precio inicial
+      priceHistoryRecords.push({
+        variant_id: newVariant.variant_id,
+        previous_production_cost: 0, // Como es el primer registro, el previo es 0
+        new_production_cost: parseFloat(variant.production_cost),
+        previous_profit_margin: 0, // Como es el primer registro, el previo es 0
+        new_profit_margin: parseFloat(variant.profit_margin),
+        previous_calculated_price: 0, // Como es el primer registro, el previo es 0
+        new_calculated_price: calculated_price,
+        change_type: 'initial',
+        changed_by: userId,
+        change_date: new Date()
+      });
 
       // Guardar atributos de la variante
       if (variant.attributes && variant.attributes.length > 0) {
@@ -163,8 +179,9 @@ exports.createProduct = async (req, res) => {
     if (attributeRecords.length > 0) await ProductAttributeValue.bulkCreate(attributeRecords);
     if (customizationRecords.length > 0) await CustomizationOption.bulkCreate(customizationRecords);
     if (imageRecords.length > 0) await ProductImage.bulkCreate(imageRecords);
+    if (priceHistoryRecords.length > 0) await PriceHistory.bulkCreate(priceHistoryRecords);
 
-    loggerUtils.logUserActivity(req.user?.user_id || 'system', 'create', `Producto creado: ${name} (${newProduct.product_id})`);
+    loggerUtils.logUserActivity(userId, 'create', `Producto creado: ${name} (${newProduct.product_id})`);
     res.status(201).json({
       message: 'Producto creado exitosamente',
       product: {
