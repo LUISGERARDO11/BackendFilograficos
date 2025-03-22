@@ -427,7 +427,7 @@ exports.getProductById = async (req, res) => {
             }
           ]
         },
-        { model: CustomizationOption, attributes: ['type', 'description'] }
+        { model: CustomizationOption, attributes: ['option_type', 'description'] }
       ]
     });
 
@@ -466,7 +466,7 @@ exports.getProductById = async (req, res) => {
         }))
       })),
       customizations: product.CustomizationOptions.map(cust => ({
-        type: cust.type,
+        type: cust.option_type,
         description: cust.description
       }))
     };
