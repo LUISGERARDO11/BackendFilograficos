@@ -49,8 +49,6 @@ const validateUpdateProduct = [
   body('variants.*.sku').if(body('variants.*.variant_id').not().exists()).trim().notEmpty().withMessage('El SKU es obligatorio para nuevas variantes').escape(),
   body('variants.*.production_cost').optional().isFloat({ min: 0 }).withMessage('El costo de producción debe ser un número positivo'),
   body('variants.*.profit_margin').optional().isFloat({ min: 0 }).withMessage('El margen de ganancia debe ser un número positivo'),
-  body('variants.*.stock').optional().isInt({ min: 0 }).withMessage('El stock debe ser un número entero positivo'),
-  body('variants.*.stock_threshold').optional().isInt({ min: 0 }).withMessage('El umbral de stock debe ser un número entero positivo'),
   body('variants.*.imagesToDelete').optional().isArray().withMessage('imagesToDelete debe ser un arreglo'),
   body('variants.*.imagesToDelete.*').isInt().withMessage('Los IDs de imágenes a eliminar deben ser números enteros'),
   body('variants.*.attributes').optional().isArray().withMessage('Los atributos deben ser un arreglo'),
