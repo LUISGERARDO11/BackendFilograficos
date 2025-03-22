@@ -1,8 +1,8 @@
 const { Op } = require('sequelize');
 const { Product, ProductVariant, Category, Collaborator, ProductAttribute, ProductAttributeValue, CustomizationOption, ProductImage, PriceHistory } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
-const { uploadProductImagesToCloudinary } = require('../services/cloudinaryService');
-const { query, validationResult, deleteFromCloudinary } = require('express-validator');
+const { uploadProductImagesToCloudinary, deleteFromCloudinary } = require('../services/cloudinaryService');
+const { query, validationResult } = require('express-validator');
 
 const validateGetAllProducts = [
   query('search').optional().trim().escape(),
