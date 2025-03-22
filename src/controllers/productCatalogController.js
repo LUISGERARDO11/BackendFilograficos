@@ -2,7 +2,7 @@ const { Op } = require('sequelize');
 const { Product, ProductVariant, Category, Collaborator, ProductAttribute, ProductAttributeValue, CustomizationOption, ProductImage, PriceHistory } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { uploadProductImagesToCloudinary } = require('../services/cloudinaryService');
-const { query, validationResult } = require('express-validator');
+const { query, validationResult, deleteFromCloudinary } = require('express-validator');
 
 const validateGetAllProducts = [
   query('search').optional().trim().escape(),
@@ -549,12 +549,11 @@ exports.updateProduct = async (req, res) => {
             });
           }
 
+          // Se elimina stock de la actualización
           await existingVariant.update({
             production_cost: newProductionCost,
             profit_margin: newProfitMargin,
             calculated_price: newCalculatedPrice,
-            stock: variant.stock !== undefined ? variant.stock : existingVariant.stock,
-            stock_threshold: variant.stock_threshold !== undefined ? variant.stock_threshold : existingVariant.stock_threshold
           });
 
           // Eliminar imágenes
@@ -562,7 +561,7 @@ exports.updateProduct = async (req, res) => {
             for (const imageId of variant.imagesToDelete) {
               const image = await ProductImage.findByPk(imageId);
               if (image && image.variant_id === existingVariant.variant_id) {
-                await deleteFromCloudinary(image.public_id); // Eliminar físicamente usando public_id
+                await deleteFromCloudinary(image.public_id);
                 await image.destroy();
               }
             }
@@ -596,13 +595,13 @@ exports.updateProduct = async (req, res) => {
           if (variantImages.length > 10) return res.status(400).json({ message: `La variante ${variant.sku} no puede tener más de 10 imágenes` });
 
           const calculated_price = parseFloat((variant.production_cost * (1 + variant.profit_margin / 100)).toFixed(2));
+          // El stock se mantiene como está en la base de datos, no se incluye en la creación
           const newVariant = await ProductVariant.create({
             product_id: product.product_id,
             sku: variant.sku,
             production_cost: variant.production_cost,
             profit_margin: variant.profit_margin,
             calculated_price,
-            stock: variant.stock,
             stock_threshold: variant.stock_threshold !== undefined ? variant.stock_threshold : 10
           });
 
