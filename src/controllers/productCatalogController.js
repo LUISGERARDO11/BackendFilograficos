@@ -534,25 +534,26 @@ exports.updateProduct = async (req, res) => {
     if (variants) {
       if (typeof variants === 'string') variants = JSON.parse(variants);
       if (!Array.isArray(variants)) return res.status(400).json({ message: 'Las variantes deben ser un arreglo' });
-
+    
       const priceHistoryRecords = [];
       const existingVariants = product.ProductVariants.reduce((acc, v) => {
         acc[v.variant_id] = v;
         return acc;
       }, {});
-
+    
       for (const [index, variant] of variants.entries()) {
         const variantImages = files ? files.filter(file => file.fieldname === `variants[${index}][images]`) : [];
-
+    
         if (variant.variant_id) {
           // Actualizar variante existente
           const existingVariant = existingVariants[variant.variant_id];
           if (!existingVariant) return res.status(404).json({ message: `Variante ${variant.variant_id} no encontrada` });
-
+    
+          // Actualizar solo los campos proporcionados
           const newProductionCost = variant.production_cost !== undefined ? parseFloat(variant.production_cost) : existingVariant.production_cost;
           const newProfitMargin = variant.profit_margin !== undefined ? parseFloat(variant.profit_margin) : existingVariant.profit_margin;
           const newCalculatedPrice = parseFloat((newProductionCost * (1 + newProfitMargin / 100)).toFixed(2));
-
+    
           if (newProductionCost !== existingVariant.production_cost || newProfitMargin !== existingVariant.profit_margin) {
             priceHistoryRecords.push({
               variant_id: existingVariant.variant_id,
@@ -567,15 +568,14 @@ exports.updateProduct = async (req, res) => {
               change_date: new Date()
             });
           }
-
-          // Se elimina stock de la actualización
+    
           await existingVariant.update({
             production_cost: newProductionCost,
             profit_margin: newProfitMargin,
             calculated_price: newCalculatedPrice,
           });
-
-          // Eliminar imágenes
+    
+          // Manejar eliminación y adición de imágenes solo si se proporcionan
           if (variant.imagesToDelete && Array.isArray(variant.imagesToDelete)) {
             for (const imageId of variant.imagesToDelete) {
               const image = await ProductImage.findByPk(imageId);
@@ -585,8 +585,7 @@ exports.updateProduct = async (req, res) => {
               }
             }
           }
-
-          // Agregar nuevas imágenes
+    
           if (variantImages.length > 0) {
             const currentImageCount = existingVariant.ProductImages.length - (variant.imagesToDelete?.length || 0);
             if (currentImageCount + variantImages.length > 10) {
