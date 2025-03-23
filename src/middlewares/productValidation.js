@@ -62,9 +62,9 @@ const validateUpdateProduct = [
   body('variants.*.attributes').optional().isArray().withMessage('Los atributos deben ser un arreglo'),
   body('variants.*.attributes.*.attribute_id').optional().isInt().withMessage('El ID del atributo debe ser un número entero'),
   body('variants.*.attributes.*.value').optional().trim().notEmpty().withMessage('El valor del atributo no puede estar vacío'),
-  body('variants.*.customizations').optional().isArray().withMessage('Las personalizaciones deben ser un arreglo'),
-  body('variants.*.customizations.*.type').optional().isIn(['Imagen', 'Texto']).withMessage('Tipo de personalización no válido'),
-  body('variants.*.customizations.*.description').optional().trim().notEmpty().withMessage('La descripción de la personalización no puede estar vacía')
+  body('customizations').optional().isArray().withMessage('Las personalizaciones deben ser un arreglo'),
+  body('customizations.*.type').isIn(['text', 'image', 'file']).withMessage('Tipo de personalización no válido'),
+  body('customizations.*.description').optional().trim().notEmpty().withMessage('La descripción de la personalización no puede estar vacía')
 ];
 
 const validateDeleteVariants = [
