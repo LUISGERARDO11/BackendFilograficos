@@ -511,16 +511,19 @@ exports.getProductById = async (req, res) => {
   }
 };
 
-// Actualizar un producto con variantes
+// Actualizar un producto con variantes y personalizaciones
 exports.updateProduct = async (req, res) => {
   const { product_id } = req.params;
-  let { name, description, product_type, category_id, collaborator_id, variants } = req.body;
+  let { name, description, product_type, category_id, collaborator_id, variants, customizations } = req.body;
   const files = req.files;
   const userId = req.user?.user_id || 'system';
 
   try {
     const product = await Product.findByPk(product_id, {
-      include: [{ model: ProductVariant, include: [ProductImage] }]
+      include: [
+        { model: ProductVariant, include: [ProductImage] },
+        { model: CustomizationOption } // Incluye las personalizaciones existentes
+      ]
     });
     if (!product) return res.status(404).json({ message: 'Producto no encontrado' });
 
@@ -541,20 +544,37 @@ exports.updateProduct = async (req, res) => {
       collaborator_id: collaborator_id || product.collaborator_id
     });
 
+    // Manejar personalizaciones si se proporcionan
+    if (customizations) {
+      if (typeof customizations === 'string') customizations = JSON.parse(customizations);
+      if (!Array.isArray(customizations)) return res.status(400).json({ message: 'Las personalizaciones deben ser un arreglo' });
+
+      // Eliminar las personalizaciones existentes
+      await CustomizationOption.destroy({ where: { product_id: product.product_id } });
+
+      // Crear las nuevas personalizaciones
+      const newCustomizations = customizations.map(customization => ({
+        product_id: product.product_id,
+        option_type: customization.type.toLowerCase(), // Normalizar a minúsculas para coincidir con ENUM
+        description: customization.description
+      }));
+      await CustomizationOption.bulkCreate(newCustomizations);
+    }
+
     // Manejar variantes si se proporcionan
     if (variants) {
       if (typeof variants === 'string') variants = JSON.parse(variants);
       if (!Array.isArray(variants)) return res.status(400).json({ message: 'Las variantes deben ser un arreglo' });
-    
+
       const priceHistoryRecords = [];
       const existingVariants = product.ProductVariants.reduce((acc, v) => {
         acc[v.variant_id] = v;
         return acc;
       }, {});
-    
+
       for (const [index, variant] of variants.entries()) {
         const variantImages = files ? files.filter(file => file.fieldname === `variants[${index}][images]`) : [];
-    
+
         if (variant.variant_id) {
           // Actualizar variante existente
           const existingVariant = existingVariants[variant.variant_id];
@@ -564,7 +584,7 @@ exports.updateProduct = async (req, res) => {
           const newProductionCost = variant.production_cost !== undefined ? parseFloat(variant.production_cost) : existingVariant.production_cost;
           const newProfitMargin = variant.profit_margin !== undefined ? parseFloat(variant.profit_margin) : existingVariant.profit_margin;
           const newCalculatedPrice = parseFloat((newProductionCost * (1 + newProfitMargin / 100)).toFixed(2));
-    
+
           if (newProductionCost !== existingVariant.production_cost || newProfitMargin !== existingVariant.profit_margin) {
             priceHistoryRecords.push({
               variant_id: existingVariant.variant_id,
@@ -579,7 +599,7 @@ exports.updateProduct = async (req, res) => {
               change_date: new Date()
             });
           }
-    
+
           await existingVariant.update({
             production_cost: newProductionCost,
             profit_margin: newProfitMargin,
@@ -596,7 +616,7 @@ exports.updateProduct = async (req, res) => {
               }
             }
           }
-    
+
           if (variantImages.length > 0) {
             const currentImageCount = existingVariant.ProductImages.length - (variant.imagesToDelete?.length || 0);
             if (currentImageCount + variantImages.length > 10) {
@@ -624,7 +644,6 @@ exports.updateProduct = async (req, res) => {
           if (variantImages.length > 10) return res.status(400).json({ message: `La variante ${variant.sku} no puede tener más de 10 imágenes` });
 
           const calculated_price = parseFloat((variant.production_cost * (1 + variant.profit_margin / 100)).toFixed(2));
-          // El stock se mantiene como está en la base de datos, no se incluye en la creación
           const newVariant = await ProductVariant.create({
             product_id: product.product_id,
             sku: variant.sku,
@@ -666,7 +685,12 @@ exports.updateProduct = async (req, res) => {
     }
 
     loggerUtils.logUserActivity(userId, 'update', `Producto actualizado: ${product.name} (${product_id})`);
-    const updatedProduct = await Product.findByPk(product_id, { include: [{ model: ProductVariant, include: [ProductImage] }] });
+    const updatedProduct = await Product.findByPk(product_id, {
+      include: [
+        { model: ProductVariant, include: [ProductImage] },
+        { model: CustomizationOption } // Incluir personalizaciones en la respuesta
+      ]
+    });
     res.status(200).json({ message: 'Producto actualizado exitosamente', product: updatedProduct });
   } catch (error) {
     loggerUtils.logCriticalError(error);
