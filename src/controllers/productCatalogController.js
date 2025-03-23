@@ -674,43 +674,65 @@ exports.updateProduct = async (req, res) => {
   }
 };
 
-// Eliminar una variante específica
+// Eliminar lógicamente múltiples variantes específicas
 exports.deleteVariant = async (req, res) => {
-  const { product_id, variant_id } = req.params;
+  const { product_id } = req.params;
+  const { variant_ids } = req.body; // Obtener los IDs de variantes del cuerpo
   const userId = req.user?.user_id || 'system';
 
   try {
     const product = await Product.findByPk(product_id);
     if (!product) return res.status(404).json({ message: 'Producto no encontrado' });
 
-    const variant = await ProductVariant.findOne({
-      where: { variant_id, product_id },
+    // Buscar todas las variantes especificadas
+    const variants = await ProductVariant.findAll({
+      where: {
+        variant_id: { [Op.in]: variant_ids },
+        product_id
+      },
       include: [ProductImage]
     });
-    if (!variant) return res.status(404).json({ message: 'Variante no encontrada' });
 
-    // Manejo de imágenes asociadas
-    if (variant.ProductImages.length > 1) {
-      // Ordenar imágenes por 'order' para identificar la primera (order: 1)
-      const sortedImages = variant.ProductImages.sort((a, b) => a.order - b.order);
-      const imagesToDelete = sortedImages.slice(1); // Excluir la primera imagen
-
-      await Promise.all(
-        imagesToDelete.map(async (image) => {
-          await deleteFromCloudinary(image.public_id); // Eliminar de Cloudinary usando public_id
-          await image.destroy(); // Eliminar de la base de datos
-        })
-      );
+    if (variants.length === 0) {
+      return res.status(404).json({ message: 'Ninguna variante encontrada para los IDs proporcionados' });
     }
-    // Si solo hay una imagen, no se elimina
 
-    // Marcar la variante como eliminada lógicamente
-    await variant.update({ is_deleted: true });
+    if (variants.length !== variant_ids.length) {
+      const foundIds = variants.map(v => v.variant_id);
+      const notFoundIds = variant_ids.filter(id => !foundIds.includes(id));
+      loggerUtils.logWarning(`Algunas variantes no fueron encontradas: ${notFoundIds.join(', ')}`);
+    }
 
-    loggerUtils.logUserActivity(userId, 'delete', `Variante ${variant.sku} eliminada lógicamente del producto ${product_id}`);
-    res.status(200).json({ message: 'Variante eliminada exitosamente' });
+    // Procesar cada variante
+    await Promise.all(
+      variants.map(async (variant) => {
+        // Manejo de imágenes asociadas
+        if (variant.ProductImages.length > 1) {
+          const sortedImages = variant.ProductImages.sort((a, b) => a.order - b.order);
+          const imagesToDelete = sortedImages.slice(1); // Excluir la primera imagen
+
+          await Promise.all(
+            imagesToDelete.map(async (image) => {
+              await deleteFromCloudinary(image.public_id); // Eliminar de Cloudinary
+              await image.destroy(); // Eliminar de la base de datos
+            })
+          );
+        }
+        // Si solo hay una imagen, no se elimina
+
+        // Marcar la variante como eliminada lógicamente
+        await variant.update({ is_deleted: true });
+
+        loggerUtils.logUserActivity(userId, 'delete', `Variante ${variant.sku} eliminada lógicamente del producto ${product_id}`);
+      })
+    );
+
+    res.status(200).json({
+      message: 'Variantes eliminadas exitosamente',
+      deletedCount: variants.length
+    });
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al eliminar la variante', error: error.message });
+    res.status(500).json({ message: 'Error al eliminar las variantes', error: error.message });
   }
 };
