@@ -67,9 +67,19 @@ const validateUpdateProduct = [
   body('variants.*.customizations.*.description').optional().trim().notEmpty().withMessage('La descripción de la personalización no puede estar vacía')
 ];
 
-const validateDeleteVariant = [
-  param('product_id').isInt({ min: 1 }).withMessage('El ID del producto debe ser un número entero positivo'),
-  param('variant_id').isInt({ min: 1 }).withMessage('El ID de la variante debe ser un número entero positivo')
+const validateDeleteVariants = [
+  param('product_id')
+    .isInt({ min: 1 })
+    .withMessage('El ID del producto debe ser un número entero positivo'),
+  body('variant_ids')
+    .isArray({ min: 1 })
+    .withMessage('Debe proporcionar al menos un ID de variante en un arreglo')
+    .custom((value) => {
+      if (!value.every(id => Number.isInteger(id) && id > 0)) {
+        throw new Error('Todos los IDs de variantes deben ser números enteros positivos');
+      }
+      return true;
+    })
 ];
 
 module.exports = {
@@ -78,5 +88,5 @@ module.exports = {
   validateDeleteProduct,
   validateGetProductById,
   validateUpdateProduct,
-  validateDeleteVariant
+  validateDeleteVariants
 };
