@@ -1,4 +1,4 @@
-const { Product, ProductVariant, Category, Collaborator,ProductAttributeValue, ProductAttribute, ProductImage, CustomizationOption } = require('../models/Associations');
+const { Product, ProductVariant, Category, Collaborator, ProductAttributeValue, ProductAttribute, ProductImage, CustomizationOption } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');
 
@@ -49,7 +49,7 @@ exports.getAllProducts = async (req, res) => {
             variantWhereClause.calculated_price[Op.lte] = parseFloat(maxPrice);
         }
         if (collaboratorId) {
-            whereClause.collaborator_id = parseInt(collaboratorId, 10); 
+            whereClause.collaborator_id = parseInt(collaboratorId, 10);
         }
 
         const { count, rows: products } = await Product.findAndCountAll({
@@ -70,14 +70,14 @@ exports.getAllProducts = async (req, res) => {
                     attributes: [],
                     where: variantWhereClause,
                     required: true
-                  },
-                  {
+                },
+                {
                     model: Collaborator,
                     attributes: ['collaborator_id', 'name'],
                     required: false
-                  }
-              ],
-            group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name','Collaborator.collaborator_id','Collaborator.name'],
+                }
+            ],
+            group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name', 'Collaborator.collaborator_id', 'Collaborator.name'],
             having: Product.sequelize.literal('SUM("ProductVariants"."stock") > 0'), // Excluir productos con stock 0
             order,
             limit: pageSize,
@@ -103,8 +103,8 @@ exports.getAllProducts = async (req, res) => {
                 variant_count: parseInt(product.get('variantCount')) || 0,
                 image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null,
                 collaborator: product.Collaborator ? { id: product.Collaborator.collaborator_id, name: product.Collaborator.name } : null
-              };
-            }));
+            };
+        }));
 
         res.status(200).json({
             message: 'Productos obtenidos exitosamente',
@@ -133,7 +133,8 @@ exports.getProductById = async (req, res) => {
                         { model: ProductImage, attributes: ['image_url', 'order'] }
                     ]
                 },
-                { model: CustomizationOption, attributes: ['option_type', 'description'] }
+                { model: CustomizationOption, attributes: ['option_type', 'description'] },
+                { model: Collaborator, attributes: ['collaborator_id', 'name'], required: false } // Añade esta línea
             ]
         });
 
@@ -166,7 +167,8 @@ exports.getProductById = async (req, res) => {
             customizations: product.CustomizationOptions.map(cust => ({
                 type: cust.option_type,
                 description: cust.description
-            }))
+            })),
+            collaborator: product.Collaborator ? { id: product.Collaborator.collaborator_id, name: product.Collaborator.name } : null // Añade esta línea
         };
 
         res.status(200).json({
