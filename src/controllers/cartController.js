@@ -136,7 +136,17 @@ exports.getCart = async (req, res) => {
           model: CartDetail,
           include: [
             { model: Product, attributes: ['product_id', 'name'] },
-            { model: ProductVariant, attributes: ['variant_id', 'sku', 'calculated_price', 'stock'] },
+            {
+              model: ProductVariant,
+              attributes: ['variant_id', 'sku', 'calculated_price', 'stock'],
+              include: [
+                {
+                  model: VariantImage, // Incluir las imágenes de la variante
+                  as: 'images',
+                  attributes: ['image_url']
+                }
+              ]
+            },
             { model: CustomizationOption, attributes: ['option_id', 'option_type', 'description'], required: false }
           ]
         }
@@ -146,6 +156,7 @@ exports.getCart = async (req, res) => {
     if (!cart) {
       return res.status(200).json({ items: [], total: 0 });
     }
+
     // Formatear los ítems del carrito
     const items = cart.CartDetails.map(detail => ({
       cart_detail_id: detail.cart_detail_id,
@@ -153,20 +164,23 @@ exports.getCart = async (req, res) => {
       product_name: detail.Product.name,
       variant_id: detail.variant_id,
       variant_sku: detail.ProductVariant.sku,
-      calculated_price: parseFloat(detail.ProductVariant.calculated_price), // Convertir a número
+      calculated_price: parseFloat(detail.ProductVariant.calculated_price),
       quantity: detail.quantity,
-      unit_price: parseFloat(detail.unit_price), // Convertir a número
-      subtotal: parseFloat(detail.subtotal), // Convertir a número
-      customization: detail.CustomizationOption ? {
-        option_id: detail.CustomizationOption.option_id,
-        option_type: detail.CustomizationOption.option_type,
-        description: detail.CustomizationOption.description
-      } : null
+      unit_price: parseFloat(detail.unit_price),
+      subtotal: parseFloat(detail.subtotal),
+      customization: detail.CustomizationOption
+        ? {
+          option_id: detail.CustomizationOption.option_id,
+          option_type: detail.CustomizationOption.option_type,
+          description: detail.CustomizationOption.description
+        }
+        : null,
+      images: detail.ProductVariant.images.map(image => image.image_url) // Incluir las imágenes
     }));
 
     res.status(200).json({
       items,
-      total: items.reduce((sum, item) => sum + item.quantity, 0)
+      total: items.reduce((sum, item) => sum + item.quantity, 0) // Total de ítems (ajusta si el backend debería devolver el total monetario)
     });
   } catch (error) {
     loggerUtils.logCriticalError(error);
