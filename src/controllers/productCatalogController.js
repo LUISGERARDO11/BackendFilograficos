@@ -334,6 +334,7 @@ exports.getAllProducts = [
           {
             model: ProductVariant,
             attributes: [],
+            where: { is_deleted: false }, // Filtrar variantes no eliminadas
             required: false
           },
           {
@@ -361,7 +362,10 @@ exports.getAllProducts = [
 
       const formattedProducts = await Promise.all(products.map(async (product) => {
         const firstVariant = await ProductVariant.findOne({
-          where: { product_id: product.product_id },
+          where: { 
+            product_id: product.product_id,
+            is_deleted: false // Filtrar variantes no eliminadas
+          },
           include: [{ model: ProductImage, attributes: ['image_url'], where: { order: 1 }, required: false }],
           order: [['variant_id', 'ASC']]
         });
@@ -410,8 +414,14 @@ exports.deleteProduct = async (req, res) => {
       return res.status(400).json({ message: 'El producto ya está inactivo' });
     }
 
+    // Marcar el producto como inactivo
     await product.update({ status: 'inactive' });
-    await ProductVariant.update({ status: 'inactive' }, { where: { product_id } });
+
+    // Actualizar todas las variantes asociadas para marcarlas como eliminadas lógicamente
+    await ProductVariant.update(
+      { is_deleted: true },
+      { where: { product_id } }
+    );
 
     loggerUtils.logUserActivity(req.user?.user_id || 'system', 'delete', `Producto eliminado lógicamente: ${product.name} (${product_id})`);
     res.status(200).json({ message: 'Producto eliminado lógicamente exitosamente' });
@@ -432,6 +442,7 @@ exports.getProductById = async (req, res) => {
         { model: Collaborator, attributes: ['collaborator_id', 'name'] },
         {
           model: ProductVariant,
+          where: { is_deleted: false }, // Filtrar variantes no eliminadas
           include: [
             { 
               model: ProductAttributeValue, 
@@ -678,20 +689,25 @@ exports.deleteVariant = async (req, res) => {
     });
     if (!variant) return res.status(404).json({ message: 'Variante no encontrada' });
 
-    // Eliminar imágenes asociadas físicamente
-    if (variant.ProductImages.length > 0) {
+    // Manejo de imágenes asociadas
+    if (variant.ProductImages.length > 1) {
+      // Ordenar imágenes por 'order' para identificar la primera (order: 1)
+      const sortedImages = variant.ProductImages.sort((a, b) => a.order - b.order);
+      const imagesToDelete = sortedImages.slice(1); // Excluir la primera imagen
+
       await Promise.all(
-        variant.ProductImages.map(async (image) => {
+        imagesToDelete.map(async (image) => {
           await deleteFromCloudinary(image.public_id); // Eliminar de Cloudinary usando public_id
           await image.destroy(); // Eliminar de la base de datos
         })
       );
     }
+    // Si solo hay una imagen, no se elimina
 
-    // Eliminar la variante
-    await variant.destroy();
+    // Marcar la variante como eliminada lógicamente
+    await variant.update({ is_deleted: true });
 
-    loggerUtils.logUserActivity(userId, 'delete', `Variante ${variant.sku} eliminada del producto ${product_id}`);
+    loggerUtils.logUserActivity(userId, 'delete', `Variante ${variant.sku} eliminada lógicamente del producto ${product_id}`);
     res.status(200).json({ message: 'Variante eliminada exitosamente' });
   } catch (error) {
     loggerUtils.logCriticalError(error);

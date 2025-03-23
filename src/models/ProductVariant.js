@@ -50,6 +50,11 @@ const ProductVariant = sequelize.define('ProductVariant', {
     type: DataTypes.DATE,
     allowNull: true,
     defaultValue: null
+  },
+  is_deleted: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
   }
 }, {
   tableName: 'product_variants',
