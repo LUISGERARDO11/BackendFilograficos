@@ -1,4 +1,4 @@
-const { Cart, CartDetail, Product, ProductVariant, CustomizationOption, User } = require('../models/Associations');
+const { Cart, CartDetail, Product, ProductVariant, ProductImage, CustomizationOption, User } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');
 
@@ -140,11 +140,7 @@ exports.getCart = async (req, res) => {
               model: ProductVariant,
               attributes: ['variant_id', 'sku', 'calculated_price', 'stock'],
               include: [
-                {
-                  model: VariantImage, // Incluir las imágenes de la variante
-                  as: 'images',
-                  attributes: ['image_url']
-                }
+                { model: ProductImage, attributes: ['image_url', 'order'] } // Incluir las imágenes de la variante
               ]
             },
             { model: CustomizationOption, attributes: ['option_id', 'option_type', 'description'], required: false }
@@ -170,12 +166,15 @@ exports.getCart = async (req, res) => {
       subtotal: parseFloat(detail.subtotal),
       customization: detail.CustomizationOption
         ? {
-          option_id: detail.CustomizationOption.option_id,
-          option_type: detail.CustomizationOption.option_type,
-          description: detail.CustomizationOption.description
-        }
+            option_id: detail.CustomizationOption.option_id,
+            option_type: detail.CustomizationOption.option_type,
+            description: detail.CustomizationOption.description
+          }
         : null,
-      images: detail.ProductVariant.images.map(image => image.image_url) // Incluir las imágenes
+      images: detail.ProductVariant.ProductImages.map(img => ({
+        image_url: img.image_url,
+        order: img.order
+      })) // Incluir las imágenes de la variante
     }));
 
     res.status(200).json({
