@@ -51,7 +51,7 @@ const validateUpdateProduct = [
   body('description').optional().trim().escape(),
   body('product_type').optional().isIn(['Existencia', 'semi_personalizado', 'personalizado']).withMessage('Tipo de producto no válido'),
   body('category_id').optional().isInt().withMessage('El ID de la categoría debe ser un número entero'),
-  body('collaborator_id').optional({ nullable: true }).isInt().withMessage('El ID del colaborador debe ser un número entero'),
+  body('collaborator_id').optional().custom(value => value === null || Number.isInteger(parseInt(value))).withMessage('El ID del colaborador debe ser un número entero o null'),
   body('variants').optional().isArray().withMessage('Las variantes deben ser un arreglo'),
   body('variants.*.variant_id').optional().isInt().withMessage('El ID de la variante debe ser un número entero'),
   body('variants.*.sku').if(body('variants.*.variant_id').not().exists()).trim().notEmpty().withMessage('El SKU es obligatorio para nuevas variantes').escape(),
