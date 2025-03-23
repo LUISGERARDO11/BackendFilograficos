@@ -522,7 +522,7 @@ exports.updateProduct = async (req, res) => {
     const product = await Product.findByPk(product_id, {
       include: [
         { model: ProductVariant, include: [ProductImage] },
-        { model: CustomizationOption } // Incluye las personalizaciones existentes
+        { model: CustomizationOption }
       ]
     });
     if (!product) return res.status(404).json({ message: 'Producto no encontrado' });
@@ -532,16 +532,26 @@ exports.updateProduct = async (req, res) => {
       const category = await Category.findByPk(parseInt(category_id, 10));
       if (!category) return res.status(404).json({ message: 'Categoría no encontrada' });
     }
-    if (collaborator_id) {
-      const collaborator = await Collaborator.findByPk(collaborator_id);
-      if (!collaborator) return res.status(404).json({ message: 'Colaborador no encontrado' });
+
+    // Manejar collaborator_id explícitamente
+    let newCollaboratorId = product.collaborator_id; // Valor por defecto: mantener el actual
+    if (collaborator_id !== undefined) { // Solo actuamos si collaborator_id está presente en req.body
+      if (collaborator_id === null) {
+        newCollaboratorId = null; // Permitir establecer como null explícitamente
+      } else {
+        const collaborator = await Collaborator.findByPk(parseInt(collaborator_id, 10));
+        if (!collaborator) return res.status(404).json({ message: 'Colaborador no encontrado' });
+        newCollaboratorId = parseInt(collaborator_id, 10); // Asignar el nuevo ID si es válido
+      }
     }
+
+    // Actualizar el producto
     await product.update({
       name: name || product.name,
       description: description !== undefined ? description : product.description,
       product_type: product_type || product.product_type,
       category_id: category_id ? parseInt(category_id, 10) : product.category_id,
-      collaborator_id: collaborator_id || product.collaborator_id
+      collaborator_id: newCollaboratorId // Usar el valor calculado
     });
 
     // Manejar personalizaciones si se proporcionan
@@ -555,7 +565,7 @@ exports.updateProduct = async (req, res) => {
       // Crear las nuevas personalizaciones
       const newCustomizations = customizations.map(customization => ({
         product_id: product.product_id,
-        option_type: customization.type.toLowerCase(), // Normalizar a minúsculas para coincidir con ENUM
+        option_type: customization.type.toLowerCase(),
         description: customization.description
       }));
       await CustomizationOption.bulkCreate(newCustomizations);
@@ -688,7 +698,7 @@ exports.updateProduct = async (req, res) => {
     const updatedProduct = await Product.findByPk(product_id, {
       include: [
         { model: ProductVariant, include: [ProductImage] },
-        { model: CustomizationOption } // Incluir personalizaciones en la respuesta
+        { model: CustomizationOption }
       ]
     });
     res.status(200).json({ message: 'Producto actualizado exitosamente', product: updatedProduct });
