@@ -534,14 +534,18 @@ exports.updateProduct = async (req, res) => {
     }
 
     // Manejar collaborator_id explícitamente
-    let newCollaboratorId = product.collaborator_id; // Valor por defecto: mantener el actual
-    if (collaborator_id !== undefined) { // Solo actuamos si collaborator_id está presente en req.body
-      if (collaborator_id === null) {
-        newCollaboratorId = null; // Permitir establecer como null explícitamente
+    let newCollaboratorId = product.collaborator_id;
+    if (collaborator_id !== undefined) {
+      if (collaborator_id === 'null' || collaborator_id === null) { // Manejar tanto 'null' string como null
+        newCollaboratorId = null;
       } else {
-        const collaborator = await Collaborator.findByPk(parseInt(collaborator_id, 10));
+        const parsedCollaboratorId = parseInt(collaborator_id, 10);
+        if (isNaN(parsedCollaboratorId)) {
+          return res.status(400).json({ message: 'El ID del colaborador debe ser un número válido o null' });
+        }
+        const collaborator = await Collaborator.findByPk(parsedCollaboratorId);
         if (!collaborator) return res.status(404).json({ message: 'Colaborador no encontrado' });
-        newCollaboratorId = parseInt(collaborator_id, 10); // Asignar el nuevo ID si es válido
+        newCollaboratorId = parsedCollaboratorId;
       }
     }
 
@@ -551,7 +555,7 @@ exports.updateProduct = async (req, res) => {
       description: description !== undefined ? description : product.description,
       product_type: product_type || product.product_type,
       category_id: category_id ? parseInt(category_id, 10) : product.category_id,
-      collaborator_id: newCollaboratorId // Usar el valor calculado
+      collaborator_id: newCollaboratorId
     });
 
     // Manejar personalizaciones si se proporcionan
