@@ -30,7 +30,7 @@ const Product = sequelize.define('Product', {
   },
   description: DataTypes.TEXT,
   product_type: {
-    type: DataTypes.ENUM('Existencia', 'semi_personalizado', 'personalizado'),
+    type: DataTypes.ENUM('Existencia', 'Personalizado'),
     allowNull: false
   },
   on_promotion: {
