@@ -4,7 +4,7 @@ const validateProduct = [
   // Validaciones para el producto base
   body('name').trim().notEmpty().withMessage('El nombre es obligatorio').escape(),
   body('description').optional().trim().escape(),
-  body('product_type').isIn(['Existencia', 'semi_personalizado', 'personalizado']).withMessage('Tipo de producto no válido'),
+  body('product_type').isIn(['Existencia', 'Personalizado']).withMessage('El tipo de producto debe ser "Existencia" o "Personalizado"'), // Actualizamos
   body('category_id').isInt().withMessage('El ID de la categoría debe ser un número entero'),
   body('collaborator_id').optional({ nullable: true }).isInt().withMessage('El ID del colaborador debe ser un número entero'),
   // Validaciones para personalizaciones (a nivel de producto)
@@ -30,7 +30,6 @@ const validateProduct = [
   body('variants.*.attributes.*.attribute_id').isInt().withMessage('El ID del atributo debe ser un número entero'),
   body('variants.*.attributes.*.value').trim().notEmpty().withMessage('El valor del atributo es obligatorio'),
 ];
-
 const validateGetProducts = [
   query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser un número entero positivo'),
   query('pageSize').optional().isInt({ min: 1 }).withMessage('El tamaño de página debe ser un número entero positivo'),
@@ -49,7 +48,7 @@ const validateUpdateProduct = [
   param('product_id').isInt({ min: 1 }).withMessage('El ID del producto debe ser un número entero positivo'),
   body('name').optional().trim().notEmpty().withMessage('El nombre no puede estar vacío').escape(),
   body('description').optional().trim().escape(),
-  body('product_type').optional().isIn(['Existencia', 'semi_personalizado', 'personalizado']).withMessage('Tipo de producto no válido'),
+  body('product_type').optional().isIn(['Existencia', 'Personalizado']).withMessage('El tipo de producto debe ser "Existencia" o "Personalizado"'), // Actualizamos
   body('category_id').optional().isInt().withMessage('El ID de la categoría debe ser un número entero'),
   body('collaborator_id').optional().custom(value => value === null || Number.isInteger(parseInt(value))).withMessage('El ID del colaborador debe ser un número entero o null'),
   body('variants').optional().isArray().withMessage('Las variantes deben ser un arreglo'),
@@ -66,7 +65,6 @@ const validateUpdateProduct = [
   body('customizations.*.type').isIn(['text', 'image', 'file']).withMessage('Tipo de personalización no válido'),
   body('customizations.*.description').optional().trim().notEmpty().withMessage('La descripción de la personalización no puede estar vacía')
 ];
-
 const validateDeleteVariants = [
   param('product_id')
     .isInt({ min: 1 })

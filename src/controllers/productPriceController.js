@@ -9,8 +9,8 @@ const validateGetAllVariants = [
   query('category_id').optional().isInt({ min: 1 }).withMessage('El ID de la categoría debe ser un entero positivo'),
   query('product_type')
     .optional()
-    .isIn(['Existencia', 'semi_personalizado', 'personalizado'])
-    .withMessage('El tipo de producto debe ser "Existencia", "semi_personalizado" o "personalizado"'),
+    .isIn(['Existencia', 'Personalizado']) // Eliminamos 'semi_personalizado'
+    .withMessage('El tipo de producto debe ser "Existencia" o "Personalizado"'), // Actualizamos el mensaje
   query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser un entero positivo'),
   query('limit').optional().isInt({ min: 1 }).withMessage('El límite debe ser un entero positivo'),
   query('sortBy')
