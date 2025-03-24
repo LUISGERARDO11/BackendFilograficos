@@ -1,19 +1,46 @@
-const { Customization, CustomizationOption } = require('../models');
+const { Customization, CustomizationOption, Product } = require('../models/Associations');
+const loggerUtils = require('../utils/loggerUtils');
 
 // Obtener las opciones de personalización para un producto
 exports.getCustomizationOptions = async (req, res) => {
   try {
     const { productId } = req.params;
+
+    // Validar que el productId sea un número válido
+    const productIdNum = parseInt(productId, 10);
+    if (isNaN(productIdNum)) {
+      return res.status(400).json({ message: 'El ID del producto debe ser un número válido' });
+    }
+
+    // Verificar que el producto exista y esté activo
+    const product = await Product.findByPk(productIdNum, { where: { status: 'active' } });
+    if (!product) {
+      return res.status(404).json({ message: 'Producto no encontrado o no está activo' });
+    }
+
     const options = await CustomizationOption.findAll({
-      where: { product_id: productId },
+      where: { product_id: productIdNum },
     });
+
     if (!options || options.length === 0) {
       return res.status(404).json({ message: 'No se encontraron opciones de personalización para este producto' });
     }
-    res.status(200).json(options);
+
+    // Formatear las opciones para que coincidan con el estilo del catálogo
+    const formattedOptions = options.map(option => ({
+      option_id: option.option_id,
+      product_id: option.product_id,
+      option_type: option.option_type,
+      description: option.description,
+    }));
+
+    res.status(200).json({
+      message: 'Opciones de personalización obtenidas exitosamente',
+      options: formattedOptions,
+    });
   } catch (error) {
-    console.error('Error al obtener opciones de personalización:', error);
-    res.status(500).json({ message: 'Error al obtener opciones de personalización', error: error.message });
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener las opciones de personalización', error: error.message });
   }
 };
 
@@ -22,9 +49,21 @@ exports.createCustomization = async (req, res) => {
   try {
     const { productId, optionType, content, fileUrl, comments } = req.body;
 
-    // Validar que el producto exista (opcional, pero recomendado)
+    // Validar que el productId sea un número válido
+    const productIdNum = parseInt(productId, 10);
+    if (isNaN(productIdNum)) {
+      return res.status(400).json({ message: 'El ID del producto debe ser un número válido' });
+    }
+
+    // Verificar que el producto exista y esté activo
+    const product = await Product.findByPk(productIdNum, { where: { status: 'active' } });
+    if (!product) {
+      return res.status(404).json({ message: 'Producto no encontrado o no está activo' });
+    }
+
+    // Validar que la opción de personalización exista para este producto
     const customizationOption = await CustomizationOption.findOne({
-      where: { product_id: productId, option_type: optionType },
+      where: { product_id: productIdNum, option_type: optionType },
     });
     if (!customizationOption) {
       return res.status(400).json({ message: 'Opción de personalización no válida para este producto' });
@@ -32,7 +71,7 @@ exports.createCustomization = async (req, res) => {
 
     // Crear la personalización
     const customization = await Customization.create({
-      product_id: productId,
+      product_id: productIdNum,
       option_type: optionType,
       content: content || null,
       file_url: fileUrl || null,
@@ -41,9 +80,24 @@ exports.createCustomization = async (req, res) => {
       revision_count: 0,
     });
 
-    res.status(201).json({ message: 'Personalización creada exitosamente', customization });
+    // Formatear la respuesta para que sea consistente
+    const formattedCustomization = {
+      customization_id: customization.customization_id,
+      product_id: customization.product_id,
+      option_type: customization.option_type,
+      content: customization.content,
+      file_url: customization.file_url,
+      comments: customization.comments,
+      status: customization.status,
+      revision_count: customization.revision_count,
+    };
+
+    res.status(201).json({
+      message: 'Personalización creada exitosamente',
+      customization: formattedCustomization,
+    });
   } catch (error) {
-    console.error('Error al crear personalización:', error);
-    res.status(500).json({ message: 'Error al crear personalización', error: error.message });
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al crear la personalización', error: error.message });
   }
 };
