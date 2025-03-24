@@ -37,6 +37,7 @@ const bannerRoutes = require('./routes/bannerRoutes');
 const collaboratorRoutes = require('./routes/collaboratorsRoutes');
 const categoryRoutes = require('./routes/categoriesRoutes');
 const cartRoutes = require('./routes/cartRoutes');
+const customizationRoutes = require('./routes/customizationRoutes');
 
 const app = express();
 
@@ -99,7 +100,7 @@ app.use('/api/banners', bannerRoutes);
 app.use('/api/collaborators', collaboratorRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/cart', cartRoutes);
-
+app.use('/api/customizations', customizationRoutes);
 // Middleware para manejar errores
 app.use(errorHandler);
 
