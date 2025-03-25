@@ -147,8 +147,16 @@ class PromotionService {
     const { count, rows } = await Promotion.findAndCountAll({
       where,
       include: [
-        { model: ProductVariant, through: PromotionProduct, as: 'Variants', attributes: ['variant_id', 'sku'] },
-        { model: Category, through: PromotionCategory, as: 'Categories', attributes: ['category_id', 'name'] }
+        {
+          model: ProductVariant,
+          through: { model: PromotionProduct, attributes: [] }, // Incluimos la tabla intermedia sin atributos
+          attributes: ['variant_id', 'sku'] // Solo los atributos necesarios
+        },
+        {
+          model: Category,
+          through: { model: PromotionCategory, attributes: [] }, // Incluimos la tabla intermedia sin atributos
+          attributes: ['category_id', 'name']
+        }
       ],
       order,
       limit: pageSize,
