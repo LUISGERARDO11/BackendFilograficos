@@ -1,9 +1,17 @@
-const { body, validationResult } = require('express-validator');
+const { body, query, validationResult } = require('express-validator');
 const PromotionService = require('../services/PromotionService');
 const loggerUtils = require('../utils/loggerUtils');
 
 const promotionService = new PromotionService();
 
+// Validaciones para getAllPromotions
+const validateGetAllPromotions = [
+    query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser un número entero positivo.'),
+    query('pageSize').optional().isInt({ min: 1 }).withMessage('El tamaño de página debe ser un número entero positivo.'),
+    query('status').optional().isIn(['active', 'inactive']).withMessage('El estado debe ser "active" o "inactive".'),
+    query('sort').optional().isString().withMessage('El parámetro sort debe ser una cadena (ej. "promotion_id:ASC,start_date:DESC").'),
+    query('search').optional().isString().withMessage('El término de búsqueda debe ser una cadena.'),
+];
 // Crear una nueva promoción
 exports.createPromotion = [
   body('promotion_type')
@@ -59,16 +67,87 @@ exports.createPromotion = [
 ];
 
 // Obtener todas las promociones activas
-exports.getAllPromotions = async (req, res) => {
-  try {
-    const promotions = await promotionService.getPromotions();
-
-    res.status(200).json(promotions);
-  } catch (error) {
-    loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al obtener las promociones', error: error.message });
-  }
-};
+exports.getAllPromotions = [
+    validateGetAllPromotions,
+    async (req, res) => {
+      try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+          return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
+        }
+  
+        const {
+          search,
+          status,
+          page: pageParam = 1,
+          pageSize: pageSizeParam = 10,
+          sort
+        } = req.query;
+  
+        const page = parseInt(pageParam);
+        const pageSize = parseInt(pageSizeParam);
+  
+        if (page < 1 || pageSize < 1) {
+          return res.status(400).json({ message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' });
+        }
+  
+        // Filtros
+        const where = {};
+        if (status) {
+          where.status = status;
+        } else {
+          where.status = 'active'; // Por defecto solo muestra activas si no se especifica
+        }
+  
+        if (search) {
+          where[Op.or] = [
+            { promotion_type: { [Op.iLike]: `%${search}%` } }, // Búsqueda por tipo (insensible a mayúsculas)
+          ];
+          if (!isNaN(parseFloat(search))) {
+            where[Op.or].push(
+              { discount_value: { [Op.between]: [parseFloat(search) - 0.01, parseFloat(search) + 0.01] } } // Búsqueda por valor de descuento
+            );
+          }
+        }
+  
+        // Ordenamiento
+        let order = [['promotion_id', 'ASC']]; // Orden por defecto
+        if (sort) {
+          const sortParams = sort.split(',').map(param => param.trim().split(':'));
+          const validColumns = ['promotion_id', 'start_date'];
+          const validDirections = ['ASC', 'DESC'];
+  
+          order = sortParams.map(([column, direction]) => {
+            if (!validColumns.includes(column)) {
+              throw new Error(`Columna de ordenamiento inválida: ${column}. Use: ${validColumns.join(', ')}`);
+            }
+            if (!direction || !validDirections.includes(direction.toUpperCase())) {
+              throw new Error(`Dirección de ordenamiento inválida: ${direction}. Use: ASC o DESC`);
+            }
+            return [column, direction.toUpperCase()];
+          });
+        }
+  
+        const { count, rows: promotions } = await promotionService.getPromotions({
+          where,
+          order,
+          page,
+          pageSize
+        });
+  
+        res.status(200).json({
+          message: 'Promociones obtenidas exitosamente',
+          promotions,
+          total: count,
+          page,
+          pageSize
+        });
+      } catch (error) {
+        loggerUtils.logCriticalError(error);
+        res.status(500).json({ message: 'Error al obtener las promociones', error: error.message });
+      }
+    }
+];
 
 // Obtener una promoción por ID
 exports.getPromotionById = async (req, res) => {
