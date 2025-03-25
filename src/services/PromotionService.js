@@ -141,13 +141,21 @@ class PromotionService {
     return promotion;
   }
 
-  async getPromotions() {
-    return await Promotion.findAll({
+  async getPromotions({ where = {}, order = [['promotion_id', 'ASC']], page = 1, pageSize = 10 } = {}) {
+    const offset = (page - 1) * pageSize;
+
+    const { count, rows } = await Promotion.findAndCountAll({
+      where,
       include: [
-        { model: ProductVariant, through: PromotionProduct, as: 'Variants' },
-        { model: Category, through: PromotionCategory, as: 'Categories' }
-      ]
+        { model: ProductVariant, through: PromotionProduct, as: 'Variants', attributes: ['variant_id', 'sku'] },
+        { model: Category, through: PromotionCategory, as: 'Categories', attributes: ['category_id', 'name'] }
+      ],
+      order,
+      limit: pageSize,
+      offset,
     });
+
+    return { count, rows };
   }
 
   async getPromotionById(id) {
