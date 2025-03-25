@@ -1,5 +1,4 @@
-/* This code snippet is setting up associations between different models in a Node.js application using
-Sequelize, which is an ORM for Node.js. */
+/* This code snippet is setting up associations between different models in a Node.js application using Sequelize, which is an ORM for Node.js. */
 const User = require('./Users');
 const Account = require('./Account');
 const TwoFactorConfig = require('./Twofactorconfig');
@@ -76,7 +75,6 @@ BackupLog.belongsTo(User, { foreignKey: 'performed_by' });
 User.hasMany(RestorationLog, { foreignKey: 'performed_by' });
 RestorationLog.belongsTo(User, { foreignKey: 'performed_by' });
 
-// Nueva relación: PriceHistory y User
 User.hasMany(PriceHistory, { foreignKey: 'changed_by' });
 PriceHistory.belongsTo(User, { foreignKey: 'changed_by' });
 
@@ -183,15 +181,16 @@ CustomizationOption.hasMany(CartDetail, { foreignKey: 'option_id' });
 Order.hasMany(OrderDetail, { foreignKey: 'order_id' });
 OrderDetail.belongsTo(Order, { foreignKey: 'order_id' });
 
-ProductVariant.hasMany(OrderDetail, { foreignKey: 'product_id' });
-OrderDetail.belongsTo(ProductVariant, { foreignKey: 'product_id' });
+// Corrección: OrderDetail se relaciona con ProductVariant usando variant_id
+OrderDetail.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
+ProductVariant.hasMany(OrderDetail, { foreignKey: 'variant_id' });
 
 // Relaciones de Promociones
-Product.hasMany(Promotion, { foreignKey: 'product_id' });
-Promotion.belongsTo(Product, { foreignKey: 'product_id' });
+Promotion.belongsToMany(ProductVariant, { through: PromotionProduct, foreignKey: 'promotion_id', otherKey: 'variant_id' });
+ProductVariant.belongsToMany(Promotion, { through: PromotionProduct, foreignKey: 'variant_id', otherKey: 'promotion_id' });
 
-Category.hasMany(Promotion, { foreignKey: 'category_id' });
-Promotion.belongsTo(Category, { foreignKey: 'category_id' });
+Promotion.belongsToMany(Category, { through: PromotionCategory, foreignKey: 'promotion_id', otherKey: 'category_id' });
+Category.belongsToMany(Promotion, { through: PromotionCategory, foreignKey: 'category_id', otherKey: 'promotion_id' });
 
 User.hasMany(Promotion, { foreignKey: 'created_by' });
 Promotion.belongsTo(User, { foreignKey: 'created_by' });
@@ -210,8 +209,8 @@ CouponUsage.belongsTo(Order, { foreignKey: 'order_id' });
 Promotion.hasMany(PromotionProduct, { foreignKey: 'promotion_id' });
 PromotionProduct.belongsTo(Promotion, { foreignKey: 'promotion_id' });
 
-ProductVariant.hasMany(PromotionProduct, { foreignKey: 'product_id' });
-PromotionProduct.belongsTo(ProductVariant, { foreignKey: 'product_id' });
+ProductVariant.hasMany(PromotionProduct, { foreignKey: 'variant_id' });
+PromotionProduct.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
 
 // Relaciones de PromotionCategory
 Promotion.hasMany(PromotionCategory, { foreignKey: 'promotion_id' });
