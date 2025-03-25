@@ -13,23 +13,23 @@ const PromotionProduct = sequelize.define('PromotionProduct', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'promotions', // Nombre de la tabla de promociones en inglés
+      model: 'promotions',
       key: 'promotion_id'
     },
     field: 'promotion_id'
   },
-  product_id: {
+  variant_id: { // Cambiado de product_id a variant_id
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'products', // Nombre de la tabla de productos en inglés
-      key: 'product_id'
+      model: 'product_variants', // Referencia a product_variants
+      key: 'variant_id'
     },
-    field: 'product_id'
+    field: 'variant_id'
   }
 }, {
-  tableName: 'promotion_products', // Nombre de la tabla en inglés
-  timestamps: false // No se necesitan campos de timestamp adicionales
+  tableName: 'promotion_products',
+  timestamps: false
 });
 
 module.exports = PromotionProduct;

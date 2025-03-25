@@ -13,19 +13,19 @@ const OrderDetail = sequelize.define('OrderDetail', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'orders', // Nombre de la tabla de pedidos en inglés
+      model: 'orders', // Nombre de la tabla de pedidos
       key: 'order_id'
     },
     field: 'order_id'
   },
-  product_id: {
+  variant_id: { // Cambiado de product_id a variant_id
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'products', // Nombre de la tabla de productos en inglés
-      key: 'product_id'
+      model: 'product_variants', // Referencia a la tabla de variantes
+      key: 'variant_id'
     },
-    field: 'product_id'
+    field: 'variant_id'
   },
   quantity: {
     type: DataTypes.INTEGER,
@@ -42,23 +42,28 @@ const OrderDetail = sequelize.define('OrderDetail', {
     allowNull: false,
     field: 'subtotal'
   },
+  unit_measure: { // Añadido para soportar metros u otras unidades
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 1.00, // Por defecto 1 unidad
+    allowNull: false
+  },
   discount_applied: {
     type: DataTypes.DECIMAL(10, 2), // Descuento aplicado
     defaultValue: 0.00
-  },
+  }
 }, {
-    tableName: 'order_details',
-    timestamps: false,
-    indexes: [
-      {
-        name: 'idx_order_id', // Nombre del índice para order_id
-        fields: ['order_id']
-      },
-      {
-        name: 'idx_product_id', // Nombre del índice para product_id
-        fields: ['product_id']
-      }
-    ]
-  });
+  tableName: 'order_details',
+  timestamps: false,
+  indexes: [
+    {
+      name: 'idx_order_id', // Índice para order_id
+      fields: ['order_id']
+    },
+    {
+      name: 'idx_variant_id', // Índice actualizado para variant_id
+      fields: ['variant_id']
+    }
+  ]
+});
 
 module.exports = OrderDetail;
