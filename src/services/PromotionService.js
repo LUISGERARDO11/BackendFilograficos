@@ -124,21 +124,54 @@ class PromotionService {
     return false;
   }
 
-  async createPromotion(data, variantIds = [], categoryIds = []) {
-    const promotion = await Promotion.create(data);
-    if (variantIds.length > 0) {
-      await PromotionProduct.bulkCreate(variantIds.map(variantId => ({
+  async createPromotion(promotionData) {
+    const { name, promotion_type, discount_value, start_date, end_date, applies_to, created_by, status, variantIds, categoryIds } = promotionData;
+
+    // Crear la promoción
+    const promotion = await Promotion.create({
+      name,
+      promotion_type,
+      discount_value,
+      start_date,
+      end_date,
+      applies_to,
+      created_by,
+      status
+    });
+
+    // Asociar variantes si se proporcionan
+    if (variantIds && variantIds.length > 0) {
+      const promotionProducts = variantIds.map(variant_id => ({
         promotion_id: promotion.promotion_id,
-        variant_id: variantId
-      })));
+        variant_id
+      }));
+      await PromotionProduct.bulkCreate(promotionProducts);
     }
-    if (categoryIds.length > 0) {
-      await PromotionCategory.bulkCreate(categoryIds.map(categoryId => ({
+
+    // Asociar categorías si se proporcionan
+    if (categoryIds && categoryIds.length > 0) {
+      const promotionCategories = categoryIds.map(category_id => ({
         promotion_id: promotion.promotion_id,
-        category_id: categoryId
-      })));
+        category_id
+      }));
+      await PromotionCategory.bulkCreate(promotionCategories);
     }
-    return promotion;
+
+    // Devolver la promoción con sus relaciones
+    return await Promotion.findByPk(promotion.promotion_id, {
+      include: [
+        {
+          model: ProductVariant,
+          through: { model: PromotionProduct, attributes: [] },
+          attributes: ['variant_id', 'sku']
+        },
+        {
+          model: Category,
+          through: { model: PromotionCategory, attributes: [] },
+          attributes: ['category_id', 'name']
+        }
+      ]
+    });
   }
 
   async getPromotions({ where = {}, order = [['promotion_id', 'ASC']], page = 1, pageSize = 10 } = {}) {

@@ -12,58 +12,71 @@ const validateGetAllPromotions = [
     query('sort').optional().isString().withMessage('El parámetro sort debe ser una cadena (ej. "promotion_id:ASC,start_date:DESC").'),
     query('search').optional().isString().withMessage('El término de búsqueda debe ser una cadena.'),
 ];
+
+// Validaciones para createPromotion
+const validateCreatePromotion = [
+    body('name').notEmpty().withMessage('El nombre de la promoción es obligatorio'),
+    body('promotion_type').isIn(['quantity_discount', 'order_count_discount', 'unit_discount']).withMessage('Tipo de promoción inválido'),
+    body('discount_value').isFloat({ min: 0, max: 100 }).withMessage('El valor de descuento debe estar entre 0 y 100'),
+    body('start_date').isISO8601().withMessage('La fecha de inicio debe ser una fecha válida en formato ISO8601'),
+    body('end_date').isISO8601().withMessage('La fecha de fin debe ser una fecha válida en formato ISO8601'),
+    body('applies_to').notEmpty().withMessage('El campo "applies_to" es obligatorio'),
+    body('variantIds').optional().isArray().withMessage('variantIds debe ser un arreglo'),
+    body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un arreglo'),
+];
+
 // Crear una nueva promoción
 exports.createPromotion = [
-  body('promotion_type')
-    .isIn(['quantity_discount', 'order_count_discount', 'unit_discount'])
-    .withMessage('El tipo de promoción debe ser válido.'),
-  body('discount_value')
-    .isFloat({ min: 0, max: 100 })
-    .withMessage('El valor del descuento debe estar entre 0 y 100.'),
-  body('start_date')
-    .isISO8601()
-    .withMessage('La fecha de inicio debe ser una fecha válida.'),
-  body('end_date')
-    .isISO8601()
-    .withMessage('La fecha de fin debe ser una fecha válida.'),
-  body('variantIds')
-    .optional()
-    .isArray()
-    .withMessage('variantIds debe ser un arreglo.'),
-  body('categoryIds')
-    .optional()
-    .isArray()
-    .withMessage('categoryIds debe ser un arreglo.'),
-
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { promotion_type, discount_value, start_date, end_date, variantIds, categoryIds, ...otherData } = req.body;
-
-    try {
-      const promotion = await promotionService.createPromotion(
-        {
+    validateCreatePromotion,
+    async (req, res) => {
+      try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+          return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
+        }
+  
+        const {
+          name,
           promotion_type,
           discount_value,
           start_date,
           end_date,
-          status: 'active',
-          ...otherData
-        },
-        variantIds || [],
-        categoryIds || []
-      );
-
-      loggerUtils.logUserActivity(req.user.user_id, 'create', `Promoción creada: ${promotion.promotion_id}`);
-      res.status(201).json({ message: 'Promoción creada exitosamente', promotion });
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error al crear la promoción', error: error.message });
+          applies_to,
+          variantIds = [],
+          categoryIds = []
+        } = req.body;
+  
+        // Obtener el user_id del token decodificado por authMiddleware
+        const created_by = req.user.user_id; // Asegúrate de que 'user_id' sea el campo correcto en tu token JWT
+  
+        if (!created_by) {
+          return res.status(401).json({ message: 'No se pudo identificar al usuario autenticado' });
+        }
+  
+        const promotionData = {
+          name,
+          promotion_type,
+          discount_value,
+          start_date,
+          end_date,
+          applies_to,
+          created_by,
+          status: 'active', // Valor por defecto
+          variantIds,
+          categoryIds
+        };
+  
+        const newPromotion = await promotionService.createPromotion(promotionData);
+  
+        res.status(201).json({
+          message: 'Promoción creada exitosamente',
+          promotion: newPromotion
+        });
+      } catch (error) {
+        loggerUtils.logCriticalError(error);
+        res.status(500).json({ message: 'Error al crear la promoción', error: error.message });
+      }
     }
-  }
 ];
 
 // Obtener todas las promociones activas
