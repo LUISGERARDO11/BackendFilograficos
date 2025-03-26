@@ -1,6 +1,8 @@
+const { Op } = require('sequelize');
 const { body, query, validationResult } = require('express-validator');
 const PromotionService = require('../services/PromotionService');
 const loggerUtils = require('../utils/loggerUtils');
+const { Product, ProductVariant, ProductImage } = require('../models/Associations');
 
 const promotionService = new PromotionService();
 
@@ -27,6 +29,78 @@ const validateCreatePromotion = [
     body('end_date').isISO8601().withMessage('La fecha de fin debe ser una fecha válida en formato ISO8601'),
     body('variantIds').optional().isArray().withMessage('variantIds debe ser un arreglo'),
     body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un arreglo'),
+];
+
+// Validaciones para los parámetros de búsqueda
+const validateGetAllVariants = [
+    query('search').optional().trim().escape(),
+];
+
+// Obtener todas las variantes con información básica
+exports.getAllVariants = [
+    validateGetAllVariants,
+    async (req, res) => {
+      try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+          return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
+        }
+  
+        const { search } = req.query;
+  
+        // Filtros
+        const variantWhere = { is_deleted: false }; // Solo variantes no eliminadas
+        const productWhere = { status: 'active' }; // Solo productos activos
+  
+        if (search) {
+          variantWhere[Op.or] = [
+            { sku: { [Op.like]: `%${search}%` } },
+          ];
+          productWhere[Op.or] = [
+            { name: { [Op.like]: `%${search}%` } },
+          ];
+        }
+  
+        // Consulta principal
+        const variants = await ProductVariant.findAll({
+          where: variantWhere,
+          attributes: ['variant_id', 'sku'],
+          include: [
+            {
+              model: Product,
+              attributes: ['name'],
+              where: productWhere,
+              required: true
+            },
+            {
+              model: ProductImage,
+              attributes: ['image_url'],
+              where: { order: 1 }, // Solo la primera imagen
+              required: false // Para que devuelva variantes aunque no tengan imagen
+            }
+          ],
+          order: [['variant_id', 'ASC']]
+        });
+  
+        // Formatear la respuesta
+        const formattedVariants = variants.map(variant => ({
+          variant_id: variant.variant_id,
+          sku: variant.sku,
+          product_name: variant.Product ? variant.Product.name : null,
+          image_url: variant.ProductImages.length > 0 ? variant.ProductImages[0].image_url : null
+        }));
+  
+        res.status(200).json({
+          message: 'Variantes obtenidas exitosamente',
+          variants: formattedVariants,
+          total: formattedVariants.length
+        });
+  
+      } catch (error) {
+        loggerUtils.logCriticalError(error);
+        res.status(500).json({ message: 'Error al obtener las variantes', error: error.message });
+      }
+    }
 ];
 
 exports.createPromotion = [

@@ -54,4 +54,13 @@ router.delete(
   promotionController.deletePromotion
 );
 
+// Obtener todas las variantes (nueva ruta)
+router.get(
+  '/variants',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  promotionController.getAllVariants
+);
+
 module.exports = router;
