@@ -6,13 +6,12 @@ const { Product, ProductVariant, ProductImage } = require('../models/Association
 
 const promotionService = new PromotionService();
 
-// Validaciones para getAllPromotions
+// Validaciones para getAllPromotions (sin 'status')
 const validateGetAllPromotions = [
     query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser un número entero positivo.'),
     query('pageSize').optional().isInt({ min: 1 }).withMessage('El tamaño de página debe ser un número entero positivo.'),
-    query('status').optional().isIn(['active', 'inactive']).withMessage('El estado debe ser "active" o "inactive".'),
     query('sort').optional().isString().withMessage('El parámetro sort debe ser una cadena (ej. "promotion_id:ASC,start_date:DESC").'),
-    query('search').optional().isString().withMessage('El término de búsqueda debe ser una cadena.'),
+    query('search').optional().isString().withMessage('El término de búsqueda debe ser una cadena.')
 ];
 
 // Validaciones para createPromotion
@@ -165,85 +164,98 @@ exports.createPromotion = [
 
 // Obtener todas las promociones activas
 exports.getAllPromotions = [
-    validateGetAllPromotions,
-    async (req, res) => {
-      try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-          return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
-        }
-  
-        const {
-          search,
-          status,
-          page: pageParam = 1,
-          pageSize: pageSizeParam = 10,
-          sort
-        } = req.query;
-  
-        const page = parseInt(pageParam);
-        const pageSize = parseInt(pageSizeParam);
-  
-        if (page < 1 || pageSize < 1) {
-          return res.status(400).json({ message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' });
-        }
-  
-        // Filtros
-        const where = {};
-        if (status) {
-          where.status = status;
-        } else {
-          where.status = 'active'; // Por defecto solo muestra activas si no se especifica
-        }
-  
-        if (search) {
-          where[Op.or] = [
-            { promotion_type: { [Op.iLike]: `%${search}%` } }, // Búsqueda por tipo (insensible a mayúsculas)
-          ];
-          if (!isNaN(parseFloat(search))) {
-            where[Op.or].push(
-              { discount_value: { [Op.between]: [parseFloat(search) - 0.01, parseFloat(search) + 0.01] } } // Búsqueda por valor de descuento
-            );
-          }
-        }
-  
-        // Ordenamiento
-        let order = [['promotion_id', 'ASC']]; // Orden por defecto
-        if (sort) {
-          const sortParams = sort.split(',').map(param => param.trim().split(':'));
-          const validColumns = ['promotion_id', 'start_date'];
-          const validDirections = ['ASC', 'DESC'];
-  
-          order = sortParams.map(([column, direction]) => {
-            if (!validColumns.includes(column)) {
-              throw new Error(`Columna de ordenamiento inválida: ${column}. Use: ${validColumns.join(', ')}`);
-            }
-            if (!direction || !validDirections.includes(direction.toUpperCase())) {
-              throw new Error(`Dirección de ordenamiento inválida: ${direction}. Use: ASC o DESC`);
-            }
-            return [column, direction.toUpperCase()];
-          });
-        }
-  
-        const { count, rows: promotions } = await promotionService.getPromotions({
-          where,
-          order,
-          page,
-          pageSize
-        });
-  
-        res.status(200).json({
-          message: 'Promociones obtenidas exitosamente',
-          promotions,
-          total: count,
-          page,
-          pageSize
-        });
-      } catch (error) {
-        loggerUtils.logCriticalError(error);
-        res.status(500).json({ message: 'Error al obtener las promociones', error: error.message });
+  validateGetAllPromotions,
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
       }
+
+      const {
+        search,
+        page: pageParam = 1,
+        pageSize: pageSizeParam = 10,
+        sort
+      } = req.query;
+
+      const page = parseInt(pageParam);
+      const pageSize = parseInt(pageSizeParam);
+
+      if (page < 1 || pageSize < 1) {
+        return res.status(400).json({ message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos' });
+      }
+
+      // Filtros (solo activas por defecto)
+      const where = { status: 'active' }; // Solo promociones activas
+
+      if (search) {
+        where[Op.or] = [
+          { name: { [Op.iLike]: `%${search}%` } }, // Búsqueda por nombre
+          { promotion_type: { [Op.iLike]: `%${search}%` } } // Búsqueda por tipo
+        ];
+        if (!isNaN(parseFloat(search))) {
+          where[Op.or].push(
+            { discount_value: { [Op.between]: [parseFloat(search) - 0.01, parseFloat(search) + 0.01] } } // Búsqueda por valor de descuento
+          );
+        }
+      }
+
+      // Ordenamiento
+      let order = [['promotion_id', 'ASC']]; // Orden por defecto
+      if (sort) {
+        const sortParams = sort.split(',').map(param => param.trim().split(':'));
+        const validColumns = ['promotion_id', 'start_date', 'end_date', 'discount_value', 'created_at'];
+        const validDirections = ['ASC', 'DESC'];
+
+        order = sortParams.map(([column, direction]) => {
+          if (!validColumns.includes(column)) {
+            throw new Error(`Columna de ordenamiento inválida: ${column}. Use: ${validColumns.join(', ')}`);
+          }
+          if (!direction || !validDirections.includes(direction.toUpperCase())) {
+            throw new Error(`Dirección de ordenamiento inválida: ${direction}. Use: ASC o DESC`);
+          }
+          return [column, direction.toUpperCase()];
+        });
+      }
+
+      const { count, rows: promotions } = await promotionService.getPromotions({
+        where,
+        order,
+        page,
+        pageSize
+      });
+
+      // Formatear respuesta con campos relevantes para el administrador
+      const formattedPromotions = promotions.map(promo => ({
+        promotion_id: promo.promotion_id,
+        name: promo.name, // Nombre para identificar fácilmente
+        promotion_type: promo.promotion_type,
+        discount_value: promo.discount_value,
+        applies_to: promo.applies_to,
+        is_exclusive: promo.is_exclusive,
+        start_date: promo.start_date,
+        end_date: promo.end_date,
+        created_by: promo.created_by, // Quién creó la promoción
+        created_at: promo.created_at, // Fecha de creación
+        updated_by: promo.updated_by, // Quién actualizó (si aplica)
+        updated_at: promo.updated_at, // Fecha de última actualización
+        product_variants_count: promo.ProductVariants ? promo.ProductVariants.length : 0, // Cantidad de variantes asociadas
+        category_count: promo.Categories ? promo.Categories.length : 0 // Cantidad de categorías asociadas
+      }));
+
+      res.status(200).json({
+        message: 'Promociones activas obtenidas exitosamente',
+        promotions: formattedPromotions,
+        total: count,
+        page,
+        pageSize
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al obtener las promociones', error: error.message });
     }
+  }
 ];
 
 // Obtener una promoción por ID
@@ -257,7 +269,41 @@ exports.getPromotionById = async (req, res) => {
       return res.status(404).json({ message: 'Promoción no encontrada o inactiva' });
     }
 
-    res.status(200).json(promotion);
+    // Formatear respuesta con todos los datos insertados al crear
+    const formattedPromotion = {
+      promotion_id: promotion.promotion_id,
+      name: promotion.name,
+      promotion_type: promotion.promotion_type,
+      discount_value: promotion.discount_value,
+      min_quantity: promotion.min_quantity,
+      min_order_count: promotion.min_order_count,
+      min_unit_measure: promotion.min_unit_measure,
+      applies_to: promotion.applies_to,
+      is_exclusive: promotion.is_exclusive,
+      start_date: promotion.start_date,
+      end_date: promotion.end_date,
+      status: promotion.status,
+      created_by: promotion.created_by,
+      created_at: promotion.created_at,
+      updated_by: promotion.updated_by,
+      updated_at: promotion.updated_at,
+      // Incluir variantes si aplica
+      variantIds: promotion.ProductVariants ? promotion.ProductVariants.map(v => ({
+        variant_id: v.variant_id,
+        sku: v.sku,
+        product_name: v.product_name // Asumiendo que el modelo incluye esto, ajustar según tu DB
+      })) : [],
+      // Incluir categorías si aplica
+      categoryIds: promotion.Categories ? promotion.Categories.map(c => ({
+        category_id: c.category_id,
+        name: c.name
+      })) : []
+    };
+
+    res.status(200).json({
+      message: 'Promoción obtenida exitosamente',
+      promotion: formattedPromotion
+    });
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener la promoción', error: error.message });
