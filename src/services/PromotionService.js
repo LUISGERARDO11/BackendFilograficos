@@ -200,7 +200,7 @@ class PromotionService {
     const offset = (page - 1) * pageSize;
 
     const { count, rows } = await Promotion.findAndCountAll({
-      where,
+      where: { ...where, status: 'active' }, // Asegurar que solo se devuelvan promociones activas
       include: [
         {
           model: ProductVariant,
@@ -222,17 +222,21 @@ class PromotionService {
   }
 
   async getPromotionById(id) {
-    return await Promotion.findByPk(id, {
+    const promotion = await Promotion.findByPk(id, {
+      where: { status: 'active' }, // Solo promociones activas
       include: [
         { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id', 'sku'] },
         { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id', 'name'] }
       ]
     });
+    if (!promotion) throw new Error('Promoción no encontrada o inactiva');
+    return promotion;
   }
 
   async updatePromotion(id, data, variantIds = [], categoryIds = []) {
     const promotion = await Promotion.findByPk(id);
     if (!promotion) throw new Error('Promoción no encontrada');
+    if (promotion.status !== 'active') throw new Error('No se puede actualizar una promoción inactiva');
 
     const { promotion_type, min_quantity, min_order_count, min_unit_measure, applies_to } = data;
     data.min_quantity = promotion_type === 'quantity_discount' ? min_quantity : null;
@@ -263,10 +267,10 @@ class PromotionService {
   async deletePromotion(id) {
     const promotion = await Promotion.findByPk(id);
     if (!promotion) throw new Error('Promoción no encontrada');
-    await PromotionProduct.destroy({ where: { promotion_id: id } });
-    await PromotionCategory.destroy({ where: { promotion_id: id } });
-    await promotion.destroy();
-    return { message: 'Promoción eliminada' };
+
+    await promotion.update({ status: 'inactive' });
+
+    return { message: 'Promoción desactivada exitosamente' };
   }
 }
 
