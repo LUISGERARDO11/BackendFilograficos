@@ -18,59 +18,69 @@ const validateCreatePromotion = [
     body('name').notEmpty().withMessage('El nombre de la promoción es obligatorio'),
     body('promotion_type').isIn(['quantity_discount', 'order_count_discount', 'unit_discount']).withMessage('Tipo de promoción inválido'),
     body('discount_value').isFloat({ min: 0, max: 100 }).withMessage('El valor de descuento debe estar entre 0 y 100'),
+    body('min_quantity').optional().isInt({ min: 1 }).withMessage('La cantidad mínima debe ser un entero mayor o igual a 1'),
+    body('min_order_count').optional().isInt({ min: 1 }).withMessage('El conteo mínimo de pedidos debe ser un entero mayor o igual a 1'),
+    body('min_unit_measure').optional().isFloat({ min: 0 }).withMessage('La medida mínima debe ser un número mayor o igual a 0'),
+    body('applies_to').isIn(['specific_products', 'specific_categories', 'all']).withMessage('El campo "applies_to" debe ser "specific_products", "specific_categories" o "all"'),
+    body('is_exclusive').optional().isBoolean().withMessage('El campo "is_exclusive" debe ser un booleano'),
     body('start_date').isISO8601().withMessage('La fecha de inicio debe ser una fecha válida en formato ISO8601'),
     body('end_date').isISO8601().withMessage('La fecha de fin debe ser una fecha válida en formato ISO8601'),
-    body('applies_to').notEmpty().withMessage('El campo "applies_to" es obligatorio'),
     body('variantIds').optional().isArray().withMessage('variantIds debe ser un arreglo'),
     body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un arreglo'),
 ];
 
-// Crear una nueva promoción
 exports.createPromotion = [
     validateCreatePromotion,
     async (req, res) => {
-      try {
+        try {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-          return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
+            return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
         }
-  
+
         const {
-          name,
-          promotion_type,
-          discount_value,
-          start_date,
-          end_date,
-          applies_to,
-          variantIds = [],
-          categoryIds = []
+            name,
+            promotion_type,
+            discount_value,
+            min_quantity,
+            min_order_count,
+            min_unit_measure,
+            applies_to,
+            is_exclusive = true,
+            start_date,
+            end_date,
+            variantIds = [],
+            categoryIds = []
         } = req.body;
-  
-        // Obtener el user_id del token decodificado por authMiddleware
-        const created_by = req.user.user_id; // Asegúrate de que 'user_id' sea el campo correcto en tu token JWT
-  
+
+        const created_by = req.user.user_id;
+
         if (!created_by) {
-          return res.status(401).json({ message: 'No se pudo identificar al usuario autenticado' });
+            return res.status(401).json({ message: 'No se pudo identificar al usuario autenticado' });
         }
-  
+
         const promotionData = {
-          name,
-          promotion_type,
-          discount_value,
-          start_date,
-          end_date,
-          applies_to,
-          created_by,
-          status: 'active', // Valor por defecto
-          variantIds,
-          categoryIds
+            name,
+            promotion_type,
+            discount_value,
+            min_quantity,
+            min_order_count,
+            min_unit_measure,
+            applies_to,
+            is_exclusive,
+            start_date,
+            end_date,
+            created_by,
+            status: 'active',
+            variantIds,
+            categoryIds
         };
-  
+
         const newPromotion = await promotionService.createPromotion(promotionData);
-  
+
         res.status(201).json({
-          message: 'Promoción creada exitosamente',
-          promotion: newPromotion
+            message: 'Promoción creada exitosamente',
+            promotion: newPromotion
         });
       } catch (error) {
         loggerUtils.logCriticalError(error);
