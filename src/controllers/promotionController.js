@@ -266,22 +266,58 @@ exports.getPromotionById = async (req, res) => {
 
 // Actualizar una promoción
 exports.updatePromotion = [
+  // Validaciones
+  body('name')
+    .optional()
+    .trim()
+    .isLength({ min: 3, max: 100 })
+    .withMessage('El nombre debe tener entre 3 y 100 caracteres.'),
   body('promotion_type')
     .optional()
     .isIn(['quantity_discount', 'order_count_discount', 'unit_discount'])
-    .withMessage('El tipo de promoción debe ser válido.'),
+    .withMessage('El tipo de promoción debe ser "quantity_discount", "order_count_discount" o "unit_discount".'),
   body('discount_value')
     .optional()
     .isFloat({ min: 0, max: 100 })
     .withMessage('El valor del descuento debe estar entre 0 y 100.'),
+  body('min_quantity')
+    .optional()
+    .if(body('promotion_type').equals('quantity_discount'))
+    .isInt({ min: 1 })
+    .withMessage('La cantidad mínima debe ser un entero mayor o igual a 1 para descuentos por cantidad.'),
+  body('min_order_count')
+    .optional()
+    .if(body('promotion_type').equals('order_count_discount'))
+    .isInt({ min: 1 })
+    .withMessage('El conteo mínimo de órdenes debe ser un entero mayor o igual a 1 para descuentos por conteo de órdenes.'),
+  body('min_unit_measure')
+    .optional()
+    .if(body('promotion_type').equals('unit_discount'))
+    .isFloat({ min: 0 })
+    .withMessage('La medida mínima debe ser un número mayor o igual a 0 para descuentos por unidad.'),
+  body('applies_to')
+    .optional()
+    .isIn(['specific_products', 'specific_categories', 'all'])
+    .withMessage('El campo "applies_to" debe ser "specific_products", "specific_categories" o "all".'),
+  body('is_exclusive')
+    .optional()
+    .isBoolean()
+    .withMessage('El campo "is_exclusive" debe ser un valor booleano.'),
   body('start_date')
     .optional()
     .isISO8601()
-    .withMessage('La fecha de inicio debe ser una fecha válida.'),
+    .withMessage('La fecha de inicio debe ser una fecha válida en formato ISO 8601.'),
   body('end_date')
     .optional()
     .isISO8601()
-    .withMessage('La fecha de fin debe ser una fecha válida.'),
+    .withMessage('La fecha de fin debe ser una fecha válida en formato ISO 8601.')
+    .custom((end_date, { req }) => {
+      const start_date = req.body.start_date || req.body.existingStartDate; // Asumiendo que podrías enviar la fecha existente
+      if (start_date && new Date(end_date) <= new Date(start_date)) {
+        throw new Error('La fecha de fin debe ser posterior a la fecha de inicio.');
+      }
+      return true;
+    }),
   body('status')
     .optional()
     .isIn(['active', 'inactive'])
@@ -289,33 +325,79 @@ exports.updatePromotion = [
   body('variantIds')
     .optional()
     .isArray()
-    .withMessage('variantIds debe ser un arreglo.'),
+    .withMessage('variantIds debe ser un arreglo.')
+    .if(body('applies_to').equals('specific_products'))
+    .custom(variantIds => variantIds.length > 0)
+    .withMessage('Debe haber al menos un variantId cuando applies_to es "specific_products".'),
+  body('variantIds.*')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('Cada variantId debe ser un entero positivo.'),
   body('categoryIds')
     .optional()
     .isArray()
-    .withMessage('categoryIds debe ser un arreglo.'),
+    .withMessage('categoryIds debe ser un arreglo.')
+    .if(body('applies_to').equals('specific_categories'))
+    .custom(categoryIds => categoryIds.length > 0)
+    .withMessage('Debe haber al menos un categoryId cuando applies_to es "specific_categories".'),
+  body('categoryIds.*')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('Cada categoryId debe ser un entero positivo.'),
 
   async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
+    }
+
     const { id } = req.params;
-    const { promotion_type, discount_value, start_date, end_date, status, variantIds, categoryIds, ...otherData } = req.body;
+    const { 
+      name, 
+      promotion_type, 
+      discount_value, 
+      min_quantity, 
+      min_order_count, 
+      min_unit_measure, 
+      applies_to, 
+      is_exclusive, 
+      start_date, 
+      end_date, 
+      status, 
+      variantIds, 
+      categoryIds 
+    } = req.body;
 
     try {
+      // Datos a actualizar
+      const promotionData = {
+        name,
+        promotion_type,
+        discount_value,
+        min_quantity,
+        min_order_count,
+        min_unit_measure,
+        applies_to,
+        is_exclusive,
+        start_date,
+        end_date,
+        status,
+        updated_by: req.user.user_id // Asumiendo que tienes el ID del usuario en req.user
+      };
+
       const promotion = await promotionService.updatePromotion(
         id,
-        {
-          promotion_type,
-          discount_value,
-          start_date,
-          end_date,
-          status,
-          ...otherData
-        },
+        promotionData,
         variantIds || [],
         categoryIds || []
       );
 
+      if (!promotion) {
+        return res.status(404).json({ message: 'Promoción no encontrada' });
+      }
+
       loggerUtils.logUserActivity(req.user.user_id, 'update', `Promoción actualizada: ${id}`);
-      res.status(200).json({ message: 'Promoción actualizada', promotion });
+      res.status(200).json({ message: 'Promoción actualizada exitosamente', promotion });
     } catch (error) {
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error al actualizar la promoción', error: error.message });
