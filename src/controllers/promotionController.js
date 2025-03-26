@@ -458,10 +458,10 @@ exports.deletePromotion = async (req, res) => {
   try {
     const result = await promotionService.deletePromotion(id);
 
-    loggerUtils.logUserActivity(req.user.user_id, 'delete', `Promoción eliminada: ${id}`);
+    loggerUtils.logUserActivity(req.user.user_id, 'delete', `Promoción desactivada: ${id}`);
     res.status(200).json(result);
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al eliminar la promoción', error: error.message });
+    res.status(500).json({ message: 'Error al desactivar la promoción', error: error.message });
   }
 };
