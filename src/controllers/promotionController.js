@@ -191,12 +191,12 @@ exports.getAllPromotions = [
 
       if (search) {
         where[Op.or] = [
-          { name: { [Op.iLike]: `%${search}%` } }, // Búsqueda por nombre
-          { promotion_type: { [Op.iLike]: `%${search}%` } } // Búsqueda por tipo
+          { name: { [Op.like]: `%${search}%` } }, // Usar Op.like en lugar de Op.iLike
+          { promotion_type: { [Op.like]: `%${search}%` } } // Usar Op.like en lugar de Op.iLike
         ];
         if (!isNaN(parseFloat(search))) {
           where[Op.or].push(
-            { discount_value: { [Op.between]: [parseFloat(search) - 0.01, parseFloat(search) + 0.01] } } // Búsqueda por valor de descuento
+            { discount_value: { [Op.between]: [parseFloat(search) - 0.01, parseFloat(search) + 0.01] } }
           );
         }
       }
