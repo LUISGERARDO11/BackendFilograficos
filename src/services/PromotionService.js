@@ -49,10 +49,13 @@ class PromotionService {
 
     const totalQuantity = await orderDetails.reduce(async (sumPromise, detail) => {
       const sum = await sumPromise;
-      const variant = await ProductVariant.findByPk(detail.variant_id);
+      const variant = await ProductVariant.findByPk(detail.variant_id, {
+        include: [{ model: Product, attributes: ['category_id'] }]
+      });
       if (
         (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
-        (promotion.applies_to === 'specific_categories' && categoryIds.includes(variant.category_id))
+        (promotion.applies_to === 'specific_categories' && categoryIds.includes(variant.Product.category_id)) ||
+        promotion.applies_to === 'all'
       ) {
         return sum + detail.quantity;
       }
@@ -79,7 +82,10 @@ class PromotionService {
     }).map(p => p.variant_id);
 
     const totalUnits = orderDetails.reduce((sum, detail) => {
-      if (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) {
+      if (
+        (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
+        promotion.applies_to === 'all'
+      ) {
         return sum + (detail.unit_measure || 0);
       }
       return sum;
@@ -125,22 +131,39 @@ class PromotionService {
   }
 
   async createPromotion(promotionData) {
-    const { name, promotion_type, discount_value, start_date, end_date, applies_to, created_by, status, variantIds, categoryIds } = promotionData;
+    const { 
+      name, 
+      promotion_type, 
+      discount_value, 
+      min_quantity, 
+      min_order_count, 
+      min_unit_measure, 
+      applies_to, 
+      is_exclusive, 
+      start_date, 
+      end_date, 
+      created_by, 
+      status, 
+      variantIds, 
+      categoryIds 
+    } = promotionData;
 
-    // Crear la promoción
     const promotion = await Promotion.create({
       name,
       promotion_type,
       discount_value,
+      min_quantity: promotion_type === 'quantity_discount' ? min_quantity : null,
+      min_order_count: promotion_type === 'order_count_discount' ? min_order_count : null,
+      min_unit_measure: promotion_type === 'unit_discount' ? min_unit_measure : null,
+      applies_to,
+      is_exclusive,
       start_date,
       end_date,
-      applies_to,
       created_by,
       status
     });
 
-    // Asociar variantes si se proporcionan
-    if (variantIds && variantIds.length > 0) {
+    if (variantIds && variantIds.length > 0 && applies_to === 'specific_products') {
       const promotionProducts = variantIds.map(variant_id => ({
         promotion_id: promotion.promotion_id,
         variant_id
@@ -148,8 +171,7 @@ class PromotionService {
       await PromotionProduct.bulkCreate(promotionProducts);
     }
 
-    // Asociar categorías si se proporcionan
-    if (categoryIds && categoryIds.length > 0) {
+    if (categoryIds && categoryIds.length > 0 && applies_to === 'specific_categories') {
       const promotionCategories = categoryIds.map(category_id => ({
         promotion_id: promotion.promotion_id,
         category_id
@@ -182,12 +204,12 @@ class PromotionService {
       include: [
         {
           model: ProductVariant,
-          through: { model: PromotionProduct, attributes: [] }, // Incluimos la tabla intermedia sin atributos
-          attributes: ['variant_id', 'sku'] // Solo los atributos necesarios
+          through: { model: PromotionProduct, attributes: [] },
+          attributes: ['variant_id', 'sku']
         },
         {
           model: Category,
-          through: { model: PromotionCategory, attributes: [] }, // Incluimos la tabla intermedia sin atributos
+          through: { model: PromotionCategory, attributes: [] },
           attributes: ['category_id', 'name']
         }
       ],
@@ -202,8 +224,8 @@ class PromotionService {
   async getPromotionById(id) {
     return await Promotion.findByPk(id, {
       include: [
-        { model: ProductVariant, through: PromotionProduct, as: 'Variants' },
-        { model: Category, through: PromotionCategory, as: 'Categories' }
+        { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id', 'sku'] },
+        { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id', 'name'] }
       ]
     });
   }
@@ -211,10 +233,16 @@ class PromotionService {
   async updatePromotion(id, data, variantIds = [], categoryIds = []) {
     const promotion = await Promotion.findByPk(id);
     if (!promotion) throw new Error('Promoción no encontrada');
+
+    const { promotion_type, min_quantity, min_order_count, min_unit_measure, applies_to } = data;
+    data.min_quantity = promotion_type === 'quantity_discount' ? min_quantity : null;
+    data.min_order_count = promotion_type === 'order_count_discount' ? min_order_count : null;
+    data.min_unit_measure = promotion_type === 'unit_discount' ? min_unit_measure : null;
+
     await promotion.update(data);
 
     await PromotionProduct.destroy({ where: { promotion_id: id } });
-    if (variantIds.length > 0) {
+    if (variantIds.length > 0 && applies_to === 'specific_products') {
       await PromotionProduct.bulkCreate(variantIds.map(variantId => ({
         promotion_id: id,
         variant_id: variantId
@@ -222,14 +250,14 @@ class PromotionService {
     }
 
     await PromotionCategory.destroy({ where: { promotion_id: id } });
-    if (categoryIds.length > 0) {
+    if (categoryIds.length > 0 && applies_to === 'specific_categories') {
       await PromotionCategory.bulkCreate(categoryIds.map(categoryId => ({
         promotion_id: id,
         category_id: categoryId
       })));
     }
 
-    return promotion;
+    return await this.getPromotionById(id);
   }
 
   async deletePromotion(id) {
@@ -242,5 +270,4 @@ class PromotionService {
   }
 }
 
-// Exportar la clase sin instanciarla
 module.exports = PromotionService;
