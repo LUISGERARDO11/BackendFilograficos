@@ -1,6 +1,6 @@
 /* This JavaScript code defines functions to upload files to Cloudinary and delete them.
 Each function returns a Promise that resolves with the secure URL or result of the operation.
-If an error occurs, the Promise is rejected with a proper Error instance. */
+If an error occurs, the Promise is rejected with a proper Error instance with a descriptive message. */
 const cloudinary = require('../config/cloudinaryConfig');
 
 // Función para subir archivos a Cloudinary sin carpeta
@@ -8,7 +8,8 @@ const uploadToCloudinary = (fileBuffer) => {
   return new Promise((resolve, reject) => {
     cloudinary.uploader.upload_stream((error, result) => {
       if (error) {
-        return reject(new Error(`Error uploading to Cloudinary: ${error.message || error}`));
+        const errorMessage = error.message || 'Unknown error occurred during upload';
+        return reject(new Error(`Error uploading to Cloudinary: ${errorMessage}`));
       }
       resolve(result.secure_url);
     }).end(fileBuffer);
@@ -23,7 +24,8 @@ const uploadFilesToCloudinary = (fileBuffer, options = {}) => {
         { resource_type: 'raw', ...options }, // Especifica que es un archivo binario
         (error, result) => {
           if (error) {
-            reject(new Error(`Error uploading file to Cloudinary: ${error.message || error}`));
+            const errorMessage = error.message || 'Unknown error occurred during file upload';
+            reject(new Error(`Error uploading file to Cloudinary: ${errorMessage}`));
           } else {
             resolve(result.secure_url); // Devuelve la URL segura del archivo subido
           }
@@ -46,7 +48,8 @@ const uploadProductImagesToCloudinary = (fileBuffer, fileName = '') => {
     cloudinary.uploader
       .upload_stream(options, (error, result) => {
         if (error) {
-          reject(new Error(`Error uploading product image to Cloudinary: ${error.message || error}`));
+          const errorMessage = error.message || 'Unknown error occurred during product image upload';
+          reject(new Error(`Error uploading product image to Cloudinary: ${errorMessage}`));
         } else {
           resolve({
             secure_url: result.secure_url, // URL segura de la imagen
@@ -75,7 +78,8 @@ const uploadBannerToCloudinary = (fileBuffer, fileName = '') => {
     cloudinary.uploader
       .upload_stream(options, (error, result) => {
         if (error) {
-          reject(new Error(`Error uploading banner to Cloudinary: ${error.message || error}`));
+          const errorMessage = error.message || 'Unknown error occurred during banner upload';
+          reject(new Error(`Error uploading banner to Cloudinary: ${errorMessage}`));
         } else {
           resolve({
             secure_url: result.secure_url,
@@ -92,7 +96,8 @@ const deleteFromCloudinary = (publicId) => {
   return new Promise((resolve, reject) => {
     cloudinary.uploader.destroy(publicId, (error, result) => {
       if (error) {
-        reject(new Error(`Error deleting from Cloudinary: ${error.message || error}`));
+        const errorMessage = error.message || 'Unknown error occurred during deletion';
+        reject(new Error(`Error deleting from Cloudinary: ${errorMessage}`));
       } else {
         resolve(result); // Resultado de la eliminación (ej. { result: 'ok' })
       }
