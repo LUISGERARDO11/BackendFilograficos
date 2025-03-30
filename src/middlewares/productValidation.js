@@ -1,3 +1,7 @@
+/* The above code is a module in Node.js that exports several arrays of validation middleware functions
+using the `express-validator` library. These validation functions are used to validate incoming data
+for different routes related to managing products in an application. Here is a summary of what each
+array of validation functions is doing: */
 const { body, query, param, validationResult } = require('express-validator');
 
 const validateProduct = [

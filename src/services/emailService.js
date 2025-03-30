@@ -1,3 +1,5 @@
+/* The EmailService class handles sending various types of emails using templates and logging the email
+activities. */
 require('dotenv').config();
 const ejs = require('ejs');
 const transporter = require('../config/transporter');

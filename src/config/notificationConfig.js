@@ -1,4 +1,5 @@
-// config/notificationConfig.js
+/* This JavaScript code snippet is configuring web push notifications using the `webPushConfig` object.
+Here's a breakdown of what it does: */
 require('dotenv').config();
 
 const webPushConfig = {
