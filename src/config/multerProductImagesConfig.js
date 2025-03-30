@@ -1,3 +1,5 @@
+/* This code snippet is setting up a middleware function using the `multer` library in Node.js for
+handling file uploads. Here's a breakdown of what each part of the code is doing: */
 const multer = require('multer');
 const path = require('path');
 

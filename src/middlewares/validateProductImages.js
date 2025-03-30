@@ -1,3 +1,5 @@
+/* This JavaScript code defines a module that validates product images based on certain criteria.
+Here's a breakdown of what each part of the code is doing: */
 const multer = require('multer');
 
 // Función auxiliar para contar imágenes por variante
@@ -49,6 +51,27 @@ const validateNewVariantsWithoutImages = (variants, res) => {
   return true;
 };
 
+// Nueva función extraída para manejar el caso con archivos
+const handleFilesCase = (req, res) => {
+  const imagesByVariant = countImagesByVariant(req.files);
+  const variants = parseVariants(req.body.variants, res);
+  if (!variants) return false;
+
+  if (variants.length > 0) {
+    return validateImagesForVariants(variants, imagesByVariant, res);
+  }
+  console.log('Imágenes por variante:', imagesByVariant);
+  console.log('Número total de imágenes recibidas:', req.files.length);
+  return true;
+};
+
+// Nueva función extraída para manejar el caso sin archivos
+const handleNoFilesCase = (req, res) => {
+  const variants = parseVariants(req.body.variants, res);
+  if (!variants) return false;
+  return validateNewVariantsWithoutImages(variants, res);
+};
+
 const validateProductImages = (req, res, next) => {
   // Si no hay archivos ni variantes, permitir actualización parcial
   if ((!req.files || req.files.length === 0) && !req.body.variants) {
@@ -57,25 +80,11 @@ const validateProductImages = (req, res, next) => {
 
   // Caso 1: Hay archivos (imágenes) enviados
   if (req.files && req.files.length > 0) {
-    const imagesByVariant = countImagesByVariant(req.files);
-    const variants = parseVariants(req.body.variants, res);
-    if (!variants) return; // Respuesta ya enviada en parseVariants
-
-    if (variants.length > 0) {
-      const isValid = validateImagesForVariants(variants, imagesByVariant, res);
-      if (!isValid) return; // Respuesta ya enviada en validateImagesForVariants
-    }
-
-    console.log('Imágenes por variante:', imagesByVariant);
-    console.log('Número total de imágenes recibidas:', req.files.length);
+    if (!handleFilesCase(req, res)) return;
   }
   // Caso 2: Hay variantes pero no imágenes
   else if (req.body.variants) {
-    const variants = parseVariants(req.body.variants, res);
-    if (!variants) return; // Respuesta ya enviada en parseVariants
-
-    const isValid = validateNewVariantsWithoutImages(variants, res);
-    if (!isValid) return; // Respuesta ya enviada en validateNewVariantsWithoutImages
+    if (!handleNoFilesCase(req, res)) return;
   }
 
   next();
