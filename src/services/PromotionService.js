@@ -1,3 +1,5 @@
+/* The `PromotionService` class contains methods for managing promotions, checking their applicability,
+applying discounts, creating, updating, and deleting promotions in an e-commerce system. */
 const { Op } = require('sequelize');
 const { Promotion, Order, OrderDetail, PromotionProduct, PromotionCategory, ProductVariant, Product, Category } = require('../models/Associations');
 

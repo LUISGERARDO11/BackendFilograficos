@@ -1,3 +1,5 @@
+/* The NotificationService class handles saving, removing, and sending push notifications to users
+based on their preferences and communication methods. */
 require('dotenv').config();
 const admin = require('firebase-admin');
 const loggerUtils = require('../utils/loggerUtils');

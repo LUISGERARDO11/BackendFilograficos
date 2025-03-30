@@ -1,3 +1,5 @@
+/* The NotificationManager class handles notifications for out-of-stock and low-stock products by
+notifying administrators based on their communication preferences. */
 const NotificationService = require('./notificationService'); // Importar la clase
 const EmailService = require('./emailService');
 const loggerUtils = require('../utils/loggerUtils');

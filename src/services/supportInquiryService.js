@@ -1,3 +1,6 @@
+/* This JavaScript code snippet is a module that provides various functions to query and filter support
+inquiries stored in a database using Sequelize, which is an ORM for Node.js. Here's a breakdown of
+what the code is doing: */
 const { Op } = require("sequelize");
 const SupportInquiry = require("../models/Supportinquiry");
 

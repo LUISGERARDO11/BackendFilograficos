@@ -1,5 +1,5 @@
 /* This JavaScript code snippet is a module that provides various authentication-related
-functionalities for a Node.js application. Here is a breakdown of what each function does: */
+functionalities for a Node.js application. */
 require("dotenv").config();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
@@ -7,7 +7,7 @@ const { Op } = require('sequelize');
 
 // Modelos
 const Config = require('../models/Systemconfig');
-const { Account, FailedAttempt, User, PasswordStatus } = require('../models/Associations')
+const { Account, FailedAttempt, User, PasswordStatus } = require('../models/Associations');
 // Utilidades
 const authUtils = require("../utils/authUtils");
 const loggerUtils = require('../utils/loggerUtils');
@@ -19,7 +19,7 @@ exports.hashPassword = async (password) => {
     const salt = await bcrypt.genSalt(10);
     return await bcrypt.hash(password, salt);
   } catch (error) {
-    throw new Error("Error al hashear la contraseña: " + error.message);
+    throw new Error(`Error al hashear la contraseña: ${error.message}`);
   }
 };
 
@@ -28,7 +28,7 @@ exports.verifyPassword = async (password, hashedPassword) => {
   try {
     return await bcrypt.compare(password, hashedPassword);
   } catch (error) {
-    throw new Error("Error al verificar la contraseña: " + error.message);
+    throw new Error(`Error al verificar la contraseña: ${error.message}`);
   }
 };
 
@@ -44,12 +44,13 @@ exports.generateJWT = async (user) => {
   );
 };
 
-// Verificar JWT
+// Verificar JWT (refactorizado para devolver siempre un objeto)
 exports.verifyJWT = (token) => {
   try {
-    return jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return { success: true, data: decoded };
   } catch (error) {
-    throw new Error("Token inválido o expirado");
+    return { success: false, message: "Token inválido o expirado" };
   }
 };
 
@@ -66,7 +67,8 @@ exports.handleFailedAttempt = async (user_id, ip) => {
       })
     ]);
 
-    if (!account || !account.User) {
+    // Usar encadenamiento opcional para verificar account.User
+    if (!account?.User) {
       await transaction.rollback();
       return { locked: false, message: 'Cuenta no encontrada.' };
     }
@@ -176,17 +178,22 @@ exports.forcePasswordRotation = async (accountId) => {
   }
 };
 
-// Verificar si usuario está bloqueado
+// Verificar si usuario está bloqueado (refactorizado para evitar ternarios anidados)
 exports.isUserBlocked = async (userId) => {
   const user = await User.findByPk(userId);
   if (!user) return { blocked: false, message: "Usuario no encontrado." };
-  
-  return {
-    blocked: ['bloqueado', 'bloqueado_permanente'].includes(user.status),
-    message: user.status === 'bloqueado' 
-      ? "Usuario bloqueado temporalmente." 
-      : user.status === 'bloqueado_permanente'
-        ? "Usuario bloqueado permanentemente."
-        : "Usuario activo."
-  };
+
+  const blockedStatuses = ['bloqueado', 'bloqueado_permanente'];
+  const isBlocked = blockedStatuses.includes(user.status);
+
+  let message;
+  if (user.status === 'bloqueado') {
+    message = "Usuario bloqueado temporalmente.";
+  } else if (user.status === 'bloqueado_permanente') {
+    message = "Usuario bloqueado permanentemente.";
+  } else {
+    message = "Usuario activo.";
+  }
+
+  return { blocked: isBlocked, message };
 };
