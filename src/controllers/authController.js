@@ -205,9 +205,10 @@ exports.login = [
                 return res.status(400).json({ message: 'Cuenta no encontrada' });
             }
 
+            // Verificar si el usuario está bloqueado usando el servicio actualizado
             const bloqueado = await authService.isUserBlocked(user.user_id);
             if (bloqueado.blocked) {
-                loggerUtils.logUserActivity(user.user_id, 'login_failed', 'Cuenta bloqueada');
+                loggerUtils.logUserActivity(user.user_id, 'login_failed', `Cuenta bloqueada: ${bloqueado.message}`);
                 return res.status(403).json({ message: bloqueado.message });
             }
 

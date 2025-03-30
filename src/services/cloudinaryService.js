@@ -1,21 +1,18 @@
-/* This JavaScript code defines a function `uploadToCloudinary` that takes a file buffer as input and
-uploads it to the Cloudinary service. The function returns a Promise that resolves with the secure
-URL of the uploaded file. The function uses the `cloudinary` object from the `cloudinaryConfig`
-module to upload the file using the `upload_stream` method. If there is an error during the upload
-process, the Promise is rejected with the error. Finally, the function is exported as part of a
-module. */
+/* This JavaScript code defines functions to upload files to Cloudinary and delete them.
+Each function returns a Promise that resolves with the secure URL or result of the operation.
+If an error occurs, the Promise is rejected with a proper Error instance. */
 const cloudinary = require('../config/cloudinaryConfig');
 
-// Función para subir archivos a cloduinary sin carpeta
+// Función para subir archivos a Cloudinary sin carpeta
 const uploadToCloudinary = (fileBuffer) => {
-    return new Promise((resolve, reject) => {
-      cloudinary.uploader.upload_stream((error, result) => {
-        if (error) {
-          return reject(error);
-        }
-        resolve(result.secure_url);
-      }).end(fileBuffer);
-    });
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader.upload_stream((error, result) => {
+      if (error) {
+        return reject(new Error(`Error uploading to Cloudinary: ${error.message || error}`));
+      }
+      resolve(result.secure_url);
+    }).end(fileBuffer);
+  });
 };
 
 // Función para subir archivos de documentos regulatorios a Cloudinary sin carpeta
@@ -26,7 +23,7 @@ const uploadFilesToCloudinary = (fileBuffer, options = {}) => {
         { resource_type: 'raw', ...options }, // Especifica que es un archivo binario
         (error, result) => {
           if (error) {
-            reject(error);
+            reject(new Error(`Error uploading file to Cloudinary: ${error.message || error}`));
           } else {
             resolve(result.secure_url); // Devuelve la URL segura del archivo subido
           }
@@ -36,7 +33,7 @@ const uploadFilesToCloudinary = (fileBuffer, options = {}) => {
   });
 };
 
-// Función paa subir imagenes de productos a la carpeta ProductImages 
+// Función para subir imágenes de productos a la carpeta ProductImages
 const uploadProductImagesToCloudinary = (fileBuffer, fileName = '') => {
   return new Promise((resolve, reject) => {
     const options = {
@@ -49,7 +46,7 @@ const uploadProductImagesToCloudinary = (fileBuffer, fileName = '') => {
     cloudinary.uploader
       .upload_stream(options, (error, result) => {
         if (error) {
-          reject(error);
+          reject(new Error(`Error uploading product image to Cloudinary: ${error.message || error}`));
         } else {
           resolve({
             secure_url: result.secure_url, // URL segura de la imagen
@@ -61,6 +58,7 @@ const uploadProductImagesToCloudinary = (fileBuffer, fileName = '') => {
   });
 };
 
+// Función para subir banners a la carpeta Banners
 const uploadBannerToCloudinary = (fileBuffer, fileName = '') => {
   return new Promise((resolve, reject) => {
     const options = {
@@ -77,7 +75,7 @@ const uploadBannerToCloudinary = (fileBuffer, fileName = '') => {
     cloudinary.uploader
       .upload_stream(options, (error, result) => {
         if (error) {
-          reject(error);
+          reject(new Error(`Error uploading banner to Cloudinary: ${error.message || error}`));
         } else {
           resolve({
             secure_url: result.secure_url,
@@ -89,11 +87,12 @@ const uploadBannerToCloudinary = (fileBuffer, fileName = '') => {
   });
 };
 
+// Función para eliminar archivos de Cloudinary
 const deleteFromCloudinary = (publicId) => {
   return new Promise((resolve, reject) => {
     cloudinary.uploader.destroy(publicId, (error, result) => {
       if (error) {
-        reject(error);
+        reject(new Error(`Error deleting from Cloudinary: ${error.message || error}`));
       } else {
         resolve(result); // Resultado de la eliminación (ej. { result: 'ok' })
       }
@@ -102,9 +101,9 @@ const deleteFromCloudinary = (publicId) => {
 };
 
 module.exports = {
-    uploadToCloudinary,
-    uploadFilesToCloudinary,
-    uploadProductImagesToCloudinary,
-    uploadBannerToCloudinary,
-    deleteFromCloudinary
+  uploadToCloudinary,
+  uploadFilesToCloudinary,
+  uploadProductImagesToCloudinary,
+  uploadBannerToCloudinary,
+  deleteFromCloudinary
 };

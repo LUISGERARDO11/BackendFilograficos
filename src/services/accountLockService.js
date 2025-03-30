@@ -1,3 +1,4 @@
+/* This JavaScript code snippet defines two functions: `lockAccount` and `unblockAccount`. */
 const { sequelize } = require('../config/dataBase');
 const { User, Account,PasswordStatus } = require('../models/Associations')
 

@@ -109,8 +109,9 @@ class EmailService {
     const { User, CommunicationPreference } = require('../models/Associations');
     const user = await User.findOne({ where: { email: to }, include: [{ model: CommunicationPreference }] });
 
-    if (!user || !user.CommunicationPreference?.methods.includes('email') || !user.CommunicationPreference?.categories.stock_alerts) {
-      loggerUtils.logUserActivity(user?.user_id || null, 'skip_email', `Notificación de stock omitida por preferencias para ${to}`);
+    // Usar encadenamiento opcional para verificar las preferencias
+    if (!user?.CommunicationPreference?.methods?.includes('email') || !user?.CommunicationPreference?.categories?.stock_alerts) {
+      loggerUtils.logUserActivity(user?.user_id ?? null, 'skip_email', `Notificación de stock omitida por preferencias para ${to}`);
       return { success: false, message: 'Notificación omitida por preferencias' };
     }
 
