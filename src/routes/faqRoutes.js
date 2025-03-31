@@ -1,5 +1,3 @@
-/* This code snippet is setting up a router in a Node.js application using Express framework. Here's a
-breakdown of what it does: */
 const express = require('express');
 const router = express.Router();
 
@@ -20,16 +18,34 @@ router.post(
   faqController.createFaq
 );
 
-// Obtener todas las preguntas frecuentes activas (público, con diferencias por rol)
+// Obtener todas las preguntas frecuentes activas - Ruta pública (sin autenticación)
 router.get(
-  '/',
-  faqController.getAllFaqs
+  '/public',
+  (req, res) => faqController.getAllFaqs(req, res, false) // Pasamos isAdmin como false
 );
 
-// Obtener una pregunta frecuente por ID (público, con diferencias por rol)
+// Obtener todas las preguntas frecuentes activas - Ruta para administradores (con autenticación)
+router.get(
+  '/',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  (req, res) => faqController.getAllFaqs(req, res, true) // Pasamos isAdmin como true
+);
+
+// Obtener una pregunta frecuente por ID - Ruta pública (sin autenticación)
+router.get(
+  '/public/:id',
+  (req, res) => faqController.getFaqById(req, res, false) // Pasamos isAdmin como false
+);
+
+// Obtener una pregunta frecuente por ID - Ruta para administradores (con autenticación)
 router.get(
   '/:id',
-  faqController.getFaqById
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  (req, res) => faqController.getFaqById(req, res, true) // Pasamos isAdmin como true
 );
 
 // Actualizar una pregunta frecuente (solo administradores)

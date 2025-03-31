@@ -5,7 +5,32 @@ const { Faq, FaqCategory } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');
 
-// Crear una nueva pregunta frecuente (FAQ)
+// Método común para obtener FAQs (usado por getAllFaqs y getFaqById)
+const fetchFaqs = async (whereClause, attributes, pageNum, pageSizeNum, isSingle = false, id = null) => {
+  const options = {
+    where: whereClause,
+    attributes,
+    include: [{
+      model: FaqCategory,
+      as: 'category',
+      where: { status: 'active' },
+      attributes: ['category_id', 'name', 'description'],
+    }],
+    order: [['created_at', 'DESC']],
+  };
+
+  if (isSingle) {
+    return await Faq.findByPk(id, options);
+  } else {
+    return await Faq.findAndCountAll({
+      ...options,
+      limit: pageSizeNum,
+      offset: (pageNum - 1) * pageSizeNum,
+    });
+  }
+};
+
+// Crear una nueva pregunta frecuente (solo administradores)
 exports.createFaq = [
   body('category_id').isInt().withMessage('La categoría debe ser un ID válido.'),
   body('question').isString().trim().notEmpty().withMessage('La pregunta es obligatoria.'),
@@ -18,22 +43,19 @@ exports.createFaq = [
     }
 
     const { category_id, question, answer } = req.body;
-    const userId = req.user.user_id; // authMiddleware asegura que existe
+    const userId = req.user.user_id;
 
     try {
-      // Verificar si la categoría existe
       const category = await FaqCategory.findByPk(category_id);
       if (!category) {
         return res.status(400).json({ message: 'La categoría especificada no existe.' });
       }
 
-      // Verificar si la pregunta ya existe en la misma categoría
       const existingFaq = await Faq.findOne({ where: { category_id, question } });
       if (existingFaq) {
         return res.status(400).json({ message: 'Ya existe una pregunta frecuente con ese contenido en esta categoría.' });
       }
 
-      // Crear la nueva pregunta frecuente
       const newFaq = await Faq.create({
         category_id,
         question,
@@ -50,23 +72,19 @@ exports.createFaq = [
   },
 ];
 
-// Obtener todas las preguntas frecuentes con paginación, búsqueda, filtro y agrupación
-exports.getAllFaqs = async (req, res) => {
+// Obtener todas las preguntas frecuentes activas
+exports.getAllFaqs = async (req, res, isAdmin) => {
   try {
     const { page = 1, pageSize = 10, search = '', category_id, grouped = 'false' } = req.query;
-    const user = req.user; // Puede ser undefined para no registrados
-    const isAdmin = user && user.tipo === 'administrador';
-
-    // Validar parámetros de paginación
     const pageNum = parseInt(page);
     const pageSizeNum = parseInt(pageSize);
+
     if (isNaN(pageNum) || isNaN(pageSizeNum) || pageNum < 1 || pageSizeNum < 1) {
       return res.status(400).json({
         message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos.',
       });
     }
 
-    // Construir condiciones de búsqueda
     const whereClause = { status: 'active' };
     if (search) {
       whereClause[Op.or] = [
@@ -78,27 +96,12 @@ exports.getAllFaqs = async (req, res) => {
       whereClause.category_id = category_id;
     }
 
-    // Definir atributos según el rol
     const attributes = isAdmin
       ? ['faq_id', 'category_id', 'question', 'answer', 'created_at', 'updated_at']
       : ['faq_id', 'category_id', 'question', 'answer'];
 
-    // Consulta base
-    const { count, rows } = await Faq.findAndCountAll({
-      where: whereClause,
-      attributes,
-      include: [{
-        model: FaqCategory,
-        as: 'category',
-        where: { status: 'active' },
-        attributes: ['category_id', 'name', 'description'],
-      }],
-      limit: pageSizeNum,
-      offset: (pageNum - 1) * pageSizeNum,
-      order: [['created_at', 'DESC']], // Más reciente primero
-    });
+    const { count, rows } = await fetchFaqs(whereClause, attributes, pageNum, pageSizeNum);
 
-    // Agrupar por categoría si grouped es true
     if (grouped === 'true') {
       const groupedFaqs = rows.reduce((acc, faq) => {
         const { category_id, name, description } = faq.category;
@@ -152,26 +155,17 @@ exports.getAllFaqs = async (req, res) => {
 };
 
 // Obtener una pregunta frecuente por ID
-exports.getFaqById = async (req, res) => {
+exports.getFaqById = async (req, res, isAdmin) => {
   const { id } = req.params;
-  const user = req.user; // Puede ser undefined para no registrados
-  const isAdmin = user && user.tipo === 'administrador';
 
   try {
     const attributes = isAdmin
       ? ['faq_id', 'category_id', 'question', 'answer', 'created_at', 'updated_at']
       : ['faq_id', 'category_id', 'question', 'answer'];
 
-    const faq = await Faq.findByPk(id, {
-      attributes,
-      include: [{
-        model: FaqCategory,
-        as: 'category',
-        attributes: ['category_id', 'name', 'description'],
-      }],
-    });
+    const faq = await fetchFaqs({ status: 'active' }, attributes, 1, 1, true, id);
 
-    if (!faq || faq.status !== 'active') {
+    if (!faq) {
       return res.status(404).json({ message: 'Pregunta frecuente no encontrada o inactiva' });
     }
 
@@ -204,7 +198,7 @@ exports.updateFaq = [
   async (req, res) => {
     const { id } = req.params;
     const { category_id, question, answer, status } = req.body;
-    const userId = req.user.user_id; // authMiddleware asegura que existe
+    const userId = req.user.user_id;
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -242,7 +236,7 @@ exports.updateFaq = [
 // Eliminación lógica de una pregunta frecuente
 exports.deleteFaq = async (req, res) => {
   const { id } = req.params;
-  const userId = req.user.user_id; // authMiddleware asegura que existe
+  const userId = req.user.user_id;
 
   try {
     const [affectedRows] = await Faq.update(
