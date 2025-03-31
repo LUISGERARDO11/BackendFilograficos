@@ -166,7 +166,7 @@ exports.updateCategory = [
       if (name) category.name = name;
       if (description) category.description = description;
 
-      await category.save();
+      await category.save(); // Guardamos los cambios
       loggerUtils.logUserActivity(req.user.user_id, 'update', `Categoría actualizada: ${category.name}`);
       res.status(200).json({ message: 'Categoría actualizada correctamente.', category });
 
