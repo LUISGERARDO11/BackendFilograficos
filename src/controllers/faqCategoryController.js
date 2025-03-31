@@ -3,6 +3,7 @@ application. Here's a breakdown of what each part of the code does: */
 const { body, validationResult } = require('express-validator');
 const { FaqCategory } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
+const { Op } = require('sequelize');
 
 // Crear categoría de FAQ
 exports.createFaqCategory = [
@@ -18,8 +19,6 @@ exports.createFaqCategory = [
     }
 
     const { name, description } = req.body;
-
-    // Verificar que req.user.user_id existe usando encadenamiento opcional
     const userId = req.user?.user_id;
     if (!userId) {
       return res.status(401).json({ message: 'Usuario no autenticado.' });
@@ -40,9 +39,7 @@ exports.createFaqCategory = [
         created_by: userId,
       });
 
-      // Registrar la creación en el logger
       loggerUtils.logUserActivity(userId, 'create', `Categoría de FAQ creada: ${name}.`);
-
       res.status(201).json({ message: 'Categoría de FAQ creada exitosamente.', faqCategory: newFaqCategory });
     } catch (error) {
       loggerUtils.logCriticalError(error);
@@ -62,9 +59,7 @@ exports.getFaqCategoryById = async (req, res) => {
       return res.status(404).json({ message: 'Categoría de FAQ no encontrada.' });
     }
 
-    // Registrar el acceso a la información
     loggerUtils.logUserActivity(req.user?.user_id, 'view', `Obtenida categoría de FAQ: ${faqCategory.name}.`);
-
     res.status(200).json({ faqCategory });
   } catch (error) {
     loggerUtils.logCriticalError(error);
@@ -75,14 +70,47 @@ exports.getFaqCategoryById = async (req, res) => {
 // Obtener todas las categorías activas de FAQ
 exports.getAllFaqCategories = async (req, res) => {
   try {
-    const faqCategories = await FaqCategory.findAll({
-      where: { status: "active" },
+    const { page = 1, pageSize = 10, search = '' } = req.query;
+
+    // Convertir parámetros a enteros y validar
+    const pageNum = parseInt(page);
+    const pageSizeNum = parseInt(pageSize);
+    if (isNaN(pageNum) || isNaN(pageSizeNum) || pageNum < 1 || pageSizeNum < 1) {
+      return res.status(400).json({
+        message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos.',
+      });
+    }
+
+    // Construir la condición de búsqueda parcial
+    const whereClause = {
+      status: 'active', // Solo categorías activas
+    };
+
+    if (search) {
+      whereClause[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } }, // Búsqueda parcial en nombre (case-insensitive)
+        { description: { [Op.like]: `%${search}%` } }, // Búsqueda parcial en descripción
+      ];
+    }
+
+    // Obtener categorías con paginación
+    const { count, rows } = await FaqCategory.findAndCountAll({
+      where: whereClause,
+      attributes: ['category_id', 'name', 'description', 'created_by', 'created_at', 'updated_by', 'updated_at'], // Excluimos 'status'
+      limit: pageSizeNum,
+      offset: (pageNum - 1) * pageSizeNum,
+      order: [['name', 'ASC']], // Ordenar por nombre ascendente
     });
 
     // Registrar el acceso a la información
     loggerUtils.logUserActivity(req.user?.user_id, 'view', 'Obtenidas todas las categorías de FAQ activas.');
 
-    res.status(200).json({ faqCategories });
+    res.status(200).json({
+      faqCategories: rows,
+      total: count,
+      page: pageNum,
+      pageSize: pageSizeNum,
+    });
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener las categorías de FAQ.', error: error.message });
@@ -94,7 +122,6 @@ exports.updateFaqCategory = async (req, res) => {
   const { id } = req.params;
   const { name, description } = req.body;
 
-  // Verificar que req.user.user_id existe usando encadenamiento opcional
   const userId = req.user?.user_id;
   if (!userId) {
     return res.status(401).json({ message: 'Usuario no autenticado.' });
@@ -121,10 +148,7 @@ exports.updateFaqCategory = async (req, res) => {
 
     // Obtener la categoría de FAQ actualizada
     const updatedFaqCategory = await FaqCategory.findByPk(id);
-
-    // Registrar la actualización en el logger
     loggerUtils.logUserActivity(userId, 'update', `Categoría de FAQ actualizada: ${name}.`);
-
     res.status(200).json({ message: 'Categoría de FAQ actualizada exitosamente.', faqCategory: updatedFaqCategory });
   } catch (error) {
     loggerUtils.logCriticalError(error);
@@ -136,7 +160,6 @@ exports.updateFaqCategory = async (req, res) => {
 exports.deleteFaqCategory = async (req, res) => {
   const { id } = req.params;
 
-  // Verificar que req.user.user_id existe usando encadenamiento opcional
   const userId = req.user?.user_id;
   if (!userId) {
     return res.status(401).json({ message: 'Usuario no autenticado.' });
@@ -145,7 +168,7 @@ exports.deleteFaqCategory = async (req, res) => {
   try {
     // Buscar y marcar como inactivo (eliminación lógica)
     const [updatedRows] = await FaqCategory.update(
-      { status: "inactive" },
+      { status: 'inactive' },
       {
         where: { category_id: id },
         returning: true,
@@ -157,12 +180,8 @@ exports.deleteFaqCategory = async (req, res) => {
       return res.status(404).json({ message: 'Categoría de FAQ no encontrada.' });
     }
 
-    // Obtener la categoría eliminada
     const deletedFaqCategory = await FaqCategory.findByPk(id);
-
-    // Registrar la eliminación en el logger
     loggerUtils.logUserActivity(userId, 'delete', `Categoría de FAQ eliminada: ${deletedFaqCategory.name}.`);
-
     res.status(200).json({ message: 'Categoría de FAQ eliminada exitosamente.' });
   } catch (error) {
     loggerUtils.logCriticalError(error);
