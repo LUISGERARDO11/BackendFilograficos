@@ -157,6 +157,7 @@ exports.deleteRegulatoryDocument = async (req, res) => {
     });
   }
 };
+
 // Eliminar versión específica
 exports.deleteRegulatoryDocumentVersion = async (req, res) => {
   try {
