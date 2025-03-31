@@ -1,7 +1,7 @@
 const { body, validationResult } = require('express-validator');
 const Collaborator = require('../models/Collaborator');
-const loggerUtils = require('../utils/loggerUtils'); // Asegúrate de que existe o lo creamos
-const cloudinaryService = require('../services/cloudinaryService'); // Añadimos el servicio de Cloudinary
+const loggerUtils = require('../utils/loggerUtils');
+const cloudinaryService = require('../services/cloudinaryService');
 
 // Crear un nuevo colaborador
 exports.createCollaborator = [
@@ -38,11 +38,11 @@ exports.createCollaborator = [
         contact,
         email,
         phone,
-        logo: logoUrl, // Guardamos la URL del logo (o null si no se subió)
+        logo: logoUrl,
         active: true
       });
 
-      loggerUtils.logUserActivity(req.user.user_id, 'create', `Colaborador creado: ${name}`);
+      loggerUtils.logUserActivity(req.user?.user_id, 'create', `Colaborador creado: ${name}`);
       res.status(201).json({ message: 'Colaborador creado exitosamente.', collaborator: newCollaborator });
 
     } catch (error) {
@@ -77,9 +77,8 @@ exports.getCollaborators = async (req, res) => {
       });
     }
 
-    // Consulta a la base de datos con paginación
     const { count, rows: collaborators } = await Collaborator.findAndCountAll({
-      where: { active: true }, // Filtro fijo para colaboradores activos
+      where: { active: true },
       limit: pageSize,
       offset: (page - 1) * pageSize
     });
@@ -100,7 +99,7 @@ exports.getCollaborators = async (req, res) => {
 exports.getCollaboratorById = async (req, res) => {
   try {
     const collaborator = await Collaborator.findByPk(req.params.id);
-    if (!collaborator || !collaborator.active) {
+    if (!collaborator?.active) {
       return res.status(404).json({ message: 'Colaborador no encontrado' });
     }
     res.status(200).json(collaborator);
@@ -123,7 +122,7 @@ exports.updateCollaborator = [
 
     try {
       const collaborator = await Collaborator.findByPk(req.params.id);
-      if (!collaborator || !collaborator.active) {
+      if (!collaborator?.active) {
         return res.status(404).json({ message: 'Colaborador no encontrado' });
       }
 
@@ -134,7 +133,7 @@ exports.updateCollaborator = [
       }
 
       await collaborator.update(req.body);
-      loggerUtils.logUserActivity(req.user.user_id, 'update', `Colaborador actualizado: ${collaborator.name}`);
+      loggerUtils.logUserActivity(req.user?.user_id, 'update', `Colaborador actualizado: ${collaborator.name}`);
       res.status(200).json({ message: 'Colaborador actualizado.', collaborator });
 
     } catch (error) {
@@ -153,7 +152,7 @@ exports.deleteCollaborator = async (req, res) => {
     }
 
     await collaborator.update({ active: false });
-    loggerUtils.logUserActivity(req.user.user_id, 'delete', `Colaborador desactivado: ${collaborator.name}`);
+    loggerUtils.logUserActivity(req.user?.user_id, 'delete', `Colaborador desactivado: ${collaborator.name}`);
     res.status(200).json({ message: 'Colaborador desactivado correctamente.' });
 
   } catch (error) {
