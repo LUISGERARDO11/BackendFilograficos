@@ -20,6 +20,12 @@ router.post(
     faqCategoryController.createFaqCategory
 );
 
+// Nueva ruta pública para obtener ID, nombre y ruta de categorías activas
+router.get(
+    '/public',
+    faqCategoryController.getFaqCategories
+);
+
 // Ruta para obtener una categoría de FAQ por ID
 router.get(
     '/:id',
