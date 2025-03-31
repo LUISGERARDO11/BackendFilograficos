@@ -211,7 +211,7 @@ exports.updateConsultationResponseChannel = async (req, res) => {
 // Obtener consultas filtradas según los parámetros proporcionados
 exports.getFilteredConsultations = async (req, res) => {
   try {
-    const { status, contact_channel, response_channel, startDate, endDate, user_id, page: pageParam, pageSize: pageSizeParam } = req.query;
+    const { status, contact_channel, response_channel, startDate, endDate, user_id, search, page: pageParam, pageSize: pageSizeParam } = req.query;
     const page = parseInt(pageParam) || 1;
     const pageSize = parseInt(pageSizeParam) || 10;
 
@@ -231,6 +231,7 @@ exports.getFilteredConsultations = async (req, res) => {
         user_id: user_id === 'null' || user_id === 'registered',
       };
       const filterCount = Object.values(filtersProvided).filter(Boolean).length;
+      const hasSearch = !!search;
 
       // Define single-filter handlers
       const singleFilterHandlers = {
@@ -243,16 +244,25 @@ exports.getFilteredConsultations = async (req, res) => {
           : supportService.getInquiriesWithUser(page, pageSize),
       };
 
+      // Caso 1: Solo búsqueda (sin filtros)
+      if (hasSearch && filterCount === 0) {
+        return await supportService.searchInquiries(search, page, pageSize);
+      }
+
+      // Caso 2: Filtros (con o sin búsqueda)
+      if (filterCount > 0) {
+        const filters = { status, contact_channel, response_channel, startDate, endDate, user_id };
+        return await supportService.getFilteredInquiries(filters, page, pageSize, hasSearch ? search : null);
+      }
+
+      // Caso 3: Solo un filtro (sin búsqueda)
       if (filterCount === 1) {
         // Find the active filter and call its handler
         const activeFilter = Object.keys(filtersProvided).find(key => filtersProvided[key]);
         return await singleFilterHandlers[activeFilter]();
-      } else if (filterCount > 1) {
-        const filters = { status, contact_channel, response_channel, startDate, endDate, user_id };
-        return await supportService.getFilteredInquiries(filters, page, pageSize);
       }
 
-      // Default case: no filters provided
+      // Caso por defecto: sin filtros ni búsqueda
       return await SupportInquiry.findAndCountAll({
         attributes: [
           'inquiry_id',
