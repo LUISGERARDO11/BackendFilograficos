@@ -116,8 +116,8 @@ exports.getAllFaqCategories = async (req, res) => {
   }
 };
 
-// Obtener ID, nombre y ruta de todas las categorías activas de FAQ (público)
-exports.getFaqCategories = async (req, res) => {
+// Obtener ID y nombre de todas las categorías activas de FAQ 
+exports.getFaqCategoriesPublic = async (req, res) => {
   try {
     // Obtener todas las categorías activas
     const faqCategories = await FaqCategory.findAll({
@@ -126,18 +126,7 @@ exports.getFaqCategories = async (req, res) => {
       order: [['name', 'ASC']], // Ordenar por nombre ascendente
     });
 
-    // Construir la respuesta con la ruta
-    const categoriesWithPath = faqCategories.map(category => ({
-      id: category.category_id,
-      name: category.name,
-      path: `/faq/category/${category.category_id}`, // Ruta relativa para cada categoría
-    }));
-
-    // No se registra actividad de usuario ya que es público
-    res.status(200).json({
-      faqCategories: categoriesWithPath,
-      total: categoriesWithPath.length,
-    });
+    res.status(200).json(faqCategories);
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener las categorías de FAQ públicas.', error: error.message });
