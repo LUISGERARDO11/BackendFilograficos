@@ -100,14 +100,35 @@ exports.getInquiriesByUpdatedDate = async (startDate, endDate, page = 1, pageSiz
 };
 
 /**
- * Combinar diferentes filtros en una sola consulta
+ * Buscar consultas por ID, nombre, correo o asunto
  */
-exports.getFilteredInquiries = async (filters, page = 1, pageSize = 10) => {
+exports.searchInquiries = async (searchTerm, page = 1, pageSize = 10) => {
   const offset = (page - 1) * pageSize;
+  const searchPattern = `%${searchTerm}%`; // Para coincidencias parciales
 
-  // Construir el objeto de condiciones WHERE dinámicamente
+  return await SupportInquiry.findAndCountAll({
+    where: {
+      [Op.or]: [
+        { inquiry_id: searchTerm }, // Búsqueda exacta por ID (numérico o string)
+        { user_name: { [Op.like]: searchPattern } },
+        { user_email: { [Op.like]: searchPattern } },
+        { subject: { [Op.like]: searchPattern } },
+      ],
+    },
+    limit: pageSize,
+    offset: offset,
+    order: [['created_at', 'DESC']],
+  });
+};
+
+/**
+ * Combinar diferentes filtros en una sola consulta (con opción de búsqueda)
+ */
+exports.getFilteredInquiries = async (filters, page = 1, pageSize = 10, searchTerm = null) => {
+  const offset = (page - 1) * pageSize;
   const whereClause = {};
 
+  // Aplicar filtros existentes
   if (filters.status) {
     whereClause.status = filters.status;
   }
@@ -127,31 +148,26 @@ exports.getFilteredInquiries = async (filters, page = 1, pageSize = 10) => {
   }
 
   if (filters.user_id === "null") {
-    whereClause.user_id = null; // Usuarios no registrados
+    whereClause.user_id = null;
   } else if (filters.user_id === "registered") {
-    whereClause.user_id = { [Op.not]: null }; // Usuarios registrados
+    whereClause.user_id = { [Op.not]: null };
   }
 
-  // Obtener las consultas filtradas y paginadas
+  // Añadir búsqueda si está presente
+  if (searchTerm) {
+    const searchPattern = `%${searchTerm}%`;
+    whereClause[Op.or] = [
+      { inquiry_id: searchTerm },
+      { user_name: { [Op.like]: searchPattern } },
+      { user_email: { [Op.like]: searchPattern } },
+      { subject: { [Op.like]: searchPattern } },
+    ];
+  }
+
   return await SupportInquiry.findAndCountAll({
     where: whereClause,
     limit: pageSize,
     offset: offset,
+    order: [['created_at', 'DESC']],
   });
-};
-
-
-//barra de busqueda
-/**
- * Obtener todas las consultas realizadas por un usuario registrado
- */
-exports.getInquiriesByUserId = async (userId) => {
-  return await SupportInquiry.findAll({ where: { user_id: userId } });
-};
-
-/**
- * Obtener todas las consultas hechas desde un mismo correo electrónico
- */
-exports.getInquiriesByEmail = async (email) => {
-  return await SupportInquiry.findAll({ where: { user_email: email } });
 };
