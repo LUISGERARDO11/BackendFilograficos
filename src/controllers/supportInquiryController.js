@@ -232,20 +232,27 @@ exports.getFilteredConsultations = async (req, res) => {
       };
       const filterCount = Object.values(filtersProvided).filter(Boolean).length;
 
+      // Define single-filter handlers
+      const singleFilterHandlers = {
+        status: () => supportService.getInquiriesByStatus(status, page, pageSize),
+        contact_channel: () => supportService.getInquiriesByContactChannel(contact_channel, page, pageSize),
+        response_channel: () => supportService.getInquiriesByResponseChannel(response_channel, page, pageSize),
+        dateRange: () => supportService.getInquiriesByDateRange(startDate, endDate, page, pageSize),
+        user_id: () => user_id === 'null'
+          ? supportService.getInquiriesWithoutUser(page, pageSize)
+          : supportService.getInquiriesWithUser(page, pageSize),
+      };
+
       if (filterCount === 1) {
-        if (filtersProvided.status) return await supportService.getInquiriesByStatus(status, page, pageSize);
-        if (filtersProvided.contact_channel) return await supportService.getInquiriesByContactChannel(contact_channel, page, pageSize);
-        if (filtersProvided.response_channel) return await supportService.getInquiriesByResponseChannel(response_channel, page, pageSize);
-        if (filtersProvided.dateRange) return await supportService.getInquiriesByDateRange(startDate, endDate, page, pageSize);
-        if (filtersProvided.user_id) {
-          return user_id === 'null'
-            ? await supportService.getInquiriesWithoutUser(page, pageSize)
-            : await supportService.getInquiriesWithUser(page, pageSize);
-        }
+        // Find the active filter and call its handler
+        const activeFilter = Object.keys(filtersProvided).find(key => filtersProvided[key]);
+        return await singleFilterHandlers[activeFilter]();
       } else if (filterCount > 1) {
         const filters = { status, contact_channel, response_channel, startDate, endDate, user_id };
         return await supportService.getFilteredInquiries(filters, page, pageSize);
       }
+
+      // Default case: no filters provided
       return await SupportInquiry.findAndCountAll({
         attributes: [
           'inquiry_id',
