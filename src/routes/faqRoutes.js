@@ -11,7 +11,7 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 
-// Crear una nueva pregunta frecuente
+// Crear una nueva pregunta frecuente (solo administradores)
 router.post(
   '/',
   authMiddleware,
@@ -20,25 +20,19 @@ router.post(
   faqController.createFaq
 );
 
-// Obtener todas las preguntas frecuentes activas
+// Obtener todas las preguntas frecuentes activas (público, con diferencias por rol)
 router.get(
   '/',
   faqController.getAllFaqs
 );
 
-// Obtener una pregunta frecuente por ID
+// Obtener una pregunta frecuente por ID (público, con diferencias por rol)
 router.get(
   '/:id',
   faqController.getFaqById
 );
 
-// Buscar preguntas frecuentes
-router.get(
-  '/search',
-  faqController.searchFaqs
-);
-
-// Actualizar una pregunta frecuente
+// Actualizar una pregunta frecuente (solo administradores)
 router.put(
   '/:id',
   authMiddleware,
@@ -47,7 +41,7 @@ router.put(
   faqController.updateFaq
 );
 
-// Eliminar una pregunta frecuente (eliminación lógica)
+// Eliminar una pregunta frecuente - eliminación lógica (solo administradores)
 router.delete(
   '/:id',
   authMiddleware,
