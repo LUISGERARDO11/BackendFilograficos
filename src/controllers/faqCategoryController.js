@@ -117,7 +117,7 @@ exports.getAllFaqCategories = async (req, res) => {
 };
 
 // Obtener ID y nombre de todas las categorías activas de FAQ 
-exports.getFaqCategoriesPublic = async (req, res) => {
+exports.getFaqCategories = async (req, res) => {
   try {
     // Obtener todas las categorías activas
     const faqCategories = await FaqCategory.findAll({
