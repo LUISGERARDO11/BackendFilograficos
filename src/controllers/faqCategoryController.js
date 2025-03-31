@@ -35,8 +35,7 @@ exports.createFaqCategory = [
       // Crear una nueva categoría de FAQ
       const newFaqCategory = await FaqCategory.create({
         name,
-        description,
-        created_by: userId,
+        description
       });
 
       loggerUtils.logUserActivity(userId, 'create', `Categoría de FAQ creada: ${name}.`);
@@ -96,7 +95,7 @@ exports.getAllFaqCategories = async (req, res) => {
     // Obtener categorías con paginación
     const { count, rows } = await FaqCategory.findAndCountAll({
       where: whereClause,
-      attributes: ['category_id', 'name', 'description', 'created_by', 'created_at', 'updated_by', 'updated_at'], // Excluimos 'status'
+      attributes: ['category_id', 'name', 'description', 'created_at', 'updated_at'], // Excluimos 'status'
       limit: pageSizeNum,
       offset: (pageNum - 1) * pageSizeNum,
       order: [['name', 'ASC']], // Ordenar por nombre ascendente
@@ -133,7 +132,6 @@ exports.updateFaqCategory = async (req, res) => {
       {
         name,
         description,
-        updated_by: userId,
       },
       {
         where: { category_id: id },
