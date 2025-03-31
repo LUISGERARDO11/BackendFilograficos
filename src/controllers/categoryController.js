@@ -1,4 +1,4 @@
-const { Op } = require('sequelize'); // Necesitamos Op para el filtro por nombre
+const { Op } = require('sequelize');
 const { body, validationResult } = require('express-validator');
 const Category = require('../models/Category');
 const loggerUtils = require('../utils/loggerUtils');
@@ -39,8 +39,8 @@ exports.getCategories = async (req, res) => {
   try {
     const categories = await Category.findAll({
       where: { active: true },
-      attributes: ['category_id', 'name'], // Solo seleccionamos id y nombre
-      order: [['created_at', 'DESC']] // Mantenemos el orden por fecha
+      attributes: ['category_id', 'name'],
+      order: [['created_at', 'DESC']]
     });
 
     res.status(200).json(categories);
@@ -68,9 +68,17 @@ exports.getAllCategories = async (req, res) => {
     // Construir el objeto where dinámicamente
     const whereClause = {};
 
-    // Filtro por estado (active): true, false o undefined (todas)
+    // Filtro por estado (active) extraído como declaración independiente
     if (active !== undefined) {
-      whereClause.active = active === 'true' ? true : active === 'false' ? false : undefined;
+      let activeValue;
+      if (active === 'true') {
+        activeValue = true;
+      } else if (active === 'false') {
+        activeValue = false;
+      } else {
+        activeValue = undefined;
+      }
+      whereClause.active = activeValue;
     }
 
     // Filtro por nombre (búsqueda parcial con LIKE)
@@ -78,13 +86,11 @@ exports.getAllCategories = async (req, res) => {
       whereClause.name = { [Op.like]: `%${name}%` };
     }
 
-    // Ordenamiento dinámico (solo por 'name' en este caso)
-    const validSortFields = ['name']; // Limitamos a 'name' como campo válido
+    const validSortFields = ['name'];
     const order = sortBy && validSortFields.includes(sortBy)
       ? [[sortBy, sortOrder === 'ASC' ? 'ASC' : 'DESC']]
-      : [['created_at', 'DESC']]; // Por defecto, orden por created_at DESC
+      : [['created_at', 'DESC']];
 
-    // Consulta a la base de datos
     const { count, rows: categories } = await Category.findAndCountAll({
       where: whereClause,
       order,
@@ -108,7 +114,7 @@ exports.getAllCategories = async (req, res) => {
 // Obtener una categoría por su ID
 exports.getCategoryById = async (req, res) => {
   try {
-    const category = await Category.findByPk(req.params.id); // Buscamos por ID
+    const category = await Category.findByPk(req.params.id);
     if (!category) {
       return res.status(404).json({ message: 'Categoría no encontrada.' });
     }
@@ -127,7 +133,7 @@ exports.deleteCategory = async (req, res) => {
       return res.status(404).json({ message: 'Categoría no encontrada' });
     }
 
-    await category.update({ active: false }); // 🔹 En lugar de eliminar, desactivamos la categoría
+    await category.update({ active: false });
     loggerUtils.logUserActivity(req.user.user_id, 'delete', `Categoría desactivada: ${category.name}`);
     res.status(200).json({ message: 'Categoría desactivada correctamente.' });
 
@@ -160,7 +166,7 @@ exports.updateCategory = [
       if (name) category.name = name;
       if (description) category.description = description;
 
-      await category.save(); // Guardamos los cambios
+      await category.save();
       loggerUtils.logUserActivity(req.user.user_id, 'update', `Categoría actualizada: ${category.name}`);
       res.status(200).json({ message: 'Categoría actualizada correctamente.', category });
 
