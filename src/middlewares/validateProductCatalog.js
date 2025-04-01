@@ -1,14 +1,14 @@
 const { body, query, param } = require('express-validator');
 
 // Validaciones comunes reutilizables
-const optionalString = () => body().optional().trim().escape();
-const requiredString = () => body().trim().notEmpty();
-const optionalInt = () => body().optional().isInt();
-const requiredInt = () => body().isInt();
-const positiveInt = () => body().isInt({ min: 1 });
-const positiveFloat = () => body().isFloat({ min: 0 });
-const optionalArray = () => body().optional().isArray();
-const requiredArray = (minLength = 1) => body().isArray({ min: minLength });
+const optionalString = (field) => body(field).optional().trim().escape();
+const requiredString = (field) => body(field).trim().notEmpty();
+const optionalInt = (field) => body(field).optional().isInt();
+const requiredInt = (field) => body(field).isInt();
+const positiveInt = (field) => body(field).isInt({ min: 1 });
+const positiveFloat = (field) => body(field).isFloat({ min: 0 });
+const optionalArray = (field) => body(field).optional().isArray();
+const requiredArray = (field, minLength = 1) => body(field).isArray({ min: minLength });
 
 // Validaciones para crear un producto
 const validateProduct = [
@@ -53,7 +53,7 @@ const validateGetProductById = [
 // Validaciones para actualizar un producto
 const validateUpdateProduct = [
   positiveInt('product_id').withMessage('El ID del producto debe ser un número entero positivo').toInt(),
-  optionalString('name').withMessage('El nombre no puede estar vacío'),
+  requiredString('name').optional().withMessage('El nombre no puede estar vacío').escape(),
   optionalString('description'),
   body('product_type').optional().isIn(['Existencia', 'Personalizado']).withMessage('El tipo de producto debe ser "Existencia" o "Personalizado"'),
   optionalInt('category_id').withMessage('El ID de la categoría debe ser un número entero'),
