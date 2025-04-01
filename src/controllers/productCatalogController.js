@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Product, ProductVariant, ProductAttribute, ProductAttributeValue, CustomizationOption, ProductImage, PriceHistory } = require('../models/Associations');
+const { Product, ProductVariant, Category, Collaborator, ProductAttribute, ProductAttributeValue, CustomizationOption, ProductImage, PriceHistory } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { validateCategory, validateCollaborator, processVariantImages, createPriceHistoryRecord, validateUniqueSku, formatProductResponse, buildSearchFilters } = require('../utils/productCatalogUtils');
 const { deleteFromCloudinary } = require('../services/cloudinaryService');
@@ -139,7 +139,10 @@ exports.getAllProducts = async (req, res) => {
         { model: ProductVariant, attributes: [], where: { is_deleted: false }, required: false },
         { model: Collaborator, attributes: ['name'], required: false }
       ],
-      group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Product.created_at', 'Product.updated_at', 'Category.category_id', 'Category.name', 'Collaborator.collaborator_id', 'Collaborator.name'],
+      group: [
+        'Product.product_id', 'Product.name', 'Product.product_type', 'Product.created_at', 'Product.updated_at',
+        'Category.category_id', 'Category.name', 'Collaborator.collaborator_id', 'Collaborator.name'
+      ],
       order,
       limit: pageSizeNum,
       offset: (pageNum - 1) * pageSizeNum,
