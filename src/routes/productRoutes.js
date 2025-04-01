@@ -14,7 +14,7 @@ const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 const validateProductImages = require('../middlewares/validateProductImages');
 const uploadProductImages = require('../config/multerProductImagesConfig');
-const { validateProduct, validateDeleteProduct, validateGetProductById, validateUpdateProduct, validateDeleteVariants, validateGetAllProducts } = require('../middlewares/productValidation');
+const { validateProduct, validateDeleteProduct, validateGetProductById, validateUpdateProduct, validateDeleteVariants, validateGetAllProducts } = require('../middlewares/validateProductCatalog');
 
 // Ruta para crear un producto (solo administradores)
 router.post(
