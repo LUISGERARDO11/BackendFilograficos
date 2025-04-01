@@ -57,7 +57,7 @@ router.put(
 
 // Ruta para eliminar una red social (solo administradores)
 router.delete(
-    '/social-media',
+    '/social-media/:social_media_id',
     authMiddleware,
     tokenExpirationMiddleware.verifyTokenExpiration,
     roleMiddleware(['administrador']),

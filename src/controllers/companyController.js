@@ -215,34 +215,25 @@ exports.updateSocialMedia = [
 ];
 
 // Eliminar una red social (borrado lógico)
-exports.deleteSocialMedia = [
-    body('social_media_id').isInt().withMessage('El ID de la red social debe ser un número entero.'),
+exports.deleteSocialMedia = async (req, res) => {
+    const { social_media_id } = req.params;
 
-    async (req, res) => {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
+    try {
+        const socialMedia = await SocialMedia.findByPk(social_media_id);
+        if (!socialMedia) {
+            return res.status(404).json({ message: 'Red social no encontrada.' });
         }
 
-        const { social_media_id } = req.body;
+        socialMedia.active = false;
+        await socialMedia.save();
 
-        try {
-            const socialMedia = await SocialMedia.findByPk(social_media_id);
-            if (!socialMedia) {
-                return res.status(404).json({ message: 'Red social no encontrada.' });
-            }
-
-            socialMedia.active = false;
-            await socialMedia.save();
-
-            loggerUtils.logUserActivity(req.user ? req.user._id : 'admin', 'delete', `Red social ${socialMedia.name} eliminada exitosamente.`);
-            res.status(200).json({ message: `Red social ${socialMedia.name} eliminada exitosamente.` });
-        } catch (error) {
-            loggerUtils.logCriticalError(error);
-            res.status(500).json({ message: 'Error al eliminar la red social.', error: error.message });
-        }
+        loggerUtils.logUserActivity(req.user ? req.user._id : 'admin', 'delete', `Red social ${socialMedia.name} eliminada exitosamente.`);
+        res.status(200).json({ message: `Red social ${socialMedia.name} eliminada exitosamente.` });
+    } catch (error) {
+        loggerUtils.logCriticalError(error);
+        res.status(500).json({ message: 'Error al eliminar la red social.', error: error.message });
     }
-];
+};
 
 // Borrado lógico de la empresa
 exports.deleteCompany = async (req, res) => {
