@@ -1,6 +1,8 @@
 /* This code snippet is setting up associations between different models in a Node.js application using Sequelize, which is an ORM for Node.js. */
 const User = require('./Users');
 const Account = require('./Account');
+const Company = require('./Company');
+const SocialMedia = require('./SocialMedia');
 const TwoFactorConfig = require('./Twofactorconfig');
 const PasswordStatus = require('./Passwordstatus');
 const PasswordRecovery = require('./Passwordrecovery');
@@ -245,6 +247,10 @@ CategoryAttributes.belongsTo(ProductAttribute, { foreignKey: 'attribute_id' });
 Category.belongsToMany(ProductAttribute, { through: CategoryAttributes, foreignKey: 'category_id', otherKey: 'attribute_id' });
 ProductAttribute.belongsToMany(Category, { through: CategoryAttributes, foreignKey: 'attribute_id', otherKey: 'category_id' });
 
+// Relaciones de Company y SocialMedia
+Company.hasMany(SocialMedia, { foreignKey: 'company_id' });
+SocialMedia.belongsTo(Company, { foreignKey: 'company_id' });
+
 // Exportación de Modelos
 module.exports = {
   User,
@@ -293,5 +299,7 @@ module.exports = {
   NotificationLog,
   CategoryAttributes,
   CommunicationPreference,
-  SystemConfig
+  SystemConfig,
+  Company,
+  SocialMedia
 };
