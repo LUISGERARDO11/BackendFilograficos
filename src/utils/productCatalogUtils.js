@@ -127,9 +127,21 @@ function buildSearchFilters(search) {
 
 // Analizar y validar entrada para createProduct y updateProduct
 function parseAndValidateInput(variants, customizations) {
-  const parsedVariants = typeof variants === 'string' ? JSON.parse(variants) : variants;
-  const parsedCustomizations = typeof customizations === 'string' ? JSON.parse(customizations) : customizations;
+  let parsedVariants;
+  if (typeof variants === 'string') {
+    parsedVariants = JSON.parse(variants);
+  } else {
+    parsedVariants = variants;
+  }
   if (!Array.isArray(parsedVariants)) throw new Error('Las variantes deben ser un arreglo');
+
+  let parsedCustomizations;
+  if (typeof customizations === 'string') {
+    parsedCustomizations = JSON.parse(customizations);
+  } else {
+    parsedCustomizations = customizations;
+  }
+
   return { parsedVariants, parsedCustomizations };
 }
 
@@ -186,19 +198,41 @@ async function processVariantAttributes(variant_id, attributes, categoryIdNum) {
 
 // Analizar entrada para updateProduct
 function parseUpdateInput(variants, customizations) {
-  const parsedVariants = variants ? (typeof variants === 'string' ? JSON.parse(variants) : variants) : null;
-  const parsedCustomizations = customizations ? (typeof customizations === 'string' ? JSON.parse(customizations) : customizations) : null;
-  if (parsedVariants && !Array.isArray(parsedVariants)) throw new Error('Las variantes deben ser un arreglo');
-  if (parsedCustomizations && !Array.isArray(parsedCustomizations)) throw new Error('Las personalizaciones deben ser un arreglo');
+  let parsedVariants = null;
+  if (variants) {
+    if (typeof variants === 'string') {
+      parsedVariants = JSON.parse(variants);
+    } else {
+      parsedVariants = variants;
+    }
+    if (!Array.isArray(parsedVariants)) throw new Error('Las variantes deben ser un arreglo');
+  }
+
+  let parsedCustomizations = null;
+  if (customizations) {
+    if (typeof customizations === 'string') {
+      parsedCustomizations = JSON.parse(customizations);
+    } else {
+      parsedCustomizations = customizations;
+    }
+    if (!Array.isArray(parsedCustomizations)) throw new Error('Las personalizaciones deben ser un arreglo');
+  }
+
   return { parsedVariants, parsedCustomizations };
 }
 
 // Actualizar detalles básicos del producto
 async function updateProductBase(product, { name, description, product_type, category_id, collaborator_id }) {
   const newCategoryId = category_id ? await validateCategory(category_id) : product.category_id;
-  const newCollaboratorId = collaborator_id !== undefined 
-    ? (collaborator_id === 'null' || collaborator_id === null ? null : await validateCollaborator(collaborator_id)) 
-    : product.collaborator_id;
+  
+  let newCollaboratorId;
+  if (collaborator_id === undefined) {
+    newCollaboratorId = product.collaborator_id;
+  } else if (collaborator_id === 'null' || collaborator_id === null) {
+    newCollaboratorId = null;
+  } else {
+    newCollaboratorId = await validateCollaborator(collaborator_id);
+  }
 
   await product.update({
     name: name ?? product.name,
@@ -221,57 +255,69 @@ async function updateCustomizations(product_id, customizations) {
   if (newCustomizations.length > 0) await CustomizationOption.bulkCreate(newCustomizations);
 }
 
-// Actualizar o crear variante
-async function updateOrCreateVariant(product_id, variant, existingVariants, files, index, userId) {
+// Helper: Actualizar variante existente
+async function updateExistingVariant(variant, existingVariants, files, index, userId) {
+  const existingVariant = existingVariants[variant.variant_id];
+  if (!existingVariant) throw new Error(`Variante ${variant.variant_id} no encontrada`);
+
+  const newProductionCost = variant.production_cost !== undefined ? Number(variant.production_cost) : existingVariant.production_cost;
+  const newProfitMargin = variant.profit_margin !== undefined ? Number(variant.profit_margin) : existingVariant.profit_margin;
+  const newCalculatedPrice = Number((newProductionCost * (1 + newProfitMargin / 100)).toFixed(2));
+
   const priceHistoryRecords = [];
-  if (variant.variant_id) {
-    const existingVariant = existingVariants[variant.variant_id];
-    if (!existingVariant) throw new Error(`Variante ${variant.variant_id} no encontrada`);
+  if (newProductionCost !== existingVariant.production_cost || newProfitMargin !== existingVariant.profit_margin) {
+    priceHistoryRecords.push(createPriceHistoryRecord(existingVariant.variant_id, existingVariant, {
+      production_cost: newProductionCost,
+      profit_margin: newProfitMargin,
+      calculated_price: newCalculatedPrice
+    }, 'manual', userId));
+  }
 
-    const newProductionCost = variant.production_cost !== undefined ? Number(variant.production_cost) : existingVariant.production_cost;
-    const newProfitMargin = variant.profit_margin !== undefined ? Number(variant.profit_margin) : existingVariant.profit_margin;
-    const newCalculatedPrice = Number((newProductionCost * (1 + newProfitMargin / 100)).toFixed(2));
+  await existingVariant.update({ production_cost: newProductionCost, profit_margin: newProfitMargin, calculated_price: newCalculatedPrice });
 
-    if (newProductionCost !== existingVariant.production_cost || newProfitMargin !== existingVariant.profit_margin) {
-      priceHistoryRecords.push(createPriceHistoryRecord(existingVariant.variant_id, existingVariant, {
-        production_cost: newProductionCost,
-        profit_margin: newProfitMargin,
-        calculated_price: newCalculatedPrice
-      }, 'manual', userId));
-    }
-
-    await existingVariant.update({ production_cost: newProductionCost, profit_margin: newProfitMargin, calculated_price: newCalculatedPrice });
-
-    if (Array.isArray(variant.imagesToDelete)) {
-      for (const imageId of variant.imagesToDelete) {
-        const image = await ProductImage.findByPk(imageId);
-        if (image && image.variant_id === existingVariant.variant_id) {
-          await deleteFromCloudinary(image.public_id);
-          await image.destroy();
-        }
+  if (Array.isArray(variant.imagesToDelete)) {
+    for (const imageId of variant.imagesToDelete) {
+      const image = await ProductImage.findByPk(imageId);
+      if (image && image.variant_id === existingVariant.variant_id) {
+        await deleteFromCloudinary(image.public_id);
+        await image.destroy();
       }
     }
-
-    const currentImages = existingVariant.ProductImages.filter(img => !variant.imagesToDelete?.includes(img.image_id));
-    const newImages = await processVariantImages(existingVariant, files, index, existingVariant.sku, currentImages);
-    if (newImages.length > 0) await ProductImage.bulkCreate(newImages);
-  } else {
-    await validateUniqueSku(variant.sku);
-    const calculated_price = Number((variant.production_cost * (1 + variant.profit_margin / 100)).toFixed(2));
-    const newVariant = await ProductVariant.create({
-      product_id,
-      sku: variant.sku,
-      production_cost: variant.production_cost,
-      profit_margin: variant.profit_margin,
-      calculated_price,
-      stock_threshold: variant.stock_threshold ?? 10
-    });
-
-    priceHistoryRecords.push(createPriceHistoryRecord(newVariant.variant_id, {}, variant, 'initial', userId));
-    const newImages = await processVariantImages(newVariant, files, index, variant.sku);
-    await ProductImage.bulkCreate(newImages);
   }
+
+  const currentImages = existingVariant.ProductImages.filter(img => !variant.imagesToDelete?.includes(img.image_id));
+  const newImages = await processVariantImages(existingVariant, files, index, existingVariant.sku, currentImages);
+  if (newImages.length > 0) await ProductImage.bulkCreate(newImages);
+
   return priceHistoryRecords;
+}
+
+// Helper: Crear nueva variante
+async function createNewVariant(product_id, variant, files, index, userId) {
+  await validateUniqueSku(variant.sku);
+  const calculated_price = Number((variant.production_cost * (1 + variant.profit_margin / 100)).toFixed(2));
+  const newVariant = await ProductVariant.create({
+    product_id,
+    sku: variant.sku,
+    production_cost: variant.production_cost,
+    profit_margin: variant.profit_margin,
+    calculated_price,
+    stock_threshold: variant.stock_threshold ?? 10
+  });
+
+  const priceHistoryRecords = [createPriceHistoryRecord(newVariant.variant_id, {}, variant, 'initial', userId)];
+  const newImages = await processVariantImages(newVariant, files, index, variant.sku);
+  await ProductImage.bulkCreate(newImages);
+
+  return priceHistoryRecords;
+}
+
+// Actualizar o crear variante
+async function updateOrCreateVariant(product_id, variant, existingVariants, files, index, userId) {
+  if (variant.variant_id) {
+    return await updateExistingVariant(variant, existingVariants, files, index, userId);
+  }
+  return await createNewVariant(product_id, variant, files, index, userId);
 }
 
 // Procesar variantes para createProduct
