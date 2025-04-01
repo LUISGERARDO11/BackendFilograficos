@@ -1,88 +1,32 @@
 const { Op } = require('sequelize');
-const { Product, ProductVariant, Category, Collaborator, ProductAttribute, ProductAttributeValue, CustomizationOption, ProductImage, PriceHistory } = require('../models/Associations');
+const { Product, ProductVariant, CustomizationOption, ProductImage, PriceHistory, Category, Collaborator, ProductAttributeValue, ProductAttribute } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
-const { validateCategory, validateCollaborator, processVariantImages, createPriceHistoryRecord, validateUniqueSku, formatProductResponse, buildSearchFilters } = require('../utils/productCatalogUtils');
+const {
+  validateCategory, validateCollaborator, processVariantImages, createPriceHistoryRecord, validateUniqueSku,
+  formatProductResponse, buildSearchFilters, parseAndValidateInput, createProductBase, createCustomizationOptions,
+  processVariants, parseUpdateInput, updateProductBase, updateCustomizations, updateOrCreateVariant
+} = require('../utils/productCatalogUtils');
 const { deleteFromCloudinary } = require('../services/cloudinaryService');
 
 // Crear un producto con variantes
 exports.createProduct = async (req, res) => {
-  let { name, description, product_type, category_id, collaborator_id, variants, customizations } = req.body;
+  const { name, description, product_type, category_id, collaborator_id, variants, customizations } = req.body;
   const files = req.files;
   const userId = req.user?.user_id ?? 'system';
+  let newProduct;
 
   try {
-    variants = typeof variants === 'string' ? JSON.parse(variants) : variants;
-    customizations = typeof customizations === 'string' ? JSON.parse(customizations) : customizations;
+    const { parsedVariants, parsedCustomizations } = parseAndValidateInput(variants, customizations);
+    newProduct = await createProductBase(name, description, product_type, category_id, collaborator_id);
+    const customizationRecords = createCustomizationOptions(newProduct.product_id, product_type, parsedCustomizations);
+    const { attributeRecords, imageRecords, priceHistoryRecords } = await processVariants(newProduct.product_id, parsedVariants, files, newProduct.category_id, userId);
 
-    if (!Array.isArray(variants)) throw new Error('Las variantes deben ser un arreglo');
-
-    const categoryIdNum = await validateCategory(category_id);
-    const collaboratorIdNum = await validateCollaborator(collaborator_id);
-
-    const newProduct = await Product.create({
-      name,
-      description: description ?? null,
-      product_type,
-      category_id: categoryIdNum,
-      collaborator_id: collaboratorIdNum,
-      status: 'active'
-    });
-
-    const customizationRecords = product_type !== 'Existencia' && Array.isArray(customizations) && customizations.length > 0
-      ? customizations.map(cust => ({
-          product_id: newProduct.product_id,
-          option_type: cust.type.toLowerCase(),
-          description: cust.description
-        }))
-      : [];
-
-    const variantRecords = [];
-    const attributeRecords = [];
-    const imageRecords = [];
-    const priceHistoryRecords = [];
-
-    for (const [index, variant] of variants.entries()) {
-      await validateUniqueSku(variant.sku);
-      const calculated_price = Number((variant.production_cost * (1 + variant.profit_margin / 100)).toFixed(2));
-      const newVariant = await ProductVariant.create({
-        product_id: newProduct.product_id,
-        sku: variant.sku,
-        production_cost: variant.production_cost,
-        profit_margin: variant.profit_margin,
-        calculated_price,
-        stock: variant.stock,
-        stock_threshold: variant.stock_threshold ?? 10
-      });
-
-      variantRecords.push(newVariant);
-      priceHistoryRecords.push(createPriceHistoryRecord(newVariant.variant_id, {}, variant, 'initial', userId));
-      imageRecords.push(...await processVariantImages(newVariant, files, index, variant.sku));
-
-      if (Array.isArray(variant.attributes) && variant.attributes.length > 0) {
-        const validAttributes = await ProductAttribute.findAll({
-          include: [{ model: Category, where: { category_id: categoryIdNum }, through: { attributes: [] } }],
-          where: { is_deleted: false }
-        });
-        const validAttributeIds = validAttributes.map(attr => attr.attribute_id);
-
-        for (const attr of variant.attributes) {
-          const attributeIdNum = Number(attr.attribute_id);
-          if (!validAttributeIds.includes(attributeIdNum)) {
-            throw new Error(`El atributo con ID ${attributeIdNum} no pertenece a esta categoría`);
-          }
-          const attribute = validAttributes.find(a => a.attribute_id === attributeIdNum);
-          if (attribute.data_type === 'lista' && attribute.allowed_values && !attribute.allowed_values.split(',').includes(attr.value)) {
-            throw new Error(`El valor "${attr.value}" no es permitido para el atributo "${attribute.attribute_name}"`);
-          }
-          attributeRecords.push({ variant_id: newVariant.variant_id, attribute_id: attributeIdNum, value: attr.value });
-        }
-      }
-    }
-
-    if (attributeRecords.length > 0) await ProductAttributeValue.bulkCreate(attributeRecords);
-    if (customizationRecords.length > 0) await CustomizationOption.bulkCreate(customizationRecords);
-    if (imageRecords.length > 0) await ProductImage.bulkCreate(imageRecords);
-    if (priceHistoryRecords.length > 0) await PriceHistory.bulkCreate(priceHistoryRecords);
+    await Promise.all([
+      customizationRecords.length > 0 && CustomizationOption.bulkCreate(customizationRecords),
+      attributeRecords.length > 0 && ProductAttributeValue.bulkCreate(attributeRecords),
+      imageRecords.length > 0 && ProductImage.bulkCreate(imageRecords),
+      priceHistoryRecords.length > 0 && PriceHistory.bulkCreate(priceHistoryRecords)
+    ]);
 
     const createdProduct = await Product.findByPk(newProduct.product_id, {
       include: [{ model: ProductVariant, include: [ProductImage, ProductAttributeValue] }, { model: CustomizationOption }]
@@ -91,7 +35,7 @@ exports.createProduct = async (req, res) => {
     loggerUtils.logUserActivity(userId, 'create', `Producto creado: ${name} (${newProduct.product_id})`);
     res.status(201).json({ message: 'Producto creado exitosamente', product: formatProductResponse(createdProduct) });
   } catch (error) {
-    await Product.destroy({ where: { product_id: newProduct?.product_id } }); // Rollback básico
+    if (newProduct) await Product.destroy({ where: { product_id: newProduct.product_id } });
     loggerUtils.logCriticalError(error);
     res.status(error.message.includes('no encontrada') ? 404 : 400).json({ message: 'Error al crear el producto', error: error.message });
   }
@@ -186,7 +130,7 @@ exports.deleteProduct = async (req, res) => {
     if (product.status === 'inactive') return res.status(400).json({ message: 'El producto ya está inactivo' });
 
     await product.update({ status: 'inactive' });
-    await ProductVariant.update({ is_deleted: true }, { where: { product_id } });
+    await ProductVariant.update({ is_deleted: ChargePointStatus }, { where: { product_id } });
 
     loggerUtils.logUserActivity(userId, 'delete', `Producto eliminado lógicamente: ${product.name} (${product_id})`);
     res.status(200).json({ message: 'Producto eliminado lógicamente exitosamente' });
@@ -224,7 +168,7 @@ exports.getProductById = async (req, res) => {
 // Actualizar un producto
 exports.updateProduct = async (req, res) => {
   const { product_id } = req.params;
-  let { name, description, product_type, category_id, collaborator_id, variants, customizations } = req.body;
+  const { name, description, product_type, category_id, collaborator_id, variants, customizations } = req.body;
   const files = req.files;
   const userId = req.user?.user_id ?? 'system';
 
@@ -232,78 +176,16 @@ exports.updateProduct = async (req, res) => {
     const product = await Product.findByPk(product_id, { include: [{ model: ProductVariant, include: [ProductImage] }, { model: CustomizationOption }] });
     if (!product) return res.status(404).json({ message: 'Producto no encontrado' });
 
-    const newCategoryId = category_id ? await validateCategory(category_id) : product.category_id;
-    const newCollaboratorId = collaborator_id !== undefined ? (collaborator_id === 'null' || collaborator_id === null ? null : await validateCollaborator(collaborator_id)) : product.collaborator_id;
+    const { parsedVariants, parsedCustomizations } = parseUpdateInput(variants, customizations);
+    await updateProductBase(product, { name, description, product_type, category_id, collaborator_id });
+    await updateCustomizations(product.product_id, parsedCustomizations);
 
-    await product.update({
-      name: name ?? product.name,
-      description: description ?? product.description,
-      product_type: product_type ?? product.product_type,
-      category_id: newCategoryId,
-      collaborator_id: newCollaboratorId
-    });
-
-    if (customizations) {
-      customizations = typeof customizations === 'string' ? JSON.parse(customizations) : customizations;
-      if (!Array.isArray(customizations)) throw new Error('Las personalizaciones deben ser un arreglo');
-      await CustomizationOption.destroy({ where: { product_id: product.product_id } });
-      const newCustomizations = customizations.map(cust => ({ product_id: product.product_id, option_type: cust.type.toLowerCase(), description: cust.description }));
-      if (newCustomizations.length > 0) await CustomizationOption.bulkCreate(newCustomizations);
-    }
-
-    if (variants) {
-      variants = typeof variants === 'string' ? JSON.parse(variants) : variants;
-      if (!Array.isArray(variants)) throw new Error('Las variantes deben ser un arreglo');
-
-      const priceHistoryRecords = [];
+    if (parsedVariants) {
       const existingVariants = Object.fromEntries(product.ProductVariants.map(v => [v.variant_id, v]));
-
-      for (const [index, variant] of variants.entries()) {
-        if (variant.variant_id) {
-          const existingVariant = existingVariants[variant.variant_id];
-          if (!existingVariant) throw new Error(`Variante ${variant.variant_id} no encontrada`);
-
-          const newProductionCost = variant.production_cost !== undefined ? Number(variant.production_cost) : existingVariant.production_cost;
-          const newProfitMargin = variant.profit_margin !== undefined ? Number(variant.profit_margin) : existingVariant.profit_margin;
-          const newCalculatedPrice = Number((newProductionCost * (1 + newProfitMargin / 100)).toFixed(2));
-
-          if (newProductionCost !== existingVariant.production_cost || newProfitMargin !== existingVariant.profit_margin) {
-            priceHistoryRecords.push(createPriceHistoryRecord(existingVariant.variant_id, existingVariant, { production_cost: newProductionCost, profit_margin: newProfitMargin, calculated_price: newCalculatedPrice }, 'manual', userId));
-          }
-
-          await existingVariant.update({ production_cost: newProductionCost, profit_margin: newProfitMargin, calculated_price: newCalculatedPrice });
-
-          if (Array.isArray(variant.imagesToDelete)) {
-            for (const imageId of variant.imagesToDelete) {
-              const image = await ProductImage.findByPk(imageId);
-              if (image && image.variant_id === existingVariant.variant_id) {
-                await deleteFromCloudinary(image.public_id);
-                await image.destroy();
-              }
-            }
-          }
-
-          const currentImages = existingVariant.ProductImages.filter(img => !variant.imagesToDelete?.includes(img.image_id));
-          const newImages = await processVariantImages(existingVariant, files, index, existingVariant.sku, currentImages);
-          if (newImages.length > 0) await ProductImage.bulkCreate(newImages);
-        } else {
-          await validateUniqueSku(variant.sku);
-          const calculated_price = Number((variant.production_cost * (1 + variant.profit_margin / 100)).toFixed(2));
-          const newVariant = await ProductVariant.create({
-            product_id: product.product_id,
-            sku: variant.sku,
-            production_cost: variant.production_cost,
-            profit_margin: variant.profit_margin,
-            calculated_price,
-            stock_threshold: variant.stock_threshold ?? 10
-          });
-
-          priceHistoryRecords.push(createPriceHistoryRecord(newVariant.variant_id, {}, variant, 'initial', userId));
-          const newImages = await processVariantImages(newVariant, files, index, variant.sku);
-          await ProductImage.bulkCreate(newImages);
-        }
+      const priceHistoryRecords = [];
+      for (const [index, variant] of parsedVariants.entries()) {
+        priceHistoryRecords.push(...await updateOrCreateVariant(product.product_id, variant, existingVariants, files, index, userId));
       }
-
       if (priceHistoryRecords.length > 0) await PriceHistory.bulkCreate(priceHistoryRecords);
     }
 
