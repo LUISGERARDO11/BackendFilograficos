@@ -3,9 +3,19 @@ management in a web application. Here is a breakdown of what each function does:
 const { body, validationResult } = require('express-validator');
 const incidentUtils = require('../utils/incidentUtils');
 const loggerUtils = require('../utils/loggerUtils');
-const { sequelize } = require('../config/dataBase');
-const { User,FailedAttempt } = require('../models/Associations');
+const { User, FailedAttempt } = require('../models/Associations');
 const Config = require('../models/Systemconfig');
+
+// Función auxiliar para manejar errores
+const handleError = (res, error, message = 'Error procesando solicitud') => {
+  loggerUtils.logCriticalError(error);
+  res.status(500).json({ message, error: error.message });
+};
+
+// Función auxiliar para registrar actividad
+const logActivity = (userId, action, description) => {
+  loggerUtils.logUserActivity(userId || 'admin', action, description);
+};
 
 // Obtener historial de intentos fallidos
 exports.getFailedLoginAttempts = async (req, res) => {
@@ -23,8 +33,7 @@ exports.getFailedLoginAttempts = async (req, res) => {
 
     res.status(200).json({ clientes, administradores });
   } catch (error) {
-    loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error obteniendo intentos fallidos', error: error.message });
+    handleError(res, error, 'Error obteniendo intentos fallidos');
   }
 };
 
@@ -69,99 +78,76 @@ exports.updateTokenLifetime = [
 
   async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty())  return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const updateFields = {};
-    const allowedFields = [
-      'jwt_lifetime',
-      'email_verification_lifetime',
-      'otp_lifetime',
-      'session_lifetime',
-      'cookie_lifetime',
-      'expiration_threshold_lifetime',
-      'max_failed_login_attempts',
-      'max_blocks_in_n_days',
-      'block_period_days'
-    ];
+    const updateFields = Object.fromEntries(
+      [
+        'jwt_lifetime',
+        'email_verification_lifetime',
+        'otp_lifetime',
+        'session_lifetime',
+        'cookie_lifetime',
+        'expiration_threshold_lifetime',
+        'max_failed_login_attempts',
+        'max_blocks_in_n_days',
+        'block_period_days'
+      ].map(field => [field, req.body[field]]).filter(([_, value]) => value !== undefined)
+    );
 
-    allowedFields.forEach(field => {
-      if (req.body[field] !== undefined) updateFields[field] = req.body[field];
-    });
-
-    if (Object.keys(updateFields).length === 0) {
+    if (!Object.keys(updateFields).length) {
       return res.status(400).json({ message: 'Campos de actualización requeridos' });
     }
 
     try {
       const [config, created] = await Config.findOrCreate({
         where: {},
-        defaults: updateFields
+        defaults: updateFields,
       });
 
       if (!created) await config.update(updateFields);
 
-      loggerUtils.logUserActivity(
-        req.user?.user_id || 'admin',
-        'update',
-        'Configuración de seguridad actualizada'
-      );
+      logActivity(req.user?.user_id, 'update', 'Configuración de seguridad actualizada');
 
-      res.status(200).json({ 
+      res.status(200).json({
         message: 'Configuración actualizada',
-        config: config.get({ plain: true })
+        config: config.get({ plain: true }),
       });
     } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error actualizando configuración', error: error.message });
+      handleError(res, error, 'Error actualizando configuración');
     }
-  }
+  },
 ];
 
 // Desbloquear usuario como administrador
 exports.adminUnlockUser = async (req, res) => {
+  const { user_id } = req.params;
+
   try {
-    const { user_id } = req.params;
-
     const user = await User.findByPk(user_id);
-    if (!user) {
-      return res.status(404).json({ message: 'Usuario no encontrado' });
-    }
-
+    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
     if (user.status !== 'bloqueado_permanente') {
       return res.status(400).json({ message: 'Usuario no bloqueado permanentemente' });
     }
 
     await user.update({ status: 'activo' });
-    await FailedAttempt.update(
-      { is_resolved: true },
-      { where: { user_id } }
-    );
+    await FailedAttempt.update({ is_resolved: true }, { where: { user_id } });
 
-    loggerUtils.logUserActivity(
-      req.user.user_id,
-      'admin_unlock',
-      `Usuario ${user_id} desbloqueado`
-    );
+    logActivity(req.user.user_id, 'admin_unlock', `Usuario ${user_id} desbloqueado`);
 
     res.status(200).json({ message: 'Usuario desbloqueado exitosamente' });
   } catch (error) {
-    loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error desbloqueando usuario', error: error.message });
+    handleError(res, error, 'Error desbloqueando usuario');
   }
 };
 
 // Obtener configuración del sistema
 exports.getConfig = async (req, res) => {
-    try {
-      const config = await Config.findOne();
-  
-      if (!config) {
-        return res.status(404).json({ message: "No se encontró ninguna configuración." });
-      }
-  
-      res.status(200).json({ config });
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: "Error al obtener la configuración.", error: error.message });
-    }
+  try {
+    const config = await Config.findOne();
+    if (!config) return res.status(404).json({ message: 'No se encontró ninguna configuración' });
+
+    res.status(200).json({ config });
+  } catch (error) {
+    handleError(res, error, 'Error al obtener la configuración');
+  }
 };
