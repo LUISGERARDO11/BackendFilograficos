@@ -1,5 +1,3 @@
-/* This code snippet is defining a Sequelize model for a Company entity in a Node.js application.
-Here's a breakdown of what each part of the code is doing: */
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
 
@@ -30,17 +28,13 @@ const Company = sequelize.define('Company', {
     unique: true,
     allowNull: false
   },
-  facebook: DataTypes.STRING(255),
-  twitter: DataTypes.STRING(255),
-  linkedin: DataTypes.STRING(255),
-  instagram: DataTypes.STRING(255),
   active: {
     type: DataTypes.BOOLEAN,
     defaultValue: true
   }
 }, {
   tableName: 'company',
-  timestamps: true, // Sequelize manejará automáticamente created_at y updated_at
+  timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at'
 });
