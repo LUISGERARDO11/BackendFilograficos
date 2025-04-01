@@ -4,14 +4,14 @@ for different routes related to managing products in an application. Here is a s
 array of validation functions is doing: */
 const { body, query, param, validationResult } = require('express-validator');
 
+// Validaciones para crear un producto
 const validateProduct = [
   // Validaciones para el producto base
   body('name').trim().notEmpty().withMessage('El nombre es obligatorio').escape(),
   body('description').optional().trim().escape(),
-  body('product_type').isIn(['Existencia', 'Personalizado']).withMessage('El tipo de producto debe ser "Existencia" o "Personalizado"'), // Actualizamos
+  body('product_type').isIn(['Existencia', 'Personalizado']).withMessage('El tipo de producto debe ser "Existencia" o "Personalizado"'),
   body('category_id').isInt().withMessage('El ID de la categoría debe ser un número entero'),
   body('collaborator_id').optional({ nullable: true }).isInt().withMessage('El ID del colaborador debe ser un número entero'),
-  // Validaciones para personalizaciones (a nivel de producto)
   body('customizations').optional().custom((value) => {
     if (typeof value === 'string') {
       const parsed = JSON.parse(value);
@@ -34,25 +34,23 @@ const validateProduct = [
   body('variants.*.attributes.*.attribute_id').isInt().withMessage('El ID del atributo debe ser un número entero'),
   body('variants.*.attributes.*.value').trim().notEmpty().withMessage('El valor del atributo es obligatorio'),
 ];
-const validateGetProducts = [
-  query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser un número entero positivo'),
-  query('pageSize').optional().isInt({ min: 1 }).withMessage('El tamaño de página debe ser un número entero positivo'),
-  query('sort').optional().isString().withMessage('El parámetro de ordenamiento debe ser una cadena (e.g., "name:ASC,product_id:DESC")')
-];
 
+// Validaciones para eliminar un producto
 const validateDeleteProduct = [
   param('product_id').isInt({ min: 1 }).withMessage('El ID del producto debe ser un número entero positivo')
 ];
 
+// Validaciones para obtener un producto por ID
 const validateGetProductById = [
   param('product_id').isInt({ min: 1 }).withMessage('El ID del producto debe ser un número entero positivo')
 ];
 
+// Validaciones para actualizar un producto
 const validateUpdateProduct = [
   param('product_id').isInt({ min: 1 }).withMessage('El ID del producto debe ser un número entero positivo'),
   body('name').optional().trim().notEmpty().withMessage('El nombre no puede estar vacío').escape(),
   body('description').optional().trim().escape(),
-  body('product_type').optional().isIn(['Existencia', 'Personalizado']).withMessage('El tipo de producto debe ser "Existencia" o "Personalizado"'), // Actualizamos
+  body('product_type').optional().isIn(['Existencia', 'Personalizado']).withMessage('El tipo de producto debe ser "Existencia" o "Personalizado"'),
   body('category_id').optional().isInt().withMessage('El ID de la categoría debe ser un número entero'),
   body('collaborator_id').optional().custom(value => value === null || Number.isInteger(parseInt(value))).withMessage('El ID del colaborador debe ser un número entero o null'),
   body('variants').optional().isArray().withMessage('Las variantes deben ser un arreglo'),
@@ -69,13 +67,11 @@ const validateUpdateProduct = [
   body('customizations.*.type').isIn(['text', 'image', 'file']).withMessage('Tipo de personalización no válido'),
   body('customizations.*.description').optional().trim().notEmpty().withMessage('La descripción de la personalización no puede estar vacía')
 ];
+
+// Validaciones para eliminar variantes
 const validateDeleteVariants = [
-  param('product_id')
-    .isInt({ min: 1 })
-    .withMessage('El ID del producto debe ser un número entero positivo'),
-  body('variant_ids')
-    .isArray({ min: 1 })
-    .withMessage('Debe proporcionar al menos un ID de variante en un arreglo')
+  param('product_id').isInt({ min: 1 }).withMessage('El ID del producto debe ser un número entero positivo'),
+  body('variant_ids').isArray({ min: 1 }).withMessage('Debe proporcionar al menos un ID de variante en un arreglo')
     .custom((value) => {
       if (!value.every(id => Number.isInteger(id) && id > 0)) {
         throw new Error('Todos los IDs de variantes deben ser números enteros positivos');
@@ -84,11 +80,24 @@ const validateDeleteVariants = [
     })
 ];
 
+// Validaciones para obtener todos los productos (movida desde el controlador)
+const validateGetAllProducts = [
+  query('search').optional().trim().escape(),
+  query('collaborator_id').optional().isInt({ min: 1 }).withMessage('El ID del colaborador debe ser un entero positivo'),
+  query('category_id').optional().isInt({ min: 1 }).withMessage('El ID de la categoría debe ser un entero positivo'),
+  query('product_type').optional().isIn(['Existencia', 'Personalizado']).withMessage('El tipo de producto debe ser "Existencia" o "Personalizado"'),
+  query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser un entero positivo'),
+  query('pageSize').optional().isInt({ min: 1 }).withMessage('El tamaño de página debe ser un entero positivo'),
+  query('sort').optional()
+    .matches(/^([a-zA-Z_]+:(ASC|DESC),?)+$/i)
+    .withMessage('El parámetro sort debe tener el formato "column:direction,column:direction"')
+];
+
 module.exports = {
   validateProduct,
-  validateGetProducts,
   validateDeleteProduct,
   validateGetProductById,
   validateUpdateProduct,
-  validateDeleteVariants
+  validateDeleteVariants,
+  validateGetAllProducts,
 };

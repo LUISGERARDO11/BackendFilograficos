@@ -14,7 +14,7 @@ const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 const validateProductImages = require('../middlewares/validateProductImages');
 const uploadProductImages = require('../config/multerProductImagesConfig');
-const { validateProduct, validateGetProducts, validateDeleteProduct, validateGetProductById, validateUpdateProduct, validateDeleteVariants } = require('../middlewares/productValidation');
+const { validateProduct, validateDeleteProduct, validateGetProductById, validateUpdateProduct, validateDeleteVariants, validateGetAllProducts } = require('../middlewares/productValidation');
 
 // Ruta para crear un producto (solo administradores)
 router.post(
@@ -34,7 +34,7 @@ router.get(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  validateGetProducts,
+  validateGetAllProducts,  // Corregido de validateGetProducts a validateGetAllProducts
   productCatalogController.getAllProducts
 );
 
@@ -58,6 +58,7 @@ router.get(
   productCatalogController.getProductById
 );
 
+// Ruta para actualizar un producto (solo administradores)
 router.patch(
   '/:product_id',
   authMiddleware,
