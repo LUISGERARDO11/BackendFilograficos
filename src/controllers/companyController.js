@@ -132,7 +132,7 @@ exports.getCompanyInfo = async (req, res) => {
         const companyInfo = await Company.findOne({
             where: { active: true },
             attributes: { exclude: ['active'] },
-            include: [{ model: SocialMedia, attributes: ['name', 'link'], where: { active: true } }]
+            include: [{ model: SocialMedia, attributes: ['social_media_id', 'name', 'link'], where: { active: true } }]
         });
 
         if (!companyInfo) {
