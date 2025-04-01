@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { ProductVariant, ProductImage, Category, Collaborator, PriceHistory } = require('../models/Associations');
+const { Product, ProductVariant, ProductImage, Category, Collaborator, PriceHistory, ProductAttribute, ProductAttributeValue, CustomizationOption } = require('../models/Associations');
 const { uploadProductImagesToCloudinary, deleteFromCloudinary } = require('../services/cloudinaryService');
 const loggerUtils = require('./loggerUtils');
 
@@ -125,6 +125,184 @@ function buildSearchFilters(search) {
   return where;
 }
 
+// Analizar y validar entrada para createProduct y updateProduct
+function parseAndValidateInput(variants, customizations) {
+  const parsedVariants = typeof variants === 'string' ? JSON.parse(variants) : variants;
+  const parsedCustomizations = typeof customizations === 'string' ? JSON.parse(customizations) : customizations;
+  if (!Array.isArray(parsedVariants)) throw new Error('Las variantes deben ser un arreglo');
+  return { parsedVariants, parsedCustomizations };
+}
+
+// Crear base del producto
+async function createProductBase(name, description, product_type, category_id, collaborator_id) {
+  const categoryIdNum = await validateCategory(category_id);
+  const collaboratorIdNum = await validateCollaborator(collaborator_id);
+  return Product.create({
+    name,
+    description: description ?? null,
+    product_type,
+    category_id: categoryIdNum,
+    collaborator_id: collaboratorIdNum,
+    status: 'active'
+  });
+}
+
+// Crear opciones de personalización
+function createCustomizationOptions(product_id, product_type, customizations) {
+  if (product_type !== 'Existencia' && Array.isArray(customizations) && customizations.length > 0) {
+    return customizations.map(cust => ({
+      product_id,
+      option_type: cust.type.toLowerCase(),
+      description: cust.description
+    }));
+  }
+  return [];
+}
+
+// Procesar atributos de variantes
+async function processVariantAttributes(variant_id, attributes, categoryIdNum) {
+  if (!Array.isArray(attributes) || attributes.length === 0) return [];
+  
+  const validAttributes = await ProductAttribute.findAll({
+    include: [{ model: Category, where: { category_id: categoryIdNum }, through: { attributes: [] } }],
+    where: { is_deleted: false }
+  });
+  const validAttributeIds = validAttributes.map(attr => attr.attribute_id);
+  const attributeRecords = [];
+
+  for (const attr of attributes) {
+    const attributeIdNum = Number(attr.attribute_id);
+    if (!validAttributeIds.includes(attributeIdNum)) {
+      throw new Error(`El atributo con ID ${attributeIdNum} no pertenece a esta categoría`);
+    }
+    const attribute = validAttributes.find(a => a.attribute_id === attributeIdNum);
+    if (attribute.data_type === 'lista' && attribute.allowed_values && !attribute.allowed_values.split(',').includes(attr.value)) {
+      throw new Error(`El valor "${attr.value}" no es permitido para el atributo "${attribute.attribute_name}"`);
+    }
+    attributeRecords.push({ variant_id, attribute_id: attributeIdNum, value: attr.value });
+  }
+  return attributeRecords;
+}
+
+// Analizar entrada para updateProduct
+function parseUpdateInput(variants, customizations) {
+  const parsedVariants = variants ? (typeof variants === 'string' ? JSON.parse(variants) : variants) : null;
+  const parsedCustomizations = customizations ? (typeof customizations === 'string' ? JSON.parse(customizations) : customizations) : null;
+  if (parsedVariants && !Array.isArray(parsedVariants)) throw new Error('Las variantes deben ser un arreglo');
+  if (parsedCustomizations && !Array.isArray(parsedCustomizations)) throw new Error('Las personalizaciones deben ser un arreglo');
+  return { parsedVariants, parsedCustomizations };
+}
+
+// Actualizar detalles básicos del producto
+async function updateProductBase(product, { name, description, product_type, category_id, collaborator_id }) {
+  const newCategoryId = category_id ? await validateCategory(category_id) : product.category_id;
+  const newCollaboratorId = collaborator_id !== undefined 
+    ? (collaborator_id === 'null' || collaborator_id === null ? null : await validateCollaborator(collaborator_id)) 
+    : product.collaborator_id;
+
+  await product.update({
+    name: name ?? product.name,
+    description: description ?? product.description,
+    product_type: product_type ?? product.product_type,
+    category_id: newCategoryId,
+    collaborator_id: newCollaboratorId
+  });
+}
+
+// Actualizar personalizaciones
+async function updateCustomizations(product_id, customizations) {
+  if (!customizations) return;
+  await CustomizationOption.destroy({ where: { product_id } });
+  const newCustomizations = customizations.map(cust => ({
+    product_id,
+    option_type: cust.type.toLowerCase(),
+    description: cust.description
+  }));
+  if (newCustomizations.length > 0) await CustomizationOption.bulkCreate(newCustomizations);
+}
+
+// Actualizar o crear variante
+async function updateOrCreateVariant(product_id, variant, existingVariants, files, index, userId) {
+  const priceHistoryRecords = [];
+  if (variant.variant_id) {
+    const existingVariant = existingVariants[variant.variant_id];
+    if (!existingVariant) throw new Error(`Variante ${variant.variant_id} no encontrada`);
+
+    const newProductionCost = variant.production_cost !== undefined ? Number(variant.production_cost) : existingVariant.production_cost;
+    const newProfitMargin = variant.profit_margin !== undefined ? Number(variant.profit_margin) : existingVariant.profit_margin;
+    const newCalculatedPrice = Number((newProductionCost * (1 + newProfitMargin / 100)).toFixed(2));
+
+    if (newProductionCost !== existingVariant.production_cost || newProfitMargin !== existingVariant.profit_margin) {
+      priceHistoryRecords.push(createPriceHistoryRecord(existingVariant.variant_id, existingVariant, {
+        production_cost: newProductionCost,
+        profit_margin: newProfitMargin,
+        calculated_price: newCalculatedPrice
+      }, 'manual', userId));
+    }
+
+    await existingVariant.update({ production_cost: newProductionCost, profit_margin: newProfitMargin, calculated_price: newCalculatedPrice });
+
+    if (Array.isArray(variant.imagesToDelete)) {
+      for (const imageId of variant.imagesToDelete) {
+        const image = await ProductImage.findByPk(imageId);
+        if (image && image.variant_id === existingVariant.variant_id) {
+          await deleteFromCloudinary(image.public_id);
+          await image.destroy();
+        }
+      }
+    }
+
+    const currentImages = existingVariant.ProductImages.filter(img => !variant.imagesToDelete?.includes(img.image_id));
+    const newImages = await processVariantImages(existingVariant, files, index, existingVariant.sku, currentImages);
+    if (newImages.length > 0) await ProductImage.bulkCreate(newImages);
+  } else {
+    await validateUniqueSku(variant.sku);
+    const calculated_price = Number((variant.production_cost * (1 + variant.profit_margin / 100)).toFixed(2));
+    const newVariant = await ProductVariant.create({
+      product_id,
+      sku: variant.sku,
+      production_cost: variant.production_cost,
+      profit_margin: variant.profit_margin,
+      calculated_price,
+      stock_threshold: variant.stock_threshold ?? 10
+    });
+
+    priceHistoryRecords.push(createPriceHistoryRecord(newVariant.variant_id, {}, variant, 'initial', userId));
+    const newImages = await processVariantImages(newVariant, files, index, variant.sku);
+    await ProductImage.bulkCreate(newImages);
+  }
+  return priceHistoryRecords;
+}
+
+// Procesar variantes para createProduct
+async function processVariants(product_id, variants, files, categoryIdNum, userId) {
+  const variantRecords = [];
+  const attributeRecords = [];
+  const imageRecords = [];
+  const priceHistoryRecords = [];
+
+  for (const [index, variant] of variants.entries()) {
+    await validateUniqueSku(variant.sku);
+    const calculated_price = Number((variant.production_cost * (1 + variant.profit_margin / 100)).toFixed(2));
+    const newVariant = await ProductVariant.create({
+      product_id,
+      sku: variant.sku,
+      production_cost: variant.production_cost,
+      profit_margin: variant.profit_margin,
+      calculated_price,
+      stock: variant.stock,
+      stock_threshold: variant.stock_threshold ?? 10
+    });
+
+    variantRecords.push(newVariant);
+    priceHistoryRecords.push(createPriceHistoryRecord(newVariant.variant_id, {}, variant, 'initial', userId));
+    imageRecords.push(...await processVariantImages(newVariant, files, index, variant.sku));
+    attributeRecords.push(...await processVariantAttributes(newVariant.variant_id, variant.attributes, categoryIdNum));
+  }
+
+  return { variantRecords, attributeRecords, imageRecords, priceHistoryRecords };
+}
+
 module.exports = {
   validateCategory,
   validateCollaborator,
@@ -132,5 +310,14 @@ module.exports = {
   createPriceHistoryRecord,
   validateUniqueSku,
   formatProductResponse,
-  buildSearchFilters
+  buildSearchFilters,
+  parseAndValidateInput,
+  createProductBase,
+  createCustomizationOptions,
+  processVariantAttributes,
+  parseUpdateInput,
+  updateProductBase,
+  updateCustomizations,
+  updateOrCreateVariant,
+  processVariants
 };
