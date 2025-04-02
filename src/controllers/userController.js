@@ -2,385 +2,198 @@
 administration in a Node.js application using Express and Sequelize ORM. Here is a summary of the
 functionalities: */
 const { body, validationResult } = require('express-validator');
-const { User, Account, Address, Session, PasswordHistory } = require('../models/Associations');
-const FailedAttempt = require('../models/Failedattempts'); 
+const { User, Address } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const sequelize = require('../config/dataBase');
+const userServices = require('../services/userServices');
 require('dotenv').config();
 
-//** GESTION DE PERFIL DE USUARIOS  **
-// Actualización del perfil del usuario (nombre, dirección, teléfono)
+//** GESTION DE PERFIL DE USUARIOS **
 exports.updateProfile = [
-    // Validar y sanitizar entradas
-    body('name').optional().isString().trim().escape(),
-    body('address').optional().isObject().custom(value => {
-        // Validar campos de dirección
-        if (!value.street || !value.city || !value.state || !value.postal_code) {
-            throw new Error('Todos los campos de la dirección son obligatorios (calle, ciudad, estado, código postal).');
-        }
-        return true;
-    }),
-    body('phone').optional().isString().trim().escape(),
+  body('name').optional().isString().trim().escape(),
+  body('address').optional().isObject().custom(userServices.validateAddressFields),
+  body('phone').optional().isString().trim().escape(),
 
-    async (req, res) => {
-        const userId = req.user.user_id;
+  async (req, res) => {
+    const userId = req.user.user_id;
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-        // Validar entradas
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
 
-        try {
-            const user = await User.findByPk(userId);
-            if (!user) {
-                return res.status(404).json({ message: 'Usuario no encontrado' });
-            }
+      if (req.body.name) user.name = req.body.name;
+      if (req.body.phone) user.phone = req.body.phone;
+      if (req.body.address) await userServices.updateOrCreateAddress(userId, req.body.address);
 
-            // Actualizar campos permitidos
-            if (req.body.name) user.name = req.body.name;
-            if (req.body.phone) user.phone = req.body.phone;
-
-            // Actualizar o crear la dirección
-            if (req.body.address) {
-                const [address] = await Address.findOrCreate({
-                    where: { user_id: userId, is_primary: true },
-                    defaults: { ...req.body.address, is_primary: true }
-                });
-
-                await address.update(req.body.address);
-            }
-
-            await user.save();
-            res.status(200).json({ message: 'Perfil actualizado exitosamente', user });
-        } catch (error) {
-            res.status(500).json({ message: 'Error al actualizar el perfil', error: error.message });
-        }
+      await user.save();
+      res.status(200).json({ message: 'Perfil actualizado exitosamente', user });
+    } catch (error) {
+      res.status(500).json({ message: 'Error al actualizar el perfil', error: error.message });
     }
+  }
 ];
 
-//Añadir una dirección al usuario 
 exports.addAddress = [
-    // Validar y sanitizar entradas
-    body('street').isString().trim().notEmpty().withMessage('La calle es obligatoria.'),
-    body('city').isString().trim().notEmpty().withMessage('La ciudad es obligatoria.'),
-    body('state').isString().trim().notEmpty().withMessage('El estado es obligatorio.'),
-    body('postal_code').isString().trim().notEmpty().withMessage('El código postal es obligatorio.'),
+  body('street').isString().trim().notEmpty().withMessage('La calle es obligatoria.'),
+  body('city').isString().trim().notEmpty().withMessage('La ciudad es obligatoria.'),
+  body('state').isString().trim().notEmpty().withMessage('El estado es obligatorio.'),
+  body('postal_code').isString().trim().notEmpty().withMessage('El código postal es obligatorio.'),
 
-    async (req, res) => {
-        const userId = req.user.user_id; // Se obtiene del middleware de autenticación
+  async (req, res) => {
+    const userId = req.user.user_id;
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-        // Validar entradas
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
-
-        try {
-            // Verificar si el usuario ya tiene una dirección
-            const existingAddress = await Address.findOne({ where: { user_id: userId } });
-
-            if (existingAddress) {
-                // Si ya tiene una dirección, actualizarla en lugar de crear una nueva
-                await existingAddress.update({
-                    street: req.body.street,
-                    city: req.body.city,
-                    state: req.body.state,
-                    postal_code: req.body.postal_code
-                });
-
-                return res.status(200).json({ message: 'Dirección actualizada exitosamente', address: existingAddress });
-            }
-
-            // Si el usuario no tiene dirección, crear una nueva
-            const newAddress = await Address.create({
-                user_id: userId,
-                street: req.body.street,
-                city: req.body.city,
-                state: req.body.state,
-                postal_code: req.body.postal_code,
-                is_primary: true // Siempre será la dirección principal
-            });
-
-            res.status(201).json({ message: 'Dirección agregada exitosamente', address: newAddress });
-        } catch (error) {
-            res.status(500).json({ message: 'Error al agregar la dirección', error: error.message });
-        }
+    try {
+      const addressData = { street: req.body.street, city: req.body.city, state: req.body.state, postal_code: req.body.postal_code };
+      const address = await userServices.updateOrCreateAddress(userId, addressData);
+      res.status(201).json({ message: 'Dirección agregada/actualizada exitosamente', address });
+    } catch (error) {
+      res.status(500).json({ message: 'Error al agregar la dirección', error: error.message });
     }
+  }
 ];
 
-// Actualizar solo la dirección del usuario
 exports.updateUserProfile = [
-    // Validar y sanitizar entradas
-    body('address').isObject().custom(value => {
-        // Validar campos de dirección
-        if (!value.street || !value.city || !value.state || !value.postal_code) {
-            throw new Error('Todos los campos de la dirección son obligatorios (calle, ciudad, estado, código postal).');
-        }
-        return true;
-    }),
+  body('address').isObject().custom(userServices.validateAddressFields),
 
-    async (req, res) => {
-        const userId = req.user.user_id;
+  async (req, res) => {
+    const userId = req.user.user_id;
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-        // Validar entradas
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
 
-        try {
-            const user = await User.findByPk(userId);
-            if (!user) {
-                return res.status(404).json({ message: 'Usuario no encontrado' });
-            }
-
-            // Actualizar o crear la dirección
-            const [address] = await Address.findOrCreate({
-                where: { user_id: userId, is_primary: true },
-                defaults: { ...req.body.address, is_primary: true }
-            });
-
-            await address.update(req.body.address);
-
-            res.status(200).json({
-                message: 'Dirección actualizada correctamente',
-                address
-            });
-        } catch (error) {
-            res.status(500).json({ message: 'Error al actualizar la dirección', error: error.message });
-        }
+      const address = await userServices.updateOrCreateAddress(userId, req.body.address);
+      res.status(200).json({ message: 'Dirección actualizada correctamente', address });
+    } catch (error) {
+      res.status(500).json({ message: 'Error al actualizar la dirección', error: error.message });
     }
+  }
 ];
 
-// Función para obtener el perfil del usuario autenticado
 exports.getProfile = async (req, res) => {
-    const userId = req.user.user_id; // Asumiendo que `authMiddleware` agrega `req.user`
-    
-    try {
-        const user = await User.findByPk(userId, {
-            attributes: ['user_id', 'name', 'email', 'phone', 'status', 'user_type'],
-            include: [{
-                model: Address,
-                where: { is_primary: true },
-                required: false
-            }]
-        });
-
-        if (!user) {
-            return res.status(404).json({ message: 'Usuario no encontrado' });
-        }
-
-        res.status(200).json(user); // Retornar el usuario con su dirección primaria
-    } catch (error) {
-        res.status(500).json({ message: 'Error al obtener el perfil', error: error.message });
-    }
+  const userId = req.user.user_id;
+  try {
+    const user = await User.findByPk(userId, {
+      attributes: ['user_id', 'name', 'email', 'phone', 'status', 'user_type'],
+      include: [{ model: Address, where: { is_primary: true }, required: false }]
+    });
+    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    res.status(200).json(user);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener el perfil', error: error.message });
+  }
 };
 
-//** ELIMINCACIÓN DE CUENTAS  **
-// Eliminar la cuenta del cliente autenticado
+//** ELIMINACION DE CUENTAS **
 exports.deleteMyAccount = async (req, res) => {
-    const userId = req.user.user_id; // ID del usuario autenticado
-
-    try {
-        // Buscar al usuario por su ID
-        const user = await User.findByPk(userId);
-        if (!user) {
-            loggerUtils.logUserActivity(userId, 'account_deletion_failed', 'Usuario no encontrado');
-            return res.status(404).json({ message: 'Usuario no encontrado' });
-        }
-
-        // Verificar que el usuario sea de tipo "cliente"
-        if (user.user_type !== 'cliente') {
-            loggerUtils.logUserActivity(userId, 'account_deletion_failed', 'Intento no autorizado de eliminar una cuenta de tipo no cliente');
-            return res.status(403).json({ message: 'Solo los usuarios de tipo cliente pueden eliminar su propia cuenta.' });
-        }
-
-        // Eliminar el usuario y sus registros relacionados
-        await sequelize.transaction(async (transaction) => {
-            // Eliminar la cuenta del usuario
-            await Account.destroy({ where: { user_id: userId }, transaction });
-
-            // Eliminar el historial de contraseñas
-            await PasswordHistory.destroy({ where: { account_id: userId }, transaction });
-
-            // Eliminar los intentos fallidos de inicio de sesión
-            await FailedAttempt.destroy({ where: { user_id: userId }, transaction });
-
-            // Eliminar las sesiones activas del usuario
-            await Session.destroy({ where: { user_id: userId }, transaction });
-
-            // Eliminar las direcciones del usuario
-            await Address.destroy({ where: { user_id: userId }, transaction });
-
-            // Eliminar el usuario
-            await user.destroy({ transaction });
-        });
-
-        // Registrar la eliminación de la cuenta
-        loggerUtils.logUserActivity(userId, 'account_deletion', 'Cuenta eliminada exitosamente');
-
-        // Responder con éxito
-        res.status(200).json({ message: 'Tu cuenta y todos los registros relacionados han sido eliminados exitosamente.' });
-    } catch (error) {
-        loggerUtils.logCriticalError(error);
-        res.status(500).json({ message: 'Error al eliminar tu cuenta', error: error.message });
+  const userId = req.user.user_id;
+  try {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      loggerUtils.logUserActivity(userId, 'account_deletion_failed', 'Usuario no encontrado');
+      return res.status(404).json({ message: 'Usuario no encontrado' });
     }
+    if (user.user_type !== 'cliente') {
+      loggerUtils.logUserActivity(userId, 'account_deletion_failed', 'Intento no autorizado de eliminar una cuenta de tipo no cliente');
+      return res.status(403).json({ message: 'Solo los usuarios de tipo cliente pueden eliminar su propia cuenta.' });
+    }
+
+    await sequelize.transaction(async (transaction) => {
+      await userServices.deleteUserRelatedData(userId, transaction);
+      await user.destroy({ transaction });
+    });
+
+    loggerUtils.logUserActivity(userId, 'account_deletion', 'Cuenta eliminada exitosamente');
+    res.status(200).json({ message: 'Tu cuenta y todos los registros relacionados han sido eliminados exitosamente.' });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al eliminar tu cuenta', error: error.message });
+  }
 };
 
-// Eliminar todo lo relacionado con un usuario de tipo cliente (solo para administradores)
 exports.deleteCustomerAccount = [
-    // Validar y sanitizar entradas
-    body('id').isInt().withMessage('ID de usuario no válido.'),
+  body('id').isInt().withMessage('ID de usuario no válido.'),
 
-    async (req, res) => {
-        const userId = req.params.id;
+  async (req, res) => {
+    const userId = req.params.id;
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-        // Validar entradas
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+      if (user.user_type !== 'cliente') return res.status(403).json({ message: 'Solo los usuarios de tipo cliente pueden ser eliminados.' });
 
-        try {
-            const user = await User.findByPk(userId);
-            if (!user) {
-                return res.status(404).json({ message: 'Usuario no encontrado' });
-            }
+      await sequelize.transaction(async (transaction) => {
+        await userServices.deleteUserRelatedData(userId, transaction);
+        await user.destroy({ transaction });
+      });
 
-            if (user.user_type !== 'cliente') {
-                return res.status(403).json({ message: 'Solo los usuarios de tipo cliente pueden ser eliminados.' });
-            }
-
-            // Eliminar el usuario y sus registros relacionados
-            await sequelize.transaction(async (transaction) => {
-                // Eliminar la cuenta del usuario
-                await Account.destroy({ where: { user_id: userId }, transaction });
-
-                // Eliminar el historial de contraseñas
-                await PasswordHistory.destroy({ where: { account_id: userId }, transaction });
-
-                // Eliminar los intentos fallidos de inicio de sesión
-                await FailedAttempt.destroy({ where: { user_id: userId }, transaction });
-
-                // Eliminar las sesiones activas del usuario
-                await Session.destroy({ where: { user_id: userId }, transaction });
-
-                // Eliminar las direcciones del usuario
-                await Address.destroy({ where: { user_id: userId }, transaction });
-
-                // Eliminar el usuario
-                await user.destroy({ transaction });
-            });
-
-            res.status(200).json({ message: 'Cuenta de cliente eliminada exitosamente junto con todos los registros relacionados.' });
-        } catch (error) {
-            res.status(500).json({ message: 'Error al eliminar la cuenta de cliente', error: error.message });
-        }
+      res.status(200).json({ message: 'Cuenta de cliente eliminada exitosamente junto con todos los registros relacionados.' });
+    } catch (error) {
+      res.status(500).json({ message: 'Error al eliminar la cuenta de cliente', error: error.message });
     }
+  }
 ];
 
-//** ADMINISTRACIÓN DE USUARIOS (SOLO PARA ADMINISTRADORES)  **
-// Obtener todos los usuarios con la sesión más reciente (solo accesible por administradores)
+//** ADMINISTRACION DE USUARIOS (SOLO PARA ADMINISTRADORES) **
 exports.getAllUsersWithSessions = async (req, res) => {
-    try {
-        // Obtener todos los usuarios
-        const users = await User.findAll({
-            attributes: ['user_id', 'name', 'email', 'status', 'user_type'],
-            include: [{
-                model: Address,
-                where: { is_primary: true },
-                required: false
-            }]
-        });
+  try {
+    const users = await User.findAll({
+      attributes: ['user_id', 'name', 'email', 'status', 'user_type'],
+      include: [{ model: Address, where: { is_primary: true }, required: false }]
+    });
 
-        // Crear una lista de usuarios con su sesión activa más reciente o estado de sesión inactiva
-        const usersWithSessions = await Promise.all(users.map(async (user) => {
-            // Buscar las sesiones activas del usuario
-            const sessions = await Session.findAll({
-                where: { user_id: user.user_id, revoked: false },
-                order: [['last_activity', 'DESC']]
-            });
+    const usersWithSessions = await Promise.all(users.map(async (user) => {
+      const sessions = await Session.findAll({
+        where: { user_id: user.user_id, revoked: false },
+        order: [['last_activity', 'DESC']]
+      });
+      return {
+        user_id: user.user_id,
+        name: user.name,
+        email: user.email,
+        status: user.status,
+        address: user.Address,
+        session_active: sessions.length > 0,
+        ...(sessions.length > 0 && {
+          last_session: { last_activity: sessions[0].last_activity, browser: sessions[0].browser }
+        })
+      };
+    }));
 
-            // Si el usuario tiene al menos una sesión activa, devolver la más reciente
-            if (sessions.length > 0) {
-                return {
-                    user_id: user.user_id,
-                    name: user.name,
-                    email: user.email,
-                    status: user.status,
-                    address: user.Address,
-                    session_active: true,
-                    last_session: {
-                        last_activity: sessions[0].last_activity,
-                        browser: sessions[0].browser
-                    }
-                };
-            } else {
-                // Si no tiene sesiones activas, marcar como inactiva
-                return {
-                    user_id: user.user_id,
-                    name: user.name,
-                    email: user.email,
-                    status: user.status,
-                    address: user.Address,
-                    session_active: false
-                };
-            }
-        }));
-
-        // Devolver la lista de usuarios con sus respectivas sesiones
-        res.status(200).json(usersWithSessions);
-    } catch (error) {
-        res.status(500).json({ message: 'Error al obtener los usuarios y sesiones', error: error.message });
-    }
+    res.status(200).json(usersWithSessions);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener los usuarios y sesiones', error: error.message });
+  }
 };
 
-// Desactivar o bloquear una cuenta de usuario (solo para administradores)
 exports.deactivateAccount = [
-    // Validar y sanitizar entradas
-    body('userId').isInt().withMessage('ID de usuario no válido.'),
-    body('action').isIn(['block', 'suspend', 'activate']).withMessage('Acción inválida. Las acciones válidas son: block, suspend, activate'),
+  body('userId').isInt().withMessage('ID de usuario no válido.'),
+  body('action').isIn(['block', 'suspend', 'activate']).withMessage('Acción inválida. Las acciones válidas son: block, suspend, activate'),
 
-    async (req, res) => {
-        const { userId, action } = req.body;
-        const adminId = req.user.user_id;
+  async (req, res) => {
+    const { userId, action } = req.body;
+    const adminId = req.user.user_id;
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-        // Validar entradas
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+      if (user.user_id === adminId) return res.status(400).json({ message: 'No puedes desactivar o bloquear tu propia cuenta' });
 
-        try {
-            const user = await User.findByPk(userId);
-            if (!user) {
-                return res.status(404).json({ message: 'Usuario no encontrado' });
-            }
-
-            if (user.user_id === adminId) {
-                return res.status(400).json({ message: 'No puedes desactivar o bloquear tu propia cuenta' });
-            }
-
-            // Actualizar el estado de la cuenta según la acción
-            switch (action) {
-                case 'block':
-                    user.status = 'bloqueado';
-                    break;
-                case 'suspend':
-                    user.status = 'bloqueado_permanente';
-                    break;
-                case 'activate':
-                    user.status = 'activo';
-                    break;
-                default:
-                    return res.status(400).json({ message: 'Acción no reconocida' });
-            }
-
-            await user.save();
-            res.status(200).json({ message: `Cuenta ${action} exitosamente`, user });
-        } catch (error) {
-            res.status(500).json({ message: `Error al ${action} la cuenta del usuario`, error: error.message });
-        }
+      user.status = action === 'block' ? 'bloqueado' : action === 'suspend' ? 'bloqueado_permanente' : 'activo';
+      await user.save();
+      res.status(200).json({ message: `Cuenta ${action} exitosamente`, user });
+    } catch (error) {
+      res.status(500).json({ message: `Error al ${action} la cuenta del usuario`, error: error.message });
     }
+  }
 ];
