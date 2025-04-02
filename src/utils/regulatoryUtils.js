@@ -38,16 +38,17 @@ async function processUploadedFile(fileBuffer) {
     content = he.decode(content);
   }
 
-  return content;
+  return content.trim(); // Aseguramos que no haya espacios innecesarios
 }
 
 // Obtener la siguiente versión
 async function getNextVersion(document_id) {
   const lastVersion = await DocumentVersion.findOne({
-    where: { document_id },
+    where: { document_id, deleted: false }, // Solo versiones no eliminadas
     order: [['version', 'DESC']],
   });
-  return lastVersion ? (parseFloat(lastVersion.version) + 1.0).toFixed(1) : '1.0';
+  const lastVersionNumber = lastVersion ? parseFloat(lastVersion.version) : 0;
+  return (lastVersionNumber + 1.0).toFixed(1);
 }
 
 // Actualizar versión activa
