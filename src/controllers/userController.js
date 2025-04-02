@@ -189,7 +189,21 @@ exports.deactivateAccount = [
       if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
       if (user.user_id === adminId) return res.status(400).json({ message: 'No puedes desactivar o bloquear tu propia cuenta' });
 
-      user.status = action === 'block' ? 'bloqueado' : action === 'suspend' ? 'bloqueado_permanente' : 'activo';
+      // Reemplazo del ternario anidado por un switch
+      switch (action) {
+        case 'block':
+          user.status = 'bloqueado';
+          break;
+        case 'suspend':
+          user.status = 'bloqueado_permanente';
+          break;
+        case 'activate':
+          user.status = 'activo';
+          break;
+        default:
+          return res.status(400).json({ message: 'Acción no reconocida' });
+      }
+
       await user.save();
       res.status(200).json({ message: `Cuenta ${action} exitosamente`, user });
     } catch (error) {
