@@ -4,6 +4,13 @@ const { RegulatoryDocument, DocumentVersion } = require('../models/Associations'
 const loggerUtils = require('../utils/loggerUtils');
 const { processUploadedFile, getNextVersion, updateActiveVersion, handleError } = require('../utils/regulatoryUtils');
 
+// Determina el estado de una versión de manera clara
+const getVersionStatus = (version) => {
+  if (version.deleted) return 'Eliminado';
+  if (version.active) return 'Vigente';
+  return 'Histórico';
+};
+
 // Crear nuevo documento regulatorio
 exports.createRegulatoryDocument = async (req, res) => {
   const { title, effective_date } = req.body;
@@ -62,7 +69,9 @@ exports.deleteRegulatoryDocumentVersion = async (req, res) => {
   const { document_id, version_id } = req.params;
   try {
     const version = await DocumentVersion.findByPk(version_id);
-    if (!version) return res.status(404).json({ message: 'Versión no encontrada' });
+    if (!version || version.document_id !== parseInt(document_id)) {
+      return res.status(404).json({ message: 'Versión no encontrada o no pertenece al documento' });
+    }
 
     await version.update({ deleted: true, active: false });
     const lastValidVersion = await DocumentVersion.findOne({
@@ -70,7 +79,7 @@ exports.deleteRegulatoryDocumentVersion = async (req, res) => {
       order: [['version', 'DESC']],
     });
 
-    if (!lastValidVersion) return res.status(400).json({ message: 'No hay versiones válidas' });
+    if (!lastValidVersion) return res.status(400).json({ message: 'No hay versiones válidas restantes' });
 
     await lastValidVersion.update({ active: true });
     await RegulatoryDocument.update({ current_version: lastValidVersion.version }, { where: { document_id } });
@@ -92,6 +101,9 @@ exports.updateRegulatoryDocument = async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No se ha subido ningún archivo' });
 
   try {
+    const document = await RegulatoryDocument.findByPk(document_id);
+    if (!document || document.deleted) return res.status(404).json({ message: 'Documento no encontrado o eliminado' });
+
     const content = await processUploadedFile(req.file.buffer);
     const newVersion = await getNextVersion(document_id);
     await updateActiveVersion(document_id, newVersion, content, effective_date);
@@ -188,7 +200,7 @@ exports.getDocumentById = async (req, res) => {
       version: version.version,
       content: version.content,
       created_at: version.created_at,
-      status: version.deleted ? 'Eliminado' : (version.active ? 'Vigente' : 'Histórico'),
+      status: getVersionStatus(version), // Uso de la función auxiliar
     }));
 
     const response = {
