@@ -6,10 +6,28 @@ const loggerUtils = require('../utils/loggerUtils');
 const { User, FailedAttempt } = require('../models/Associations');
 const Config = require('../models/Systemconfig');
 
-// Función auxiliar para manejar errores
-const handleError = (res, error, message = 'Error procesando solicitud') => {
+// Middleware de validación para updateTokenLifetime
+const validateSecurityConfig = [
+  body('jwt_lifetime').optional().isInt({ min: 300, max: 2592000 }).withMessage('JWT: 5min a 30días').toInt(),
+  body('email_verification_lifetime').optional().isInt({ min: 300, max: 2592000 }).withMessage('Verificación email: 5min a 30días').toInt(),
+  body('otp_lifetime').optional().isInt({ min: 60, max: 1800 }).withMessage('OTP: 1 a 30min').toInt(),
+  body('session_lifetime').optional().isInt({ min: 300, max: 2592000 }).withMessage('Sesión: 5min a 30días').toInt(),
+  body('cookie_lifetime').optional().isInt({ min: 300, max: 2592000 }).withMessage('Cookie: 5min a 30días').toInt(),
+  body('expiration_threshold_lifetime').optional().isInt({ min: 60, max: 1800 }).withMessage('Expiration Threshold: 1 a 30min').toInt(),
+  body('max_failed_login_attempts').optional().isInt({ min: 3, max: 10 }).withMessage('Intentos fallidos: 3-10').toInt(),
+  body('max_blocks_in_n_days').optional().isInt({ min: 1, max: 10 }).withMessage('Bloqueos máximos: 1-10').toInt(),
+  body('block_period_days').optional().isInt({ min: 1, max: 365 }).withMessage('Periodo bloqueo: 1-365 días').toInt(),
+];
+
+// Función auxiliar para manejar errores y respuestas
+const sendErrorResponse = (res, error, message = 'Error procesando solicitud') => {
   loggerUtils.logCriticalError(error);
   res.status(500).json({ message, error: error.message });
+};
+
+// Función auxiliar para manejar respuestas exitosas
+const sendSuccessResponse = (res, message, data = {}) => {
+  res.status(200).json({ message, ...data });
 };
 
 // Función auxiliar para registrar actividad
@@ -23,59 +41,21 @@ exports.getFailedLoginAttempts = async (req, res) => {
 
   try {
     const { clientes, administradores } = await incidentUtils.getFailedAttemptsData(periodo);
-    
     loggerUtils.logSecurityEvent(
-      req.user?.user_id || 'admin', 
-      'failed-login-attempts', 
-      'view', 
+      req.user?.user_id || 'admin',
+      'failed-login-attempts',
+      'view',
       `Consulta de intentos fallidos en periodo ${periodo}`
     );
-
-    res.status(200).json({ clientes, administradores });
+    sendSuccessResponse(res, 'Intentos fallidos obtenidos', { clientes, administradores });
   } catch (error) {
-    handleError(res, error, 'Error obteniendo intentos fallidos');
+    sendErrorResponse(res, error, 'Error obteniendo intentos fallidos');
   }
 };
 
 // Actualizar configuración de seguridad
 exports.updateTokenLifetime = [
-  body('jwt_lifetime')
-    .optional()
-    .isInt({ min: 300, max: 2592000 }).withMessage('JWT: 5min a 30días')
-    .toInt(),
-  body('email_verification_lifetime')
-    .optional()
-    .isInt({ min: 300, max: 2592000 }).withMessage('Verificación email: 5min a 30días')
-    .toInt(),
-  body('otp_lifetime')
-    .optional()
-    .isInt({ min: 60, max: 1800 }).withMessage('OTP: 1 a 30min')
-    .toInt(),
-  body('session_lifetime')
-    .optional()
-    .isInt({ min: 300, max: 2592000 }).withMessage('Sesión: 5min a 30días')
-    .toInt(),
-  body('cookie_lifetime')
-    .optional()
-    .isInt({ min: 300, max: 2592000 }).withMessage('Cookie: 5min a 30días')
-    .toInt(),
-  body('expiration_threshold_lifetime')
-    .optional()
-    .isInt({ min: 60, max: 1800 }).withMessage('Expiration Threshold: 1 a 30min')
-    .toInt(),
-  body('max_failed_login_attempts')
-    .optional()
-    .isInt({ min: 3, max: 10 }).withMessage('Intentos fallidos: 3-10')
-    .toInt(),
-  body('max_blocks_in_n_days')
-    .optional()
-    .isInt({ min: 1, max: 10 }).withMessage('Bloqueos máximos: 1-10')
-    .toInt(),
-  body('block_period_days')
-    .optional()
-    .isInt({ min: 1, max: 365 }).withMessage('Periodo bloqueo: 1-365 días')
-    .toInt(),
-
+  validateSecurityConfig,
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -90,8 +70,10 @@ exports.updateTokenLifetime = [
         'expiration_threshold_lifetime',
         'max_failed_login_attempts',
         'max_blocks_in_n_days',
-        'block_period_days'
-      ].map(field => [field, req.body[field]]).filter(([_, value]) => value !== undefined)
+        'block_period_days',
+      ]
+        .map(field => [field, req.body[field]])
+        .filter(([_, value]) => value !== undefined)
     );
 
     if (!Object.keys(updateFields).length) {
@@ -107,13 +89,9 @@ exports.updateTokenLifetime = [
       if (!created) await config.update(updateFields);
 
       logActivity(req.user?.user_id, 'update', 'Configuración de seguridad actualizada');
-
-      res.status(200).json({
-        message: 'Configuración actualizada',
-        config: config.get({ plain: true }),
-      });
+      sendSuccessResponse(res, 'Configuración actualizada', { config: config.get({ plain: true }) });
     } catch (error) {
-      handleError(res, error, 'Error actualizando configuración');
+      sendErrorResponse(res, error, 'Error actualizando configuración');
     }
   },
 ];
@@ -133,10 +111,9 @@ exports.adminUnlockUser = async (req, res) => {
     await FailedAttempt.update({ is_resolved: true }, { where: { user_id } });
 
     logActivity(req.user.user_id, 'admin_unlock', `Usuario ${user_id} desbloqueado`);
-
-    res.status(200).json({ message: 'Usuario desbloqueado exitosamente' });
+    sendSuccessResponse(res, 'Usuario desbloqueado exitosamente');
   } catch (error) {
-    handleError(res, error, 'Error desbloqueando usuario');
+    sendErrorResponse(res, error, 'Error desbloqueando usuario');
   }
 };
 
@@ -146,8 +123,8 @@ exports.getConfig = async (req, res) => {
     const config = await Config.findOne();
     if (!config) return res.status(404).json({ message: 'No se encontró ninguna configuración' });
 
-    res.status(200).json({ config });
+    sendSuccessResponse(res, 'Configuración obtenida', { config });
   } catch (error) {
-    handleError(res, error, 'Error al obtener la configuración');
+    sendErrorResponse(res, error, 'Error al obtener la configuración');
   }
 };
