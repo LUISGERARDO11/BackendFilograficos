@@ -35,33 +35,63 @@ const authMiddleware = async (req, res, next) => {
       const jwtLifetimeMs = config.jwt_lifetime * 1000; // 15 minutos en ms
 
       const now = Date.now();
-
-      // Verificar inactividad
+      const sessionExpiration = new Date(session.expiration).getTime();
+      const timeToExpiration = sessionExpiration - now;
       const inactivityTime = now - new Date(session.last_activity).getTime();
+
+      // Crear el objeto user para generateJWT
+      const user = {
+        user_id: decoded.user_id,
+        user_type: decoded.user_type,
+      };
+
+      // 1. Verificar si estamos dentro del umbral de extensión y hay actividad reciente
+      if (timeToExpiration <= sessionExtensionThreshold && timeToExpiration > 0) {
+        // Extender la sesión si hay una petición dentro del umbral
+        const newExpiration = new Date(now + sessionLifetime);
+        await session.update({ expiration: newExpiration, last_activity: new Date(now) });
+
+        // Verificar si el JWT necesita rotación
+        const tokenExp = decoded.exp * 1000; // exp en milisegundos
+        const timeToTokenExpiration = tokenExp - now;
+        if (timeToTokenExpiration < sessionExtensionThreshold) {
+          // Generar un nuevo JWT usando el objeto user
+          const newToken = await authService.generateJWT(user);
+
+          // Actualizar la sesión con el nuevo token
+          await session.update({ token: newToken });
+
+          // Actualizar la cookie con el nuevo token
+          res.cookie("token", newToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "None",
+            maxAge: jwtLifetimeMs,
+          });
+
+          req.token = newToken; // Pasar el nuevo token al siguiente middleware
+        } else {
+          req.token = token; // Mantener el token original
+        }
+
+        return next(); // Continuar con el siguiente middleware
+      }
+
+      // 2. Verificar inactividad si no estamos en el umbral de extensión
       if (inactivityTime > maxInactivityTime) {
         await session.update({ revoked: true });
         return res.status(401).json({ message: "Sesión expirada por inactividad. Por favor, inicia sesión nuevamente." });
       }
 
-      // Verificar si la sesión necesita extensión
-      const timeToExpiration = new Date(session.expiration).getTime() - now;
-      if (timeToExpiration < sessionExtensionThreshold) {
-        const newExpiration = new Date(now + sessionLifetime);
-        await session.update({ expiration: newExpiration });
-      }
-
-      // Actualizar last_activity
+      // 3. Actualizar last_activity si la sesión sigue activa
       await session.update({ last_activity: new Date(now) });
 
-      // Verificar si el JWT necesita rotación
-      const tokenExp = decoded.exp * 1000; // exp está en segundos, convertir a ms
+      // 4. Verificar si el JWT necesita rotación (fuera del umbral de extensión)
+      const tokenExp = decoded.exp * 1000;
       const timeToTokenExpiration = tokenExp - now;
       if (timeToTokenExpiration < sessionExtensionThreshold) {
-        // Generar un nuevo JWT
-        const newToken = await authService.generateJWT({
-          user_id: decoded.user_id,
-          user_type: decoded.user_type,
-        });
+        // Generar un nuevo JWT usando el objeto user
+        const newToken = await authService.generateJWT(user);
 
         // Actualizar la sesión con el nuevo token
         await session.update({ token: newToken });
@@ -74,9 +104,9 @@ const authMiddleware = async (req, res, next) => {
           maxAge: jwtLifetimeMs,
         });
 
-        req.token = newToken; // Pasar el nuevo token al siguiente middleware
+        req.token = newToken;
       } else {
-        req.token = token; // Mantener el token original
+        req.token = token;
       }
 
       next(); // Continuar con el siguiente middleware
