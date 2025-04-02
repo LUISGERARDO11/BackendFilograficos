@@ -35,16 +35,16 @@ exports.verifyPassword = async (password, hashedPassword) => {
 // Generar JWT
 exports.generateJWT = async (user) => {
   const config = await Config.findOne({ where: { config_id: 1 } });
-  const jwtLifetime = config?.jwt_lifetime || 3600;
-  
+  const jwtLifetime = config?.jwt_lifetime || 900; // 15 minutos por defecto en segundos
+
   return jwt.sign(
     { user_id: user.user_id, user_type: user.user_type },
     process.env.JWT_SECRET,
-    { expiresIn: jwtLifetime }
+    { expiresIn: jwtLifetime } // Usar jwt_lifetime directamente en segundos
   );
 };
 
-// Verificar JWT (refactorizado para devolver siempre un objeto)
+// Verificar JWT
 exports.verifyJWT = (token) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -67,7 +67,6 @@ exports.handleFailedAttempt = async (user_id, ip) => {
       })
     ]);
 
-    // Usar encadenamiento opcional para verificar account.User
     if (!account?.User) {
       await transaction.rollback();
       return { locked: false, message: 'Cuenta no encontrada.' };
@@ -138,7 +137,6 @@ exports.handleFailedAttempt = async (user_id, ip) => {
     await transaction.commit();
     loggerUtils.logUserActivity(user_id, 'login_failed', `Intento fallido ${failedAttempt.attempts}/${MAX_FAILED_ATTEMPTS}`);
     return { locked: false, message: 'Intento fallido registrado.' };
-
   } catch (error) {
     await transaction.rollback();
     throw new Error(`Error en intentos fallidos: ${error.message}`);
@@ -178,7 +176,7 @@ exports.forcePasswordRotation = async (accountId) => {
   }
 };
 
-// Verificar si usuario está bloqueado (refactorizado para evitar ternarios anidados)
+// Verificar si usuario está bloqueado
 exports.isUserBlocked = async (userId) => {
   const user = await User.findByPk(userId);
   if (!user) return { blocked: false, message: "Usuario no encontrado." };

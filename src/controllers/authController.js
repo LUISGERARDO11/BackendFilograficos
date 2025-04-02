@@ -8,8 +8,8 @@ const authService = require('../services/authService');
 const EmailService = require('../services/emailService');
 const loggerUtils = require('../utils/loggerUtils');
 const authUtils = require('../utils/authUtils');
+const verifyRecaptcha = require('../utils/googleUtils'); // Importar verifyRecaptcha
 const crypto = require('crypto');
-const axios = require('axios');
 require('dotenv').config();
 
 // Instanciamos el servicio de email
@@ -71,7 +71,7 @@ exports.register = [
       // Crear las preferencias de comunicación por defecto
       await CommunicationPreference.create({
         user_id: newUser.user_id,
-        methods: ['email']
+        methods: ['email'],
       });
 
       // Generar token de verificación
@@ -90,10 +90,9 @@ exports.register = [
 
       // Asigna la fecha de expiración correctamente
       newUser.email_verification_expiration = new Date(Date.now() + verificationLifetime);
-      newUser.email_verification_token = verificationToken; // Guardamos el token en la base de datos
+      newUser.email_verification_token = verificationToken;
       await newUser.save();
 
-      // Enviar correo de verificación
       const emailResult = await emailService.sendVerificationEmail(newUser.email, verificationToken);
       if (!emailResult.success) {
         loggerUtils.logUserActivity(newUser.user_id, 'email_verification_failed', `Fallo al enviar correo de verificación a ${newUser.email}`);
@@ -103,9 +102,7 @@ exports.register = [
         });
       }
 
-      // Registrar actividad de creación de usuario
       loggerUtils.logUserActivity(newUser.user_id, 'account_creation', 'Usuario registrado exitosamente');
-
       res.status(201).json({
         message: 'Usuario registrado exitosamente',
         user: newUser,
@@ -117,236 +114,196 @@ exports.register = [
     }
   },
 ];
+
 // Verificar el correo electrónico del usuario
 exports.verifyEmail = async (req, res) => {
-    const { token } = req.query;
+  const { token } = req.query;
 
-    try {
-        // Buscar al usuario con el token de verificación
-        const user = await User.findOne({
-            where: {
-                email_verification_token: token,
-                email_verification_expiration: { [Op.gt]: Date.now() } // Verificar que el token no ha expirado
-            }
-        });
+  try {
+    const user = await User.findOne({
+      where: {
+        email_verification_token: token,
+        email_verification_expiration: { [Op.gt]: Date.now() },
+      },
+    });
 
-        if (!user) {
-            return res.status(400).json({ message: 'Token inválido o expirado.' });
-        }
-
-        // Activar la cuenta del usuario
-        user.status = 'activo';
-        user.email_verification_token = null; // Limpiar el token
-        user.email_verification_expiration = null;
-        await user.save();
-
-        // Redirigir al usuario a la página de inicio de sesión del frontend
-        const baseUrls = {
-            development: ['http://localhost:3000', 'http://localhost:4200', 'http://127.0.0.1:4200', 'http://127.0.0.1:3000'],
-            production: ['https://web-filograficos.vercel.app']
-        };
-
-        const currentEnv = baseUrls[process.env.NODE_ENV] ? process.env.NODE_ENV : 'development';
-        const loginUrl = `${baseUrls[currentEnv][0]}/login`;
-
-        res.redirect(loginUrl);
-
-    } catch (error) {
-        res.status(500).json({ message: 'Error al verificar el correo', error: error.message });
+    if (!user) {
+      return res.status(400).json({ message: 'Token inválido o expirado.' });
     }
+
+    user.status = 'activo';
+    user.email_verification_token = null;
+    user.email_verification_expiration = null;
+    await user.save();
+
+    const baseUrls = {
+      development: ['http://localhost:3000', 'http://localhost:4200', 'http://127.0.0.1:4200', 'http://127.0.0.1:3000'],
+      production: ['https://web-filograficos.vercel.app'],
+    };
+
+    const currentEnv = baseUrls[process.env.NODE_ENV] ? process.env.NODE_ENV : 'development';
+    const loginUrl = `${baseUrls[currentEnv][0]}/login`;
+
+    res.redirect(loginUrl);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al verificar el correo', error: error.message });
+  }
 };
 
 // Inicio de sesión
 exports.login = [
-    // Validar y sanitizar entradas
-    body('email').isEmail().normalizeEmail(),
-    body('password').not().isEmpty().trim().escape(),
-    body('recaptchaToken').not().isEmpty().withMessage('Se requiere el token de reCAPTCHA'),
+  body('email').isEmail().normalizeEmail(),
+  body('password').not().isEmpty().trim().escape(),
+  body('recaptchaToken').not().isEmpty().withMessage('Se requiere el token de reCAPTCHA'),
 
-    async (req, res) => {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
-
-        const { email, password, recaptchaToken } = req.body;
-
-        try {
-            // 1. Verificar el token de reCAPTCHA con la API de Google
-            const recaptchaSecretKey = process.env.RECAPTCHA_SECRET_KEY;
-            const recaptchaResponse = await axios.post(`https://www.google.com/recaptcha/api/siteverify`, null, {
-                params: {
-                    secret: recaptchaSecretKey,
-                    response: recaptchaToken
-                }
-            });
-
-            const { success, score } = recaptchaResponse.data;
-            if (!success || score < 0.5) {
-                return res.status(400).json({ message: 'Fallo en la verificación de reCAPTCHA' });
-            }
-
-            // Buscar al usuario y su cuenta vinculada
-            const user = await User.findOne({ where: { email } });
-            if (!user) {
-                loggerUtils.logUserActivity(null, 'login_failed', `Intento de inicio de sesión fallido para email no encontrado: ${email}`);
-                return res.status(400).json({ message: 'Usuario no encontrado' });
-            }
-
-            // Verificar si el estado del usuario es "pendiente"
-            if (user.status === 'pendiente') {
-                loggerUtils.logUserActivity(user.user_id, 'login_failed', 'Intento de inicio de sesión con cuenta pendiente de verificación');
-                return res.status(403).json({ message: 'Debes verificar tu correo electrónico antes de iniciar sesión.' });
-            }
-
-            const account = await Account.findOne({ where: { user_id: user.user_id } });
-            if (!account) {
-                loggerUtils.logUserActivity(user.user_id, 'login_failed', 'Intento de inicio de sesión fallido: cuenta no encontrada');
-                return res.status(400).json({ message: 'Cuenta no encontrada' });
-            }
-
-            // Verificar si el usuario está bloqueado usando el servicio actualizado
-            const bloqueado = await authService.isUserBlocked(user.user_id);
-            if (bloqueado.blocked) {
-                loggerUtils.logUserActivity(user.user_id, 'login_failed', `Cuenta bloqueada: ${bloqueado.message}`);
-                return res.status(403).json({ message: bloqueado.message });
-            }
-
-            // Verificar la contraseña utilizando el servicio
-            const isMatch = await authService.verifyPassword(password, account.password_hash);
-            if (!isMatch) {
-                // Manejar el intento fallido
-                const result = await authService.handleFailedAttempt(user.user_id, req.ip);
-                if (result.locked) {
-                    loggerUtils.logUserActivity(user.user_id, 'account_locked', 'Cuenta bloqueada por intentos fallidos');
-                    return res.status(403).json({ locked: true, message: 'Tu cuenta ha sido bloqueada debido a múltiples intentos fallidos. Debes cambiar tu contraseña.' });
-                }
-                return res.status(400).json({ message: 'Credenciales incorrectas', ...result });
-            }
-
-            // Limpiar los intentos fallidos si el inicio de sesión fue exitoso
-            await authService.clearFailedAttempts(user.user_id);
-
-            // **2. Limitar el número de sesiones activas**
-            const activeSessionsCount = await Session.count({ where: { user_id: user.user_id, revoked: false } });
-
-            if (user.user_type === 'cliente' && activeSessionsCount >= 5) {
-                loggerUtils.logUserActivity(user.user_id, 'login_failed', 'Límite de sesiones activas alcanzado');
-                return res.status(403).json({ message: 'Límite de sesiones activas alcanzado (5 sesiones permitidas).' });
-            }
-
-            if (user.user_type === 'administrador' && activeSessionsCount >= 2) {
-                loggerUtils.logUserActivity(user.user_id, 'login_failed', 'Límite de sesiones activas alcanzado');
-                return res.status(403).json({ message: 'Límite de sesiones activas alcanzado (2 sesiones permitidas para administradores).' });
-            }
-
-            const mfaConfig = await TwoFactorConfig.findOne({ where: { account_id: account.account_id } });
-
-            if (mfaConfig && mfaConfig.enabled) {
-                return res.status(200).json({
-                    message: 'MFA requerido. Se ha enviado un código de autenticación.',
-                    mfaRequired: true,
-                    userId: user.user_id
-                });
-            }
-
-            // Si MFA no está habilitado, Generar el JWT utilizando el servicio
-            const token = await authService.generateJWT(user);
-
-            // Buscar el tiempo de vida de la sesión
-            const config = await Config.findOne();
-            const sesionLifetime = config ? config.session_lifetime * 1000 : 3600000; // 1 hora por defecto
-
-            // Guardar la sesión
-            const newSession = await Session.create({
-                user_id: user.user_id,
-                token,
-                last_activity: new Date(),
-                expiration: new Date(Date.now() + sesionLifetime),
-                ip: req.ip,
-                browser: req.headers['user-agent'],
-                revoked: false
-            });
-
-            // Registrar el inicio de sesión exitoso
-            loggerUtils.logUserActivity(user.user_id, 'login', 'Inicio de sesión exitoso');
-
-            const cookieLifetime = config ? config.cookie_lifetime * 1000 : 3600000;
-
-            // Establecer la cookie con el token
-            res.cookie('token', token, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: 'None',
-                maxAge: cookieLifetime // 1 hora
-            });
-
-            res.status(200).json({ userId: user.user_id, tipo: user.user_type, message: 'Inicio de sesión exitoso' });
-        } catch (error) {
-            loggerUtils.logCriticalError(error);
-            res.status(500).json({ message: 'Error en el inicio de sesión', error: error.message });
-        }
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
     }
-];
 
-// Cerrar sesión del usuario (elimina el token de la sesión actual)
-exports.logout = async (req, res) => {
-    const token = req.cookies.token; // Obtener el token de la cookie
-  
-    if (!token) {
-      return res.status(401).json({ 
-        message: "No se proporcionó un token. Ya estás cerrado sesión o nunca iniciaste sesión." 
-      });
-    }
-  
+    const { email, password, recaptchaToken } = req.body;
+
     try {
-      // Obtener el ID del usuario autenticado del middleware
-      const userId = req.user ? req.user.user_id : null;
-  
-      if (!userId) {
-        return res.status(400).json({ message: "Usuario no autenticado." });
+      // Verificar reCAPTCHA usando googleUtils
+      const recaptchaValid = await verifyRecaptcha(recaptchaToken, res);
+      if (!recaptchaValid) {
+        return; // La función ya envía la respuesta de error
       }
-  
-      // Buscar la sesión correspondiente al token actual
-      const session = await Session.findOne({ 
-        where: { 
-          user_id: userId, 
-          token: token 
-        } 
+
+      const user = await User.findOne({ where: { email } });
+      if (!user) {
+        loggerUtils.logUserActivity(null, 'login_failed', `Intento de inicio de sesión fallido para email no encontrado: ${email}`);
+        return res.status(400).json({ message: 'Usuario no encontrado' });
+      }
+
+      if (user.status === 'pendiente') {
+        loggerUtils.logUserActivity(user.user_id, 'login_failed', 'Intento de inicio de sesión con cuenta pendiente de verificación');
+        return res.status(403).json({ message: 'Debes verificar tu correo electrónico antes de iniciar sesión.' });
+      }
+
+      const account = await Account.findOne({ where: { user_id: user.user_id } });
+      if (!account) {
+        loggerUtils.logUserActivity(user.user_id, 'login_failed', 'Intento de inicio de sesión fallido: cuenta no encontrada');
+        return res.status(400).json({ message: 'Cuenta no encontrada' });
+      }
+
+      const bloqueado = await authService.isUserBlocked(user.user_id);
+      if (bloqueado.blocked) {
+        loggerUtils.logUserActivity(user.user_id, 'login_failed', `Cuenta bloqueada: ${bloqueado.message}`);
+        return res.status(403).json({ message: bloqueado.message });
+      }
+
+      const isMatch = await authService.verifyPassword(password, account.password_hash);
+      if (!isMatch) {
+        const result = await authService.handleFailedAttempt(user.user_id, req.ip);
+        if (result.locked) {
+          loggerUtils.logUserActivity(user.user_id, 'account_locked', 'Cuenta bloqueada por intentos fallidos');
+          return res.status(403).json({ locked: true, message: 'Tu cuenta ha sido bloqueada debido a múltiples intentos fallidos. Debes cambiar tu contraseña.' });
+        }
+        return res.status(400).json({ message: 'Credenciales incorrectas', ...result });
+
+      }
+
+      await authService.clearFailedAttempts(user.user_id);
+
+      const activeSessionsCount = await Session.count({ where: { user_id: user.user_id, revoked: false } });
+      if (user.user_type === 'cliente' && activeSessionsCount >= 5) {
+        loggerUtils.logUserActivity(user.user_id, 'login_failed', 'Límite de sesiones activas alcanzado');
+        return res.status(403).json({ message: 'Límite de sesiones activas alcanzado (5 sesiones permitidas).' });
+      }
+      if (user.user_type === 'administrador' && activeSessionsCount >= 2) {
+        loggerUtils.logUserActivity(user.user_id, 'login_failed', 'Límite de sesiones activas alcanzado');
+        return res.status(403).json({ message: 'Límite de sesiones activas alcanzado (2 sesiones permitidas para administradores).' });
+      }
+
+      const mfaConfig = await TwoFactorConfig.findOne({ where: { account_id: account.account_id } });
+      if (mfaConfig && mfaConfig.enabled) {
+        return res.status(200).json({
+          message: 'MFA requerido. Se ha enviado un código de autenticación.',
+          mfaRequired: true,
+          userId: user.user_id,
+        });
+      }
+
+      const token = await authService.generateJWT(user);
+      const config = await Config.findOne();
+      const sessionLifetime = config?.session_lifetime * 1000 || 900000; // 15 minutos por defecto
+      const cookieLifetime = config?.cookie_lifetime * 1000 || 900000; // 15 minutos por defecto
+
+      const newSession = await Session.create({
+        user_id: user.user_id,
+        token,
+        last_activity: new Date(),
+        expiration: new Date(Date.now() + sessionLifetime),
+        ip: req.ip,
+        browser: req.headers['user-agent'],
+        revoked: false,
       });
-  
-      if (!session) {
-        return res.status(404).json({ message: 'Sesión no encontrada.' });
-      }
-  
-      // Validar si la sesión ya fue cerrada/revocada
-      if (session.revoked) {
-        return res.status(400).json({ message: 'La sesión ya fue cerrada anteriormente.' });
-      }
-  
-      // Marcar la sesión como revocada
-      session.revoked = true;
-      await session.save();
-  
-      // Limpiar la cookie del token para cerrar la sesión del usuario
-      res.clearCookie('token', {
+
+      loggerUtils.logUserActivity(user.user_id, 'login', 'Inicio de sesión exitoso');
+
+      res.cookie('token', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'None',
+        maxAge: cookieLifetime, // 15 minutos
       });
-  
-      // Responder con un mensaje de éxito
-      res.status(200).json({ message: 'Sesión cerrada exitosamente.' });
-    } catch (error) {
-      return res.status(500).json({ 
-        message: 'Error al cerrar sesión', 
-        error: error.message 
-      });
-    }
-  };
 
-//** SEGURIDAD Y AUTENTICACIÓN MULTIFACTOR **
-// Inicia el proceso para autenticacion en dos pasos
+      res.status(200).json({ userId: user.user_id, tipo: user.user_type, message: 'Inicio de sesión exitoso' });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error en el inicio de sesión', error: error.message });
+    }
+  },
+];
+
+// Cerrar sesión del usuario
+exports.logout = async (req, res) => {
+  const token = req.cookies.token;
+
+  if (!token) {
+    return res.status(401).json({
+      message: 'No se proporcionó un token. Ya estás cerrado sesión o nunca iniciaste sesión.',
+    });
+  }
+
+  try {
+    const userId = req.user ? req.user.user_id : null;
+    if (!userId) {
+      return res.status(400).json({ message: 'Usuario no autenticado.' });
+    }
+
+    const session = await Session.findOne({
+      where: { user_id: userId, token },
+    });
+
+    if (!session) {
+      return res.status(404).json({ message: 'Sesión no encontrada.' });
+    }
+
+    if (session.revoked) {
+      return res.status(400).json({ message: 'La sesión ya fue cerrada anteriormente.' });
+    }
+
+    await session.update({ revoked: true });
+
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'None',
+    });
+
+    res.status(200).json({ message: 'Sesión cerrada exitosamente.' });
+  } catch (error) {
+    return res.status(500).json({
+      message: 'Error al cerrar sesión',
+      error: error.message,
+    });
+  }
+};
+
+// ** SEGURIDAD Y AUTENTICACIÓN MULTIFACTOR **
 exports.sendOtpMfa = async (req, res) => {
   const { userId } = req.body;
 
@@ -363,7 +320,7 @@ exports.sendOtpMfa = async (req, res) => {
 
     // Obtener la configuración de tiempo de vida del OTP desde la base de datos
     const config = await Config.findOne();
-    const otpLifetime = config ? config.otp_lifetime * 1000 : 15 * 60 * 1000;
+    const otpLifetime = config?.otp_lifetime * 1000 || 15 * 60 * 1000;
 
     // Generar OTP y definir expiración
     const otp = authUtils.generateOTP();
@@ -411,99 +368,86 @@ exports.sendOtpMfa = async (req, res) => {
   }
 };
 
-//Verificar el codigo mfa 
+// Verificar el código MFA
 exports.verifyOTPMFA = async (req, res) => {
-    const { userId, otp } = req.body;
+  const { userId, otp } = req.body;
 
-    try {
-        // Buscar usuario y cuenta asociada
-        const user = await User.findByPk(userId);
-        if (!user) {
-            return res.status(404).json({ message: 'Usuario no encontrado.' });
-        }
-
-        const account = await Account.findOne({ where: { user_id: user.user_id } });
-        if (!account) {
-            return res.status(404).json({ message: 'Cuenta no encontrada.' });
-        }
-
-        // Obtener configuración 2FA
-        const twoFactorConfig = await TwoFactorConfig.findOne({
-            where: { account_id: account.account_id }
-        });
-
-        // Verificar si la configuración 2FA existe y es válida
-        if (!twoFactorConfig || !twoFactorConfig.is_valid || new Date() > twoFactorConfig.code_expires) {
-            return res.status(400).json({ message: 'El código OTP ha expirado o es inválido.' });
-        }
-
-        // Verificar si el código OTP está definido
-        if (!twoFactorConfig.code) {
-            return res.status(400).json({ message: 'El código OTP no está configurado.' });
-        }
-
-        // Normalizar el código OTP ingresado y almacenado
-        const inputOtp = otp.trim().toUpperCase(); // Normalizar el código OTP ingresado
-        const storedOtp = twoFactorConfig.code.trim().toUpperCase(); // Normalizar el código OTP almacenado
-
-        // Verificar código
-        if (inputOtp !== storedOtp) {
-            const newAttempts = twoFactorConfig.attempts + 1;
-            const remainingAttempts = 3 - newAttempts;
-            
-            await twoFactorConfig.update({
-                attempts: newAttempts,
-                is_valid: newAttempts >= 3 ? false : twoFactorConfig.is_valid
-            });
-
-            return res.status(400).json({ 
-                message: `OTP incorrecto. Intentos restantes: ${remainingAttempts}.`,
-                attemptsRemaining: remainingAttempts
-            });
-        }
-
-        // Invalidar código después de uso exitoso
-        await twoFactorConfig.update({
-            is_valid: false,
-            attempts: 0
-        });
-
-        // Generar JWT
-        const token = await authService.generateJWT(user);
-
-        // Configurar tiempo de sesión
-        const config = await Config.findOne();
-        const sesionLifetime = config ? config.session_lifetime * 1000 : 3600000;
-
-        // Crear nueva sesión
-        const newSession = await Session.create({
-            user_id: user.user_id,
-            token: token,
-            last_activity: new Date(),
-            expiration: new Date(Date.now() + sesionLifetime),
-            ip: req.ip,
-            browser: req.headers['user-agent'],
-            revoked: false
-        });
-
-        // Configurar cookie
-        const cookieLifetime = config ? config.cookie_lifetime * 1000 : 3600000;
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'None',
-            maxAge: cookieLifetime
-        });
-
-        res.status(200).json({ 
-            success: true, 
-            userId: user.user_id, 
-            tipo: user.user_type,
-            message: 'OTP verificado correctamente. Inicio de sesión exitoso.' 
-        });
-
-    } catch (error) {
-        console.error('Error en verifyOTPMFA:', error);
-        res.status(500).json({ message: 'Error al verificar el OTP.', error: error.message });
+  try {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado.' });
     }
+
+    const account = await Account.findOne({ where: { user_id: user.user_id } });
+    if (!account) {
+      return res.status(404).json({ message: 'Cuenta no encontrada.' });
+    }
+
+    const twoFactorConfig = await TwoFactorConfig.findOne({
+      where: { account_id: account.account_id },
+    });
+
+    if (!twoFactorConfig || !twoFactorConfig.is_valid || new Date() > twoFactorConfig.code_expires) {
+      return res.status(400).json({ message: 'El código OTP ha expirado o es inválido.' });
+    }
+
+    if (!twoFactorConfig.code) {
+      return res.status(400).json({ message: 'El código OTP no está configurado.' });
+    }
+
+    const inputOtp = otp.trim().toUpperCase();
+    const storedOtp = twoFactorConfig.code.trim().toUpperCase();
+
+    if (inputOtp !== storedOtp) {
+      const newAttempts = twoFactorConfig.attempts + 1;
+      const remainingAttempts = 3 - newAttempts;
+
+      await twoFactorConfig.update({
+        attempts: newAttempts,
+        is_valid: newAttempts >= 3 ? false : twoFactorConfig.is_valid,
+      });
+
+      return res.status(400).json({
+        message: `OTP incorrecto. Intentos restantes: ${remainingAttempts}.`,
+        attemptsRemaining: remainingAttempts,
+      });
+    }
+
+    await twoFactorConfig.update({
+      is_valid: false,
+      attempts: 0,
+    });
+
+    const token = await authService.generateJWT(user);
+    const config = await Config.findOne();
+    const sessionLifetime = config?.session_lifetime * 1000 || 900000; // 15 minutos por defecto
+    const cookieLifetime = config?.cookie_lifetime * 1000 || 900000; // 15 minutos por defecto
+
+    const newSession = await Session.create({
+      user_id: user.user_id,
+      token,
+      last_activity: new Date(),
+      expiration: new Date(Date.now() + sessionLifetime),
+      ip: req.ip,
+      browser: req.headers['user-agent'],
+      revoked: false,
+    });
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'None',
+      maxAge: cookieLifetime, // 15 minutos
+    });
+
+    res.status(200).json({
+      success: true,
+      userId: user.user_id,
+      tipo: user.user_type,
+      message: 'OTP verificado correctamente. Inicio de sesión exitoso.',
+    });
+  } catch (error) {
+    console.error('Error en verifyOTPMFA:', error);
+    res.status(500).json({ message: 'Error al verificar el OTP.', error: error.message });
+  }
 };

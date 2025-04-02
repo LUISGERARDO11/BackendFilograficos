@@ -44,9 +44,14 @@ const Session = sequelize.define('Session', {
   }
 }, {
   tableName: 'sessions',
-  timestamps: true, // Sequelize manejará automáticamente created_at y updated_at
+  timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['token'], name: 'idx_sessions_token' }, // Para búsquedas por token
+    { fields: ['last_activity'], name: 'idx_sessions_last_activity' }, // Para verificar inactividad
+    { fields: ['user_id', 'revoked'], name: 'idx_sessions_user_id_revoked' } // Para contar sesiones activas por usuario
+  ]
 });
 
 module.exports = Session;
