@@ -15,42 +15,49 @@ const { generalLimiter } = require('./middlewares/expressRateLimit');
 // Importar utilidades
 const authUtils = require('./utils/authUtils');
 
-// Importar las rutas disponibles
-const authRoutes = require('./routes/authRoutes');
-const companyRoutes = require('./routes/companyRoutes');
-const emailTemplateRoutes = require('./routes/emailTemplateRoutes');
-const emailTypeRoutes = require('./routes/emailTypeRoutes');
-const passwordRoutes = require('./routes/passwordRoutes');
-const regulatoryRoutes = require('./routes/regulatoryRoutes');
-const securityRoutes = require('./routes/securityRoutes');
-const sessionRoutes = require('./routes/sessionRoutes');
-const userRoutes = require('./routes/userRoutes');
-const faqCategoriesRoutes = require('./routes/faqCategoriesRoutes');
-const faqRoutes = require('./routes/faqRoutes');
-const supportInquiryRoutes = require('./routes/supportInquiryRoutes');
-const productAtributeRoutes = require('./routes/productAttributeRoutes');
-const productRoutes = require('./routes/productRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
-const communicationRoutes = require('./routes/communicationRoutes');
-const bannerRoutes = require('./routes/bannerRoutes');
-const promotionRoutes = require('./routes/promotionRoutes');
-//Hailie
-const collaboratorRoutes = require('./routes/collaboratorsRoutes');
-const categoryRoutes = require('./routes/categoriesRoutes');
-const cartRoutes = require('./routes/cartRoutes');
-const customizationRoutes = require('./routes/customizationRoutes');
+// Importar rutas disponibles
+const routes = [
+  { path: '/api/auth', router: require('./routes/authRoutes') },
+  { path: '/api/company', router: require('./routes/companyRoutes') },
+  { path: '/api/email-templates', router: require('./routes/emailTemplateRoutes') },
+  { path: '/api/email-types', router: require('./routes/emailTypeRoutes') },
+  { path: '/api/password', router: require('./routes/passwordRoutes') },
+  { path: '/api/regulatory', router: require('./routes/regulatoryRoutes') },
+  { path: '/api/security', router: require('./routes/securityRoutes') },
+  { path: '/api/session', router: require('./routes/sessionRoutes') },
+  { path: '/api/users', router: require('./routes/userRoutes') },
+  { path: '/api/faq-categories', router: require('./routes/faqCategoriesRoutes') },
+  { path: '/api/faq', router: require('./routes/faqRoutes') },
+  { path: '/api/support-inquiry', router: require('./routes/supportInquiryRoutes') },
+  { path: '/api/product-attributes', router: require('./routes/productAttributeRoutes') },
+  { path: '/api/products', router: require('./routes/productRoutes') },
+  { path: '/api/notifications', router: require('./routes/notificationRoutes') },
+  { path: '/api/communication', router: require('./routes/communicationRoutes') },
+  { path: '/api/promotions', router: require('./routes/promotionRoutes') },
+  { path: '/api/banners', router: require('./routes/bannerRoutes') },
+  // Hailie
+  { path: '/api/collaborators', router: require('./routes/collaboratorsRoutes') },
+  { path: '/api/categories', router: require('./routes/categoriesRoutes') },
+  { path: '/api/cart', router: require('./routes/cartRoutes') },
+  { path: '/api/customizations', router: require('./routes/customizationRoutes') },
+];
 
+// Inicializar la aplicación Express
 const app = express();
 
+// Deshabilitar el encabezado X-Powered-By para evitar divulgar información de la tecnología
+app.disable('x-powered-by');
+
+// Configurar trust proxy (necesario si la app está detrás de un proxy como Nginx)
 app.set('trust proxy', 1);
 
 // Middleware para el manejo de JSON
 app.use(express.json());
 
-// Aplicar la configuración de CORS
+// Aplicar configuración de CORS
 app.use(corsConfig);
 
-// Aplicar el limitador general a todas las rutas
+// Aplicar limitador de tasa general a todas las rutas
 app.use(generalLimiter);
 
 // Configurar cookie-parser
@@ -62,13 +69,14 @@ app.get('/api/csrf-token', (req, res) => {
   res.json({ csrfToken });
 });
 
+// Aplicar protección CSRF
 app.use(doubleCsrfProtection);
 
 // Integrar Morgan con Winston para registrar solicitudes HTTP
 app.use(morgan('combined', {
   stream: {
-    write: (message) => logger.info(message.trim()) // Enviar logs a Winston
-  }
+    write: (message) => logger.info(message.trim()), // Enviar logs a Winston
+  },
 }));
 
 // Ruta de prueba
@@ -79,30 +87,11 @@ app.get('/', (req, res) => {
 // Cargar la lista de contraseñas filtradas al iniciar la aplicación
 authUtils.loadPasswordList();
 
-// Rutas de la aplicación
-app.use('/api/auth', authRoutes);
-app.use('/api/company', companyRoutes);
-app.use('/api/email-templates', emailTemplateRoutes);
-app.use('/api/email-types', emailTypeRoutes);
-app.use('/api/password', passwordRoutes);
-app.use('/api/regulatory', regulatoryRoutes);
-app.use('/api/security', securityRoutes);
-app.use('/api/session', sessionRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/faq-categories', faqCategoriesRoutes);
-app.use('/api/faq', faqRoutes);
-app.use('/api/support-inquiry', supportInquiryRoutes);
-app.use('/api/product-attributes', productAtributeRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/communication', communicationRoutes);
-app.use('/api/promotions', promotionRoutes)
-app.use('/api/banners', bannerRoutes);
-// Hailie
-app.use('/api/collaborators', collaboratorRoutes);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/cart', cartRoutes);
-app.use('/api/customizations', customizationRoutes);
+// Registrar todas las rutas dinámicamente
+routes.forEach(({ path, router }) => {
+  app.use(path, router);
+});
+
 // Middleware para manejar errores
 app.use(errorHandler);
 
