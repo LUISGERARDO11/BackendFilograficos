@@ -6,48 +6,46 @@ const cloudinaryService = require('../services/cloudinaryService');
 const { RegulatoryDocument, DocumentVersion } = require('../models/Associations');
 const loggerUtils = require('./loggerUtils');
 
-// Detectar contenido sospechoso con regex más seguras
+// Detectar contenido sospechoso con regex optimizadas
 function isSuspiciousContent(content) {
-  // Usamos patrones más específicos y evitamos .*? para prevenir backtracking
+  // Usamos patrones más estrictos y evitamos backtracking excesivo
   const suspiciousPatterns = [
     /<!DOCTYPE\s+html\s*>/i,
-    /<html(?:\s+[^>]*)?>/i,
-    /<script(?:\s+[^>]*)?>[\s\S]*?<\/script>/i,
-    /<meta(?:\s+[^>]*)?>/i,
-    /<style(?:\s+[^>]*)?>[\s\S]*?<\/style>/i,
-    /<iframe(?:\s+[^>]*)?>[\s\S]*?<\/iframe>/i,
-    /<object(?:\s+[^>]*)?>[\s\S]*?<\/object>/i,
-    /<embed(?:\s+[^>]*)?>[\s\S]*?<\/embed>/i,
-    /<link(?:\s+[^>]*)?>/i,
+    /<html(?:\s+[^>]*>|>)/i,
+    /<script(?:\s+[^>]*>|>)[\s\S]{0,1000}?<\/script>/i,
+    /<meta(?:\s+[^>]*>|>)/i,
+    /<style(?:\s+[^>]*>|>)[\s\S]{0,1000}?<\/style>/i,
+    /<iframe(?:\s+[^>]*>|>)[\s\S]{0,1000}?<\/iframe>/i,
+    /<object(?:\s+[^>]*>|>)[\s\S]{0,1000}?<\/object>/i,
+    /<embed(?:\s+[^>]*>|>)[\s\S]{0,1000}?<\/embed>/i,
+    /<link(?:\s+[^>]*>|>)/i,
   ];
 
-  // Agregamos un límite de tiempo para prevenir DoS
   const timeoutMs = 1000; // 1 segundo
   const startTime = Date.now();
   
-  const result = suspiciousPatterns.some(pattern => {
+  return suspiciousPatterns.some(pattern => {
     if (Date.now() - startTime > timeoutMs) {
-      throw new Error('Tiempo de procesamiento de regex excedido');
+      loggerUtils.logCriticalError(new Error('Tiempo de procesamiento de regex excedido'));
+      return true; // Consideramos sospechoso si excede el tiempo
     }
     return pattern.test(content);
   });
-
-  return result;
 }
 
 // Procesar archivo subido y obtener contenido limpio
 async function processUploadedFile(fileBuffer) {
+  let fileUrl;
   try {
-    const fileUrl = await cloudinaryService.uploadFilesToCloudinary(fileBuffer, { resource_type: 'raw' });
+    fileUrl = await cloudinaryService.uploadFilesToCloudinary(fileBuffer, { resource_type: 'raw' });
     const response = await axios.get(fileUrl, { 
       responseType: 'arraybuffer',
-      timeout: 10000 // Timeout de 10 segundos para la solicitud
+      timeout: 10000
     });
     const downloadedBuffer = Buffer.from(response.data, 'binary');
     const result = await mammoth.extractRawText({ buffer: downloadedBuffer });
     let content = result.value;
 
-    // Reducimos las iteraciones y optimizamos la sanitización
     if (isSuspiciousContent(content)) {
       throw new Error('El contenido del archivo es sospechoso.');
     }
@@ -60,7 +58,11 @@ async function processUploadedFile(fileBuffer) {
 
     return content.trim();
   } catch (error) {
-    throw error;
+    loggerUtils.logCriticalError(error, { 
+      context: 'processUploadedFile', 
+      fileUrl: fileUrl || 'unknown'
+    });
+    throw error; // Rethrow con logging adicional
   }
 }
 
