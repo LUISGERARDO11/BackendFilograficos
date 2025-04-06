@@ -3,7 +3,7 @@ const authService = require("../services/authService");
 
 // Middleware para verificar la autenticación del token JWT desde cookies
 const authMiddleware = async (req, res, next) => {
-  const token = req.cookies["token"]; // Extraer el token de la cookie
+  const token = req.cookies["token"];
   
   if (!token) {
     return res.status(401).json({ message: "No autorizado. Por favor, inicia sesión." });
@@ -20,18 +20,20 @@ const authMiddleware = async (req, res, next) => {
     const config = await authService.getConfig();
     const newToken = await authService.extendSession(session);
 
-    // Actualizar cookie si se generó un nuevo token
     if (newToken !== token) {
-      res.cookie("token", newToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "None",
-        maxAge: config.session_lifetime * 1000 // 15 min en milisegundos
-      });
+      console.log(`Token renovado: ${newToken}, expiration extendida`);
+    } else {
+      console.log(`Token sin cambios: ${token}`);
     }
+    // Siempre establecer la cookie, incluso si el token no cambia, para asegurar sincronización
+    res.cookie("token", newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // True en producción, false en desarrollo local
+      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", // Lax para desarrollo local
+      maxAge: config.session_lifetime * 1000 // 15 min en milisegundos
+    });
 
-    // Pasar datos del usuario al siguiente middleware
-    req.user = data; // { user_id, user_type }
+    req.user = data;
     next();
   } catch (error) {
     console.error("Error en authMiddleware:", error);
