@@ -8,7 +8,17 @@ require('dotenv').config();
 // Instanciamos el servicio de email
 const emailService = new EmailService();
 
-// Función auxiliar mejorada para enviar correos
+// Constantes para mensajes y estados
+const STATUS = {
+  PENDING: 'pending',
+};
+const MESSAGES = {
+  MISSING_FIELDS: 'Faltan campos requeridos',
+  EMAIL_FAILED: 'Error al enviar el correo de soporte',
+  CONSULTATION_CREATED: 'Consulta creada exitosamente',
+};
+
+// Función auxiliar para enviar correos
 const sendSupportEmail = async (user_email, user_name, subject, message, req) => {
   try {
     const emailResult = await emailService.sendUserSupportEmail(user_email, user_name, subject, message);
@@ -27,18 +37,18 @@ const sendSupportEmail = async (user_email, user_name, subject, message, req) =>
   }
 };
 
-// Crear consulta con mejor manejo de errores y promesas
+// Crear consulta
 exports.createConsultation = async (req, res) => {
   const { user_name, user_email, subject, message, recaptchaToken } = req.body;
 
   try {
     // Validación inicial de datos
     if (!user_email || !user_name || !subject || !message || !recaptchaToken) {
-      return res.status(400).json({ message: 'Faltan campos requeridos' });
+      return res.status(400).json({ message: MESSAGES.MISSING_FIELDS });
     }
 
-    // Verificación de reCAPTCHA
-    const isRecaptchaValid = await verifyRecaptcha(recaptchaToken, res);
+    // Verificación de reCAPTCHA (sin await, ya que retorna booleano)
+    const isRecaptchaValid = verifyRecaptcha(recaptchaToken, res);
     if (!isRecaptchaValid) {
       return; // La función ya maneja la respuesta de error
     }
@@ -47,8 +57,8 @@ exports.createConsultation = async (req, res) => {
     const emailResult = await sendSupportEmail(user_email, user_name, subject, message, req);
     if (!emailResult.success) {
       return res.status(500).json({
-        message: 'Error al enviar el correo de soporte',
-        error: emailResult.error
+        message: MESSAGES.EMAIL_FAILED,
+        error: emailResult.error,
       });
     }
 
@@ -63,7 +73,7 @@ exports.createConsultation = async (req, res) => {
       user_email,
       subject,
       message,
-      status: 'pending'
+      status: STATUS.PENDING,
     });
 
     // Registro de actividad
@@ -74,21 +84,17 @@ exports.createConsultation = async (req, res) => {
     );
 
     return res.status(201).json({
-      message: 'Consulta creada exitosamente',
+      message: MESSAGES.CONSULTATION_CREATED,
       consultation: newConsultation,
-      emailInfo: { messageId: emailResult.messageId }
+      emailInfo: { messageId: emailResult.messageId },
     });
-
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    return res.status(500).json({ 
-      message: 'Error al procesar la consulta', 
-      error: error.message 
-    });
+    return res.status(500).json({ message: 'Error al procesar la consulta', error: error.message });
   }
 };
 
-// Resto de las funciones permanecen similares pero con mejoras consistentes
+// Obtener conteo de consultas por estado
 exports.getConsultationCountsByStatus = async (req, res) => {
   try {
     const counts = await SupportInquiry.findAll({
@@ -102,22 +108,21 @@ exports.getConsultationCountsByStatus = async (req, res) => {
     return res.status(200).json({ consultationCounts: counts });
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    return res.status(500).json({ 
-      message: 'Error al obtener el número de consultas por estado', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Error al obtener el número de consultas por estado',
+      error: error.message,
     });
   }
 };
 
-// Obtener todas las consultas ordenadas por fecha más reciente
+// Obtener todas las consultas con paginación
 exports.getAllConsultations = async (req, res) => {
   try {
     const { page: pageParam, pageSize: pageSizeParam } = req.query;
     const page = parseInt(pageParam) || 1;
     const pageSize = parseInt(pageSizeParam) || 10;
 
-    // Validación de parámetros
-    if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
+    if (page < 1 || pageSize < 1) {
       return res.status(400).json({
         message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos',
       });
@@ -140,7 +145,7 @@ exports.getAllConsultations = async (req, res) => {
       offset: (page - 1) * pageSize,
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       consultations,
       total: count,
       page,
@@ -148,11 +153,11 @@ exports.getAllConsultations = async (req, res) => {
     });
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al obtener las consultas', error: error.message });
+    return res.status(500).json({ message: 'Error al obtener las consultas', error: error.message });
   }
 };
 
-// Obtener detalles de una consulta específica por ID
+// Obtener consulta por ID
 exports.getConsultationById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -160,14 +165,14 @@ exports.getConsultationById = async (req, res) => {
     if (!consultation) {
       return res.status(404).json({ message: 'Consulta no encontrada' });
     }
-    res.status(200).json({ consultation });
+    return res.status(200).json({ consultation });
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al obtener la consulta', error: error.message });
+    return res.status(500).json({ message: 'Error al obtener la consulta', error: error.message });
   }
 };
 
-// Actualizar el estado de una consulta según su ID
+// Actualizar estado de consulta
 exports.updateConsultationStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -182,14 +187,14 @@ exports.updateConsultationStatus = async (req, res) => {
       'update',
       `Estado de consulta ${id} actualizado a ${status}`
     );
-    res.status(200).json({ message: 'Estado actualizado exitosamente.', consultation });
+    return res.status(200).json({ message: 'Estado actualizado exitosamente', consultation });
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al actualizar el estado', error: error.message });
+    return res.status(500).json({ message: 'Error al actualizar el estado', error: error.message });
   }
 };
 
-// Actualizar el canal de contacto según el ID de la consulta
+// Actualizar canal de contacto
 exports.updateConsultationContactChannel = async (req, res) => {
   try {
     const { id } = req.params;
@@ -204,14 +209,17 @@ exports.updateConsultationContactChannel = async (req, res) => {
       'update',
       `Canal de contacto de consulta ${id} actualizado a ${contact_channel}`
     );
-    res.status(200).json({ message: 'Canal de contacto actualizado exitosamente.', consultation });
+    return res.status(200).json({ message: 'Canal de contacto actualizado exitosamente', consultation });
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al actualizar el canal de contacto', error: error.message });
+    return res.status(500).json({
+      message: 'Error al actualizar el canal de contacto',
+      error: error.message,
+    });
   }
 };
 
-// Actualizar el canal de respuesta según el ID de la consulta
+// Actualizar canal de respuesta
 exports.updateConsultationResponseChannel = async (req, res) => {
   try {
     const { id } = req.params;
@@ -226,24 +234,26 @@ exports.updateConsultationResponseChannel = async (req, res) => {
       'update',
       `Canal de respuesta de consulta ${id} actualizado a ${response_channel}`
     );
-    res.status(200).json({ message: 'Canal de respuesta actualizado exitosamente.', consultation });
+    return res.status(200).json({ message: 'Canal de respuesta actualizado exitosamente', consultation });
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al actualizar el canal de respuesta', error: error.message });
+    return res.status(500).json({
+      message: 'Error al actualizar el canal de respuesta',
+      error: error.message,
+    });
   }
 };
 
-// Obtener consultas filtradas según los parámetros proporcionados
+// Obtener consultas filtradas
 exports.getFilteredConsultations = async (req, res) => {
   try {
     const { status, contact_channel, response_channel, startDate, endDate, user_id, search, page: pageParam, pageSize: pageSizeParam } = req.query;
     const page = parseInt(pageParam) || 1;
     const pageSize = parseInt(pageSizeParam) || 10;
 
-    // Validación de parámetros de paginación
-    if (page < 1 || pageSize < 1 || isNaN(page) || isNaN(pageSize)) {
+    if (page < 1 || pageSize < 1) {
       return res.status(400).json({
-        message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos.',
+        message: 'Parámetros de paginación inválidos. Deben ser números enteros positivos',
       });
     }
 
@@ -258,7 +268,6 @@ exports.getFilteredConsultations = async (req, res) => {
       const filterCount = Object.values(filtersProvided).filter(Boolean).length;
       const hasSearch = !!search;
 
-      // Define single-filter handlers
       const singleFilterHandlers = {
         status: () => supportService.getInquiriesByStatus(status, page, pageSize),
         contact_channel: () => supportService.getInquiriesByContactChannel(contact_channel, page, pageSize),
@@ -282,12 +291,10 @@ exports.getFilteredConsultations = async (req, res) => {
 
       // Caso 3: Solo un filtro (sin búsqueda)
       if (filterCount === 1) {
-        // Find the active filter and call its handler
         const activeFilter = Object.keys(filtersProvided).find(key => filtersProvided[key]);
         return await singleFilterHandlers[activeFilter]();
       }
 
-      // Caso por defecto: sin filtros ni búsqueda
       return await SupportInquiry.findAndCountAll({
         attributes: [
           'inquiry_id',
@@ -307,10 +314,9 @@ exports.getFilteredConsultations = async (req, res) => {
     };
 
     const result = await applyFilters();
-    res.status(200).json({ consultations: result.rows, total: result.count, page, pageSize });
+    return res.status(200).json({ consultations: result.rows, total: result.count, page, pageSize });
   } catch (error) {
-    // Manejo de errores
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al obtener las consultas filtradas.', error: error.message });
+    return res.status(500).json({ message: 'Error al obtener las consultas filtradas', error: error.message });
   }
 };
