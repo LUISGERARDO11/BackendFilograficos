@@ -2,6 +2,7 @@
 logout, and two-factor authentication (2FA) using OTP (One-Time Password). Here is a summary of the
 main functionalities: */
 const { body, validationResult } = require('express-validator');
+const { Op } = require('sequelize');
 const { User, Account, Session, TwoFactorConfig, PasswordStatus, CommunicationPreference } = require('../models/Associations');
 const authService = require('../services/authService');
 const EmailService = require('../services/emailService');
