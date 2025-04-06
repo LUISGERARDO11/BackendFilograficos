@@ -218,9 +218,9 @@ exports.login = [
 
       res.cookie('token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'None',
-        maxAge: config.session_lifetime * 1000
+        secure: process.env.NODE_ENV === "production", // True en producción, false en desarrollo local
+        sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", // Lax para desarrollo local
+        maxAge: config.session_lifetime * 1000 // 15 min en milisegundos
       });
 
       loggerUtils.logUserActivity(user.user_id, 'login', 'Inicio de sesión exitoso');
@@ -383,9 +383,9 @@ exports.verifyOTPMFA = async (req, res) => {
 
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'None',
-      maxAge: config.session_lifetime * 1000
+      secure: process.env.NODE_ENV === "production", // True en producción, false en desarrollo local
+      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", // Lax para desarrollo local
+      maxAge: config.session_lifetime * 1000 // 15 min en milisegundos
     });
 
     loggerUtils.logUserActivity(user.user_id, 'mfa_login', 'Inicio de sesión con MFA exitoso');

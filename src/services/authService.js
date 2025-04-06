@@ -103,13 +103,13 @@ exports.extendSession = async (session) => {
     const user = await User.findByPk(session.user_id);
     const newToken = await exports.generateJWT(user);
     const newExpiration = new Date(now + config.session_lifetime * 1000);
-
+  
     await session.update({
       token: newToken,
       expiration: newExpiration,
       last_activity: new Date()
     });
-
+    console.log(`Sesión extendida para user_id: ${session.user_id}, nueva expiration: ${newExpiration}`);
     return newToken;
   }
 
