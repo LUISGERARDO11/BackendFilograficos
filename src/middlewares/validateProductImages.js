@@ -2,10 +2,12 @@
 Here's a breakdown of what each part of the code is doing: */
 const multer = require('multer');
 
-// Función auxiliar para contar imágenes por variante
+// Contar imágenes por variante con mejor manejo de errores
 const countImagesByVariant = (files) => {
   const imagesByVariant = {};
-  files.forEach(file => {
+  if (!Array.isArray(files)) return imagesByVariant;
+
+  files.forEach((file) => {
     const match = file.fieldname.match(/variants\[(\d+)\]\[images\]/);
     if (match) {
       const index = parseInt(match[1], 10);
@@ -15,26 +17,42 @@ const countImagesByVariant = (files) => {
   return imagesByVariant;
 };
 
-// Función auxiliar para parsear variantes desde el cuerpo de la solicitud
+// Parsear variantes con manejo de errores mejorado
 const parseVariants = (variantsBody, res) => {
+  if (!variantsBody) return [];
+
   try {
-    return variantsBody ? JSON.parse(variantsBody) : [];
+    const parsed = JSON.parse(variantsBody);
+    if (!Array.isArray(parsed)) {
+      res.status(400).json({ message: 'El campo variants debe ser un arreglo JSON válido' });
+      return null;
+    }
+    return parsed;
   } catch (error) {
-    res.status(400).json({ message: 'El campo variants debe ser un arreglo JSON válido' });
+    res.status(400).json({ 
+      message: 'Error al parsear variants', 
+      error: error.message 
+    });
     return null;
   }
 };
 
-// Validar imágenes por variante
+// Validar imágenes por variante con mensajes más específicos
 const validateImagesForVariants = (variants, imagesByVariant, res) => {
   for (let i = 0; i < variants.length; i++) {
     const imageCount = imagesByVariant[i] || 0;
+    const variantSku = variants[i].sku || `índice ${i}`;
+
     if (imageCount < 1) {
-      res.status(400).json({ message: `La variante ${variants[i].sku} debe tener al menos 1 imagen` });
+      res.status(400).json({ 
+        message: `La variante ${variantSku} debe tener al menos 1 imagen` 
+      });
       return false;
     }
     if (imageCount > 10) {
-      res.status(400).json({ message: `La variante ${variants[i].sku} no puede tener más de 10 imágenes` });
+      res.status(400).json({ 
+        message: `La variante ${variantSku} excede el límite de 10 imágenes (actual: ${imageCount})` 
+      });
       return false;
     }
   }
@@ -45,49 +63,54 @@ const validateImagesForVariants = (variants, imagesByVariant, res) => {
 const validateNewVariantsWithoutImages = (variants, res) => {
   const hasNewVariants = variants.some(v => !v.variant_id);
   if (hasNewVariants) {
-    res.status(400).json({ message: 'Debe subir al menos una imagen para nuevas variantes' });
+    res.status(400).json({ 
+      message: 'Se requieren imágenes para nuevas variantes' 
+    });
     return false;
   }
   return true;
 };
 
-// Nueva función extraída para manejar el caso con archivos
+// Manejar caso con archivos
 const handleFilesCase = (req, res) => {
   const imagesByVariant = countImagesByVariant(req.files);
   const variants = parseVariants(req.body.variants, res);
-  if (!variants) return false;
+  if (variants === null) return false;
 
-  if (variants.length > 0) {
-    return validateImagesForVariants(variants, imagesByVariant, res);
-  }
-  console.log('Imágenes por variante:', imagesByVariant);
-  console.log('Número total de imágenes recibidas:', req.files.length);
-  return true;
+  return variants.length > 0 
+    ? validateImagesForVariants(variants, imagesByVariant, res)
+    : true;
 };
 
-// Nueva función extraída para manejar el caso sin archivos
+// Manejar caso sin archivos
 const handleNoFilesCase = (req, res) => {
   const variants = parseVariants(req.body.variants, res);
-  if (!variants) return false;
+  if (variants === null) return false;
   return validateNewVariantsWithoutImages(variants, res);
 };
 
 const validateProductImages = (req, res, next) => {
-  // Si no hay archivos ni variantes, permitir actualización parcial
-  if ((!req.files || req.files.length === 0) && !req.body.variants) {
-    return next();
-  }
+  try {
+    // Validación inicial
+    if ((!req.files || req.files.length === 0) && !req.body.variants) {
+      return next();
+    }
 
-  // Caso 1: Hay archivos (imágenes) enviados
-  if (req.files && req.files.length > 0) {
-    if (!handleFilesCase(req, res)) return;
-  }
-  // Caso 2: Hay variantes pero no imágenes
-  else if (req.body.variants) {
-    if (!handleNoFilesCase(req, res)) return;
-  }
+    // Procesar según caso
+    const isValid = (req.files && req.files.length > 0)
+      ? handleFilesCase(req, res)
+      : req.body.variants
+        ? handleNoFilesCase(req, res)
+        : true;
 
-  next();
+    if (!isValid) return;
+    next();
+  } catch (error) {
+    res.status(500).json({ 
+      message: 'Error inesperado al validar imágenes del producto',
+      error: error.message 
+    });
+  }
 };
 
 module.exports = validateProductImages;

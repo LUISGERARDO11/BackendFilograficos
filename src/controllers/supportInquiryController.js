@@ -2,71 +2,93 @@ const { SupportInquiry, User } = require('../models/Associations');
 const EmailService = require('../services/emailService');
 const supportService = require('../services/supportInquiryService');
 const loggerUtils = require('../utils/loggerUtils');
-const verifyRecaptcha = require('../utils/googleUtils'); // Importar la utilidad
+const verifyRecaptcha = require('../utils/googleUtils');
 require('dotenv').config();
 
 // Instanciamos el servicio de email
 const emailService = new EmailService();
 
-// Función auxiliar para enviar correo y manejar errores
-const sendSupportEmail = async (user_email, user_name, subject, message, req, res) => {
-  const emailResult = await emailService.sendUserSupportEmail(user_email, user_name, subject, message);
-  if (!emailResult.success) {
-    loggerUtils.logUserActivity(
-      req.user?.user_id || 'system',
-      'support_email_failed',
-      `Fallo al enviar correo de soporte desde ${user_email}`
-    );
-    res.status(500).json({
-      message: 'Error al enviar el correo de soporte.',
-      error: emailResult.message || 'No se recibió información del error',
-    });
-    return null;
+// Función auxiliar mejorada para enviar correos
+const sendSupportEmail = async (user_email, user_name, subject, message, req) => {
+  try {
+    const emailResult = await emailService.sendUserSupportEmail(user_email, user_name, subject, message);
+    if (!emailResult.success) {
+      loggerUtils.logUserActivity(
+        req.user?.user_id || 'system',
+        'support_email_failed',
+        `Fallo al enviar correo de soporte desde ${user_email}`
+      );
+      return { success: false, error: emailResult.message || 'Error desconocido al enviar correo' };
+    }
+    return { success: true, messageId: emailResult.messageId };
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    return { success: false, error: error.message };
   }
-  return emailResult;
 };
 
-// Crear una nueva consulta
+// Crear consulta con mejor manejo de errores y promesas
 exports.createConsultation = async (req, res) => {
   const { user_name, user_email, subject, message, recaptchaToken } = req.body;
 
   try {
-    // Usar la función importada de verifyRecaptcha
-    if (!(await verifyRecaptcha(recaptchaToken, res))) return;
+    // Validación inicial de datos
+    if (!user_email || !user_name || !subject || !message || !recaptchaToken) {
+      return res.status(400).json({ message: 'Faltan campos requeridos' });
+    }
 
-    const emailResult = await sendSupportEmail(user_email, user_name, subject, message, req, res);
-    if (!emailResult) return;
+    // Verificación de reCAPTCHA
+    const isRecaptchaValid = await verifyRecaptcha(recaptchaToken, res);
+    if (!isRecaptchaValid) {
+      return; // La función ya maneja la respuesta de error
+    }
 
+    // Enviar correo
+    const emailResult = await sendSupportEmail(user_email, user_name, subject, message, req);
+    if (!emailResult.success) {
+      return res.status(500).json({
+        message: 'Error al enviar el correo de soporte',
+        error: emailResult.error
+      });
+    }
+
+    // Buscar usuario existente
     const existingUser = await User.findOne({ where: { email: user_email } });
-    const userId = existingUser ? existingUser.user_id : null;
+    const userId = existingUser?.user_id || null;
 
+    // Crear consulta
     const newConsultation = await SupportInquiry.create({
       user_id: userId,
       user_name,
       user_email,
       subject,
       message,
-      status: 'pending',
+      status: 'pending'
     });
 
+    // Registro de actividad
     loggerUtils.logUserActivity(
       req.user?.user_id || 'system',
       'create',
       `Nueva consulta creada: ${newConsultation.inquiry_id}`
     );
 
-    res.status(201).json({
-      message: 'Consulta creada exitosamente.',
+    return res.status(201).json({
+      message: 'Consulta creada exitosamente',
       consultation: newConsultation,
-      emailInfo: { messageId: emailResult.messageId },
+      emailInfo: { messageId: emailResult.messageId }
     });
+
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al procesar la consulta', error: error.message });
+    return res.status(500).json({ 
+      message: 'Error al procesar la consulta', 
+      error: error.message 
+    });
   }
 };
 
-// Obtener el número total de consultas por cada estado
+// Resto de las funciones permanecen similares pero con mejoras consistentes
 exports.getConsultationCountsByStatus = async (req, res) => {
   try {
     const counts = await SupportInquiry.findAll({
@@ -77,10 +99,13 @@ exports.getConsultationCountsByStatus = async (req, res) => {
       group: ['status'],
     });
 
-    res.status(200).json({ consultationCounts: counts });
+    return res.status(200).json({ consultationCounts: counts });
   } catch (error) {
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al obtener el número de consultas por estado', error: error.message });
+    return res.status(500).json({ 
+      message: 'Error al obtener el número de consultas por estado', 
+      error: error.message 
+    });
   }
 };
 
