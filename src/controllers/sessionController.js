@@ -5,14 +5,22 @@ const jwt = require('jsonwebtoken');
 const { User, Session, Config } = require('../models/Associations');
 const authService = require('../services/authService');
 
-// Revocar tokens anteriores si se detecta actividad sospechosa o múltiples intentos fallidos
+// Constantes para valores por defecto
+const DEFAULT_EXPIRATION_THRESHOLD = 900; // 15 minutos en segundos
+const DEFAULT_COOKIE_LIFETIME = 3600; // 1 hora en segundos
+
+// Revocar tokens anteriores
 exports.revokeTokens = async (user_id) => {
+    if (!user_id) {
+        throw new Error('ID de usuario requerido');
+    }
+
     try {
-        const updatedCount = await Session.update(
+        const [updatedCount] = await Session.update(
             { revoked: true },
             { where: { user_id, revoked: false } }
         );
-        return updatedCount[0] > 0; // Retorna si se revocaron sesiones
+        return updatedCount > 0;
     } catch (error) {
         throw new Error(`Error revocando sesiones anteriores: ${error.message}`);
     }
@@ -41,13 +49,14 @@ exports.checkAuth = async (req, res, next) => {
             return res.status(403).json({ message: "Usuario no autorizado o inactivo" });
         }
 
-        // Obtener configuración
-        const config = await Config.findOne();
-        const expirationThresholdSeconds = config?.expirationThreshold_lifetime ?? 900;
-        const cookieLifetimeMilliseconds = config?.cookie_lifetime * 1000 ?? 3600000;
+        // Obtener configuración con valores por defecto
+        const config = await Config.findOne() || {};
+        const expirationThresholdSeconds = config.expiration_threshold_lifetime || DEFAULT_EXPIRATION_THRESHOLD;
+        const cookieLifetimeSeconds = config.cookie_lifetime || DEFAULT_COOKIE_LIFETIME;
+        const cookieLifetimeMilliseconds = cookieLifetimeSeconds * 1000;
 
         // Renovar token si está cerca de expirar
-        const timeToExpiration = decoded.exp - Date.now() / 1000;
+        const timeToExpiration = decoded.exp - Math.floor(Date.now() / 1000);
         if (timeToExpiration < expirationThresholdSeconds) {
             const newToken = authService.generateJWT(user);
             res.cookie("token", newToken, {
@@ -67,16 +76,17 @@ exports.checkAuth = async (req, res, next) => {
         });
 
     } catch (error) {
-        // Manejo específico de errores
         if (error instanceof jwt.JsonWebTokenError) {
-            return res.status(401).json({ message: "Token inválido o expirado" });
+            return res.status(401).json({ message: "Token inválido" });
         }
         if (error instanceof jwt.TokenExpiredError) {
             return res.status(401).json({ message: "Token expirado" });
         }
-        
-        // Error genérico
-        console.error('Error en checkAuth:', error);
+
+        console.error('Error en checkAuth:', {
+            message: error.message,
+            stack: error.stack
+        });
         return res.status(500).json({ message: "Error interno del servidor" });
     }
 };
