@@ -20,19 +20,22 @@ const authMiddleware = async (req, res, next) => {
     const config = await authService.getConfig();
     const newToken = await authService.extendSession(session);
 
+    // Detectar si el origen es localhost para desarrollo
+    const isLocalhost = req.headers.origin && req.headers.origin.includes("localhost");
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production" && !isLocalhost, // False si es localhost
+      sameSite: process.env.NODE_ENV === "production" && !isLocalhost ? "None" : "Lax", // Lax para localhost
+      maxAge: config.session_lifetime * 1000
+    };
+
     if (newToken !== token) {
       console.log(`Token renovado: ${newToken}, expiration extendida`);
     } else {
       console.log(`Token sin cambios: ${token}`);
     }
-    // Siempre establecer la cookie, incluso si el token no cambia, para asegurar sincronización
-    res.cookie("token", newToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // True en producción, false en desarrollo local
-      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", // Lax para desarrollo local
-      maxAge: config.session_lifetime * 1000 // 15 min en milisegundos
-    });
 
+    res.cookie("token", newToken, cookieOptions);
     req.user = data;
     next();
   } catch (error) {

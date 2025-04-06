@@ -216,11 +216,12 @@ exports.login = [
       const { token, session } = await authService.createSession(user, req.ip, req.headers['user-agent']);
       const config = await authService.getConfig();
 
+      const isLocalhost = req.headers.origin && req.headers.origin.includes("localhost");
       res.cookie('token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production", // True en producción, false en desarrollo local
-        sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", // Lax para desarrollo local
-        maxAge: config.session_lifetime * 1000 // 15 min en milisegundos
+        secure: process.env.NODE_ENV === "production" && !isLocalhost,
+        sameSite: process.env.NODE_ENV === "production" && !isLocalhost ? "None" : "Lax",
+        maxAge: config.session_lifetime * 1000
       });
 
       loggerUtils.logUserActivity(user.user_id, 'login', 'Inicio de sesión exitoso');
@@ -381,11 +382,12 @@ exports.verifyOTPMFA = async (req, res) => {
     const { token, session } = await authService.createSession(user, req.ip, req.headers['user-agent']);
     const config = await authService.getConfig();
 
+    const isLocalhost = req.headers.origin && req.headers.origin.includes("localhost");
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // True en producción, false en desarrollo local
-      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", // Lax para desarrollo local
-      maxAge: config.session_lifetime * 1000 // 15 min en milisegundos
+      secure: process.env.NODE_ENV === "production" && !isLocalhost,
+      sameSite: process.env.NODE_ENV === "production" && !isLocalhost ? "None" : "Lax",
+      maxAge: config.session_lifetime * 1000
     });
 
     loggerUtils.logUserActivity(user.user_id, 'mfa_login', 'Inicio de sesión con MFA exitoso');
