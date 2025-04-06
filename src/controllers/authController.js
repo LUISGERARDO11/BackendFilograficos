@@ -3,12 +3,11 @@ logout, and two-factor authentication (2FA) using OTP (One-Time Password). Here 
 main functionalities: */
 const { body, validationResult } = require('express-validator');
 const { User, Account, Session, TwoFactorConfig, PasswordStatus, CommunicationPreference } = require('../models/Associations');
-const Config = require('../models/Systemconfig');
 const authService = require('../services/authService');
 const EmailService = require('../services/emailService');
 const loggerUtils = require('../utils/loggerUtils');
 const authUtils = require('../utils/authUtils');
-const verifyRecaptcha = require('../utils/googleUtils'); // Importar verifyRecaptcha
+const verifyRecaptcha = require('../utils/googleUtils');
 const crypto = require('crypto');
 require('dotenv').config();
 
@@ -76,19 +75,9 @@ exports.register = [
 
       // Generar token de verificación
       const verificationToken = crypto.randomBytes(32).toString('hex');
+      const config = await authService.getConfig();
+      const verificationLifetime = config.email_verification_lifetime * 1000;
 
-      // Obtener el tiempo de vida del token de verificación desde la base de datos
-      const config = await Config.findOne();
-      const verificationLifetime = config?.email_verification_lifetime
-        ? config.email_verification_lifetime * 1000
-        : 24 * 60 * 60 * 1000; // 24 horas por defecto
-
-      // Verifica que el tiempo de vida sea un número válido
-      if (isNaN(verificationLifetime)) {
-        throw new Error('El tiempo de vida del token de verificación es inválido');
-      }
-
-      // Asigna la fecha de expiración correctamente
       newUser.email_verification_expiration = new Date(Date.now() + verificationLifetime);
       newUser.email_verification_token = verificationToken;
       await newUser.save();
@@ -165,10 +154,9 @@ exports.login = [
     const { email, password, recaptchaToken } = req.body;
 
     try {
-      // Verificar reCAPTCHA usando googleUtils
       const recaptchaValid = await verifyRecaptcha(recaptchaToken, res);
       if (!recaptchaValid) {
-        return; // La función ya envía la respuesta de error
+        return;
       }
 
       const user = await User.findOne({ where: { email } });
@@ -202,7 +190,6 @@ exports.login = [
           return res.status(403).json({ locked: true, message: 'Tu cuenta ha sido bloqueada debido a múltiples intentos fallidos. Debes cambiar tu contraseña.' });
         }
         return res.status(400).json({ message: 'Credenciales incorrectas', ...result });
-
       }
 
       await authService.clearFailedAttempts(user.user_id);
@@ -226,30 +213,17 @@ exports.login = [
         });
       }
 
-      const token = await authService.generateJWT(user);
-      const config = await Config.findOne();
-      const sessionLifetime = config?.session_lifetime * 1000 || 900000; // 15 minutos por defecto
-      const cookieLifetime = config?.cookie_lifetime * 1000 || 900000; // 15 minutos por defecto
-
-      const newSession = await Session.create({
-        user_id: user.user_id,
-        token,
-        last_activity: new Date(),
-        expiration: new Date(Date.now() + sessionLifetime),
-        ip: req.ip,
-        browser: req.headers['user-agent'],
-        revoked: false,
-      });
-
-      loggerUtils.logUserActivity(user.user_id, 'login', 'Inicio de sesión exitoso');
+      const { token, session } = await authService.createSession(user, req.ip, req.headers['user-agent']);
+      const config = await authService.getConfig();
 
       res.cookie('token', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'None',
-        maxAge: cookieLifetime, // 15 minutos
+        maxAge: config.session_lifetime * 1000
       });
 
+      loggerUtils.logUserActivity(user.user_id, 'login', 'Inicio de sesión exitoso');
       res.status(200).json({ userId: user.user_id, tipo: user.user_type, message: 'Inicio de sesión exitoso' });
     } catch (error) {
       loggerUtils.logCriticalError(error);
@@ -274,19 +248,7 @@ exports.logout = async (req, res) => {
       return res.status(400).json({ message: 'Usuario no autenticado.' });
     }
 
-    const session = await Session.findOne({
-      where: { user_id: userId, token },
-    });
-
-    if (!session) {
-      return res.status(404).json({ message: 'Sesión no encontrada.' });
-    }
-
-    if (session.revoked) {
-      return res.status(400).json({ message: 'La sesión ya fue cerrada anteriormente.' });
-    }
-
-    await session.update({ revoked: true });
+    await authService.revokeSession(token);
 
     res.clearCookie('token', {
       httpOnly: true,
@@ -294,12 +256,11 @@ exports.logout = async (req, res) => {
       sameSite: 'None',
     });
 
+    loggerUtils.logUserActivity(userId, 'logout', 'Sesión cerrada exitosamente');
     res.status(200).json({ message: 'Sesión cerrada exitosamente.' });
   } catch (error) {
-    return res.status(500).json({
-      message: 'Error al cerrar sesión',
-      error: error.message,
-    });
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al cerrar sesión', error: error.message });
   }
 };
 
@@ -318,9 +279,8 @@ exports.sendOtpMfa = async (req, res) => {
       return res.status(404).json({ message: 'Cuenta o usuario no encontrado.' });
     }
 
-    // Obtener la configuración de tiempo de vida del OTP desde la base de datos
-    const config = await Config.findOne();
-    const otpLifetime = config?.otp_lifetime * 1000 || 15 * 60 * 1000;
+    const config = await authService.getConfig();
+    const otpLifetime = config.otp_lifetime * 1000;
 
     // Generar OTP y definir expiración
     const otp = authUtils.generateOTP();
@@ -380,7 +340,7 @@ exports.verifyOTPMFA = async (req, res) => {
 
     const account = await Account.findOne({ where: { user_id: user.user_id } });
     if (!account) {
-      return res.status(404).json({ message: 'Cuenta no encontrada.' });
+      return res.status(404).json({ message: 'Cuenta no encontrada' });
     }
 
     const twoFactorConfig = await TwoFactorConfig.findOne({
@@ -418,28 +378,17 @@ exports.verifyOTPMFA = async (req, res) => {
       attempts: 0,
     });
 
-    const token = await authService.generateJWT(user);
-    const config = await Config.findOne();
-    const sessionLifetime = config?.session_lifetime * 1000 || 900000; // 15 minutos por defecto
-    const cookieLifetime = config?.cookie_lifetime * 1000 || 900000; // 15 minutos por defecto
-
-    const newSession = await Session.create({
-      user_id: user.user_id,
-      token,
-      last_activity: new Date(),
-      expiration: new Date(Date.now() + sessionLifetime),
-      ip: req.ip,
-      browser: req.headers['user-agent'],
-      revoked: false,
-    });
+    const { token, session } = await authService.createSession(user, req.ip, req.headers['user-agent']);
+    const config = await authService.getConfig();
 
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'None',
-      maxAge: cookieLifetime, // 15 minutos
+      maxAge: config.session_lifetime * 1000
     });
 
+    loggerUtils.logUserActivity(user.user_id, 'mfa_login', 'Inicio de sesión con MFA exitoso');
     res.status(200).json({
       success: true,
       userId: user.user_id,
@@ -447,7 +396,7 @@ exports.verifyOTPMFA = async (req, res) => {
       message: 'OTP verificado correctamente. Inicio de sesión exitoso.',
     });
   } catch (error) {
-    console.error('Error en verifyOTPMFA:', error);
+    loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al verificar el OTP.', error: error.message });
   }
 };
