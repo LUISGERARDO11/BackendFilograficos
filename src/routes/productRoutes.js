@@ -14,7 +14,11 @@ const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 const validateProductImages = require('../middlewares/validateProductImages');
 const uploadProductImages = require('../config/multerProductImagesConfig');
-const { validateProduct, validateDeleteProduct, validateGetProductById, validateUpdateProduct, validateDeleteVariants, validateGetAllProducts } = require('../middlewares/validateProductCatalog');
+const {
+    validateProduct, validateDeleteProduct, validateGetProductById, validateUpdateProduct, validateDeleteVariants, validateGetAllProducts,
+    validateGetAllVariants, validateGetVariantById, validateUpdateVariantPrice, validateGetPriceHistory,
+    validateBatchUpdateVariantPrices, validateBatchUpdateVariantPricesIndividual,
+} = require('../middlewares/validateProductCatalog');
 
 // Ruta para crear un producto (solo administradores)
 router.post(
@@ -34,7 +38,7 @@ router.get(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
-  validateGetAllProducts,  // Corregido de validateGetProducts a validateGetAllProducts
+  validateGetAllProducts,
   productCatalogController.getAllProducts
 );
 
@@ -104,6 +108,7 @@ router.get(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
+  validateGetAllVariants,
   productPriceController.getAllVariants
 );
 
@@ -113,6 +118,7 @@ router.put(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
+  validateBatchUpdateVariantPrices,
   productPriceController.batchUpdateVariantPrices
 );
 
@@ -122,6 +128,7 @@ router.put(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
+  validateBatchUpdateVariantPricesIndividual,
   productPriceController.batchUpdateVariantPricesIndividual
 );
 
@@ -131,6 +138,7 @@ router.get(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
+  validateGetVariantById,
   productPriceController.getVariantById
 );
 
@@ -139,6 +147,7 @@ router.put(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
+  validateUpdateVariantPrice,
   productPriceController.updateVariantPrice
 );
 
@@ -147,6 +156,7 @@ router.get(
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
+  validateGetPriceHistory,
   productPriceController.getPriceHistoryByVariantId
 );
 
