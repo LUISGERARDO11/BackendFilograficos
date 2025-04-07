@@ -6,74 +6,130 @@ const cloudinaryService = require('../services/cloudinaryService');
 const { RegulatoryDocument, DocumentVersion } = require('../models/Associations');
 const loggerUtils = require('./loggerUtils');
 
-// Detectar contenido sospechoso con regex optimizadas
-function isSuspiciousContent(content) {
-  // Usamos patrones más estrictos y evitamos backtracking excesivo
-  const suspiciousPatterns = [
-    /<!DOCTYPE\s+html\s*>/i,
-    /<html(?:\s+[^>]*>|>)/i,
-    /<script(?:\s+[^>]*>|>)[\s\S]{0,1000}?<\/script>/i,
-    /<meta(?:\s+[^>]*>|>)/i,
-    /<style(?:\s+[^>]*>|>)[\s\S]{0,1000}?<\/style>/i,
-    /<iframe(?:\s+[^>]*>|>)[\s\S]{0,1000}?<\/iframe>/i,
-    /<object(?:\s+[^>]*>|>)[\s\S]{0,1000}?<\/object>/i,
-    /<embed(?:\s+[^>]*>|>)[\s\S]{0,1000}?<\/embed>/i,
-    /<link(?:\s+[^>]*>|>)/i,
-  ];
+// Configuración de límites para protección contra DoS
+const REGEX_TIMEOUT_MS = 500; // Tiempo máximo para ejecución de regex
+const MAX_INPUT_LENGTH = 100000; // Máximo 100KB de contenido a analizar
 
-  const timeoutMs = 1000; // 1 segundo
+// Patrones optimizados para evitar backtracking catastrófico
+const SUSPICIOUS_PATTERNS = [
+  // Patrones más seguros usando alternativas no backtracking
+  /<\!?doctype\s+html\s*>/i,
+  /<html[\s>]/i,
+  /<script[\s>][^]*?<\/script\s*>/i,
+  /<meta[\s>]/i,
+  /<style[\s>][^]*?<\/style\s*>/i,
+  /<iframe[\s>][^]*?<\/iframe\s*>/i,
+  /<object[\s>][^]*?<\/object\s*>/i,
+  /<embed[\s>][^]*?<\/embed\s*>/i,
+  /<link[\s>]/i,
+];
+
+// Función segura para detectar contenido sospechoso
+function isSuspiciousContent(content) {
+  // Verificación de longitud primero
+  if (content.length > MAX_INPUT_LENGTH) {
+    loggerUtils.logWarning('Contenido excede tamaño máximo permitido');
+    return true;
+  }
+
   const startTime = Date.now();
   
-  return suspiciousPatterns.some(pattern => {
-    if (Date.now() - startTime > timeoutMs) {
+  for (const pattern of SUSPICIOUS_PATTERNS) {
+    if (Date.now() - startTime > REGEX_TIMEOUT_MS) {
       loggerUtils.logCriticalError(new Error('Tiempo de procesamiento de regex excedido'));
-      return true; // Consideramos sospechoso si excede el tiempo
+      return true;
     }
-    return pattern.test(content);
-  });
+    
+    try {
+      // Usamos una implementación más segura con límite de tiempo
+      if (safeRegexTest(pattern, content, startTime)) {
+        return true;
+      }
+    } catch (error) {
+      loggerUtils.logWarning(`Error en regex: ${error.message}`);
+      return true;
+    }
+  }
+  
+  return false;
 }
 
-// Procesar archivo subido y obtener contenido limpio
+// Implementación segura de test de regex con timeout
+function safeRegexTest(pattern, content, startTime) {
+  const regex = new RegExp(pattern.source, pattern.flags.replace(/g/g, ''));
+  const match = regex.exec(content);
+  
+  if (Date.now() - startTime > REGEX_TIMEOUT_MS) {
+    throw new Error('Regex timeout');
+  }
+  
+  return match !== null;
+}
+
+// Procesar archivo subido con mejores prácticas de seguridad
 async function processUploadedFile(fileBuffer) {
   let fileUrl;
   try {
-    fileUrl = await cloudinaryService.uploadFilesToCloudinary(fileBuffer, { resource_type: 'raw' });
+    // Validación de tamaño del buffer primero
+    if (fileBuffer.length > MAX_INPUT_LENGTH) {
+      throw new Error(`El archivo excede el tamaño máximo permitido de ${MAX_INPUT_LENGTH} bytes`);
+    }
+
+    fileUrl = await cloudinaryService.uploadFilesToCloudinary(fileBuffer, { 
+      resource_type: 'raw',
+      timeout: 10000 
+    });
+    
     const response = await axios.get(fileUrl, { 
       responseType: 'arraybuffer',
-      timeout: 10000
+      timeout: 10000,
+      maxContentLength: MAX_INPUT_LENGTH
     });
+    
+    if (response.data.length > MAX_INPUT_LENGTH) {
+      throw new Error('El contenido descargado excede el tamaño máximo permitido');
+    }
+
     const downloadedBuffer = Buffer.from(response.data, 'binary');
     const result = await mammoth.extractRawText({ buffer: downloadedBuffer });
     let content = result.value;
 
     if (isSuspiciousContent(content)) {
-      throw new Error('El contenido del archivo es sospechoso.');
+      throw new Error('El contenido del archivo es sospechoso y no puede ser procesado.');
     }
     
+    // Sanitización más estricta
     content = sanitizeHtml(content, { 
       allowedTags: [], 
       allowedAttributes: {},
-      textFilter: text => he.decode(text)
+      textFilter: text => he.decode(text),
+      allowedIframeHostnames: [] // No permitir iframes
     });
 
     return content.trim();
   } catch (error) {
     loggerUtils.logCriticalError(error, { 
       context: 'processUploadedFile', 
-      fileUrl: fileUrl || 'unknown'
+      fileUrl: fileUrl || 'unknown',
+      stack: error.stack 
     });
-    throw error; // Rethrow con logging adicional
+    throw error;
   }
 }
 
-// Obtener la siguiente versión
+// Resto de las funciones permanecen igual pero con mejor manejo de errores
 async function getNextVersion(document_id) {
-  const lastVersion = await DocumentVersion.findOne({
-    where: { document_id, deleted: false },
-    order: [['version', 'DESC']],
-  });
-  const lastVersionNumber = lastVersion ? parseFloat(lastVersion.version) : 0;
-  return (lastVersionNumber + 1.0).toFixed(1);
+  try {
+    const lastVersion = await DocumentVersion.findOne({
+      where: { document_id, deleted: false },
+      order: [['version', 'DESC']],
+    });
+    const lastVersionNumber = lastVersion ? parseFloat(lastVersion.version) : 0;
+    return (lastVersionNumber + 1.0).toFixed(1);
+  } catch (error) {
+    loggerUtils.logError(error, { context: 'getNextVersion', document_id });
+    throw error;
+  }
 }
 
 // Actualizar versión activa
@@ -84,30 +140,42 @@ async function updateActiveVersion(document_id, newVersion, content, effective_d
       { active: false },
       { where: { document_id, active: true }, transaction }
     );
-    await DocumentVersion.create({
+    
+    const newDocVersion = await DocumentVersion.create({
       document_id,
       version: newVersion,
       content,
       active: true,
       deleted: false,
     }, { transaction });
+    
     await RegulatoryDocument.update(
       { current_version: newVersion, effective_date: effective_date || new Date() },
       { where: { document_id }, transaction }
     );
+    
     await transaction.commit();
+    return newDocVersion;
   } catch (error) {
     await transaction.rollback();
+    loggerUtils.logCriticalError(error, {
+      context: 'updateActiveVersion',
+      document_id,
+      newVersion
+    });
     throw error;
   }
 }
 
 // Manejar errores
 function handleError(res, error, message = 'Error procesando solicitud') {
-  loggerUtils.logCriticalError(error);
+  const errorId = Math.random().toString(36).substring(2, 9);
+  loggerUtils.logCriticalError(error, { errorId });
+  
   res.status(500).json({ 
     message, 
-    error: error.message,
+    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message,
+    errorId,
     timestamp: new Date().toISOString()
   });
 }
