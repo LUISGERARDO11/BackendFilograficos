@@ -2,6 +2,7 @@ const axios = require('axios');
 const mammoth = require('mammoth');
 const sanitizeHtml = require('sanitize-html');
 const he = require('he');
+const crypto = require('crypto'); // Módulo criptográfico seguro
 const cloudinaryService = require('../services/cloudinaryService');
 const { RegulatoryDocument, DocumentVersion } = require('../models/Associations');
 const loggerUtils = require('./loggerUtils');
@@ -13,7 +14,8 @@ const MAX_INPUT_LENGTH = 100000; // Máximo 100KB de contenido a analizar
 // Patrones optimizados para evitar backtracking catastrófico
 const SUSPICIOUS_PATTERNS = [
   // Patrones más seguros usando alternativas no backtracking
-  /<\!?doctype\s+html\s*>/i,
+  // Se eliminó el escape innecesario del !
+  /<!?doctype\s+html\s*>/i,
   /<html[\s>]/i,
   /<script[\s>][^]*?<\/script\s*>/i,
   /<meta[\s>]/i,
@@ -169,7 +171,9 @@ async function updateActiveVersion(document_id, newVersion, content, effective_d
 
 // Manejar errores
 function handleError(res, error, message = 'Error procesando solicitud') {
-  const errorId = Math.random().toString(36).substring(2, 9);
+  // Reemplazamos Math.random() con un generador criptográficamente seguro
+  const errorId = crypto.randomBytes(4).toString('hex'); // 8 caracteres hexadecimales
+  
   loggerUtils.logCriticalError(error, { errorId });
   
   res.status(500).json({ 
