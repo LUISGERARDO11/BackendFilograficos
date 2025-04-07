@@ -178,4 +178,38 @@ const getVariantsWithFilters = async ({ search, categoryId, productType, page, l
     return { count, variants };
 };
 
-module.exports = { getProductsWithFilters, formatProductList, getProductById, getVariantsWithFilters };
+// Nuevas funciones auxiliares relacionadas con modelos (sin acceso directo)
+const calculatePrice = (productionCost, profitMargin) => {
+    const newProductionCost = parseFloat(productionCost);
+    const newProfitMargin = parseFloat(profitMargin);
+    return newProductionCost * (1 + newProfitMargin / 100);
+};
+
+const hasPriceChanges = (variant, newProductionCost, newProfitMargin) => {
+    const currentProductionCost = parseFloat(variant.production_cost) || 0;
+    const currentProfitMargin = parseFloat(variant.profit_margin) || 0;
+    return Math.abs(newProductionCost - currentProductionCost) > 0.01 || Math.abs(newProfitMargin - currentProfitMargin) > 0.01;
+};
+
+const createPriceHistoryEntry = (variant, newProductionCost, newProfitMargin, newCalculatedPrice, changeType, userId) => ({
+    variant_id: variant.variant_id,
+    previous_production_cost: parseFloat(variant.production_cost),
+    new_production_cost: newProductionCost,
+    previous_profit_margin: parseFloat(variant.profit_margin),
+    new_profit_margin: newProfitMargin,
+    previous_calculated_price: parseFloat(variant.calculated_price),
+    new_calculated_price: newCalculatedPrice,
+    change_type: changeType,
+    changed_by: userId,
+    change_date: new Date(),
+});
+
+module.exports = {
+    getProductsWithFilters,
+    formatProductList,
+    getProductById,
+    getVariantsWithFilters,
+    calculatePrice,
+    hasPriceChanges,
+    createPriceHistoryEntry,
+};
