@@ -3,19 +3,11 @@ various routes for handling different operations related to a company entity. He
 what the code is doing: */
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
-
-// Importar controladores
 const companyController = require('../controllers/companyController');
-
-// Importar middlewares
 const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
-
-// Configuración de multer para almacenamiento en memoria
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+const { uploadLogo } = require('../config/multerConfig');
 
 // Ruta para crear la información de la empresa (solo administradores)
 router.post(
@@ -23,7 +15,7 @@ router.post(
     authMiddleware,
     tokenExpirationMiddleware.verifyTokenExpiration,
     roleMiddleware(['administrador']),
-    upload.single('logo'),
+    uploadLogo,
     companyController.createCompany
 );
 
@@ -33,7 +25,7 @@ router.put(
     authMiddleware,
     tokenExpirationMiddleware.verifyTokenExpiration,
     roleMiddleware(['administrador']),
-    upload.single('logo'),
+    uploadLogo,
     companyController.updateCompanyInfo
 );
 
@@ -83,6 +75,9 @@ router.delete(
 );
 
 // Ruta para obtener la información de la empresa (público, sin seguridad)
-router.get('/', companyController.getCompanyInfo);
+router.get(
+    '/',
+    companyController.getCompanyInfo
+);
 
 module.exports = router;

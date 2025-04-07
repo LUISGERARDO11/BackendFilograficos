@@ -200,7 +200,7 @@ exports.getDocumentById = async (req, res) => {
       version: version.version,
       content: version.content,
       created_at: version.created_at,
-      status: getVersionStatus(version), // Uso de la función auxiliar
+      status: getVersionStatus(version),
     }));
 
     const response = {

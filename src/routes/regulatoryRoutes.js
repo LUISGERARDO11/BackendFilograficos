@@ -3,51 +3,100 @@ framework. The router defines various routes for handling different HTTP request
 regulatory documents. Here's a breakdown of what the code is doing: */
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
-
-// Importar controladores
 const regulatoryController = require('../controllers/regulatoryController');
-
-// Importar middlewares
 const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 const validateRegulatoryDocument = require('../middlewares/validateRegulatory');
-
-// Configuración de multer para almacenamiento en memoria
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+const { uploadRegulatory } = require('../config/multerConfig');
 
 // ** CREACIÓN Y ACTUALIZACIÓN **
 // Ruta para crear un nuevo documento regulatorio
-router.post('/create', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), upload.single('file'), validateRegulatoryDocument, regulatoryController.createRegulatoryDocument);
+router.post(
+    '/create',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    uploadRegulatory,
+    validateRegulatoryDocument,
+    regulatoryController.createRegulatoryDocument
+);
 
 // Ruta para actualizar un documento regulatorio (nueva versión)
-router.put('/update/:document_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']),upload.single('file'), regulatoryController.updateRegulatoryDocument);
+router.put(
+    '/update/:document_id',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    uploadRegulatory,
+    regulatoryController.updateRegulatoryDocument
+);
 
 // ** ELIMINACIÓN (LÓGICA) **
 // Ruta para eliminar lógicamente un documento regulatorio
-router.delete('/delete-document/:document_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), regulatoryController.deleteRegulatoryDocument);
+router.delete(
+    '/delete-document/:document_id',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    regulatoryController.deleteRegulatoryDocument
+);
 
 // Ruta para eliminar lógicamente una versión específica de un documento regulatorio
-router.delete('/delete/:document_id/:version_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), regulatoryController.deleteRegulatoryDocumentVersion);
+router.delete(
+    '/delete/:document_id/:version_id',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    regulatoryController.deleteRegulatoryDocumentVersion
+);
 
 // ** RESTAURACIÓN **
 // Ruta para restaurar un documento regulatorio eliminado
-router.put('/restore-document/:document_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), regulatoryController.restoreRegulatoryDocument);
+router.put(
+    '/restore-document/:document_id',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    regulatoryController.restoreRegulatoryDocument
+);
 
 // Ruta para restaurar una versión específica de un documento regulatorio
-router.put('/restore-version/:document_id/:version_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), regulatoryController.restoreRegulatoryDocumentVersion);
+router.put(
+    '/restore-version/:document_id/:version_id',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    regulatoryController.restoreRegulatoryDocumentVersion
+);
 
 // ** CONSULTAS **
 // Ruta para obtener el historial de versiones de un documento
-router.get('/version-history/:document_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), regulatoryController.getVersionHistory);
+router.get(
+    '/version-history/:document_id',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    regulatoryController.getVersionHistory
+);
 
 // Ruta para obtener la version actual de un documento regulatorio
-router.get('/current-version/:document_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), regulatoryController.getCurrentVersionById);
+router.get(
+    '/current-version/:document_id',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    regulatoryController.getCurrentVersionById
+);
 
 // Ruta para obtener un documento regulatorio por su ID
-router.get('/document/:document_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), regulatoryController.getDocumentById);
+router.get(
+    '/document/:document_id',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    regulatoryController.getDocumentById
+);
 
 // ** CONSULTAS PÚBLICAS **
 // Ruta para obtener la versión vigente de un documento regulatorio (público)
