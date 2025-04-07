@@ -146,7 +146,16 @@ const getVariantsWithFilters = async ({ search, categoryId, productType, page, l
     if (categoryId) productWhere.category_id = parseInt(categoryId);
     if (productType) productWhere.product_type = productType;
 
-    let order = sortBy ? (sortBy === 'product_name' ? [[Product, 'name', sortOrder]] : [[sortBy, sortOrder]]) : [['variant_id', 'DESC']];
+    let order;
+    if (sortBy) {
+        if (sortBy === 'product_name') {
+            order = [[Product, 'name', sortOrder]];
+        } else {
+            order = [[sortBy, sortOrder]];
+        }
+    } else {
+        order = [['variant_id', 'DESC']];
+    }
 
     const { count, rows: variants } = await ProductVariant.findAndCountAll({
         where,
