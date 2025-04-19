@@ -29,7 +29,19 @@ exports.createProduct = async (req, res) => {
     ]);
 
     const createdProduct = await Product.findByPk(newProduct.product_id, {
-      include: [{ model: ProductVariant, include: [ProductImage, ProductAttributeValue] }, { model: CustomizationOption }]
+      include: [
+        {
+          model: ProductVariant,
+          include: [
+            ProductImage,
+            {
+              model: ProductAttributeValue,
+              include: [ProductAttribute] // Incluir la relación con ProductAttribute
+            }
+          ]
+        },
+        { model: CustomizationOption }
+      ]
     });
 
     loggerUtils.logUserActivity(userId, 'create', `Producto creado: ${name} (${newProduct.product_id})`);
