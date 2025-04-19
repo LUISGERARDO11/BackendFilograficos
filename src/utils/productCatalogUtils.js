@@ -45,17 +45,23 @@ async function processVariantImages(variant, files, index, sku, currentImages = 
 
 // Crear registro de historial de precios
 function createPriceHistoryRecord(variant_id, oldData, newData, change_type, userId) {
+  // Calcular new_calculated_price si no está definido
+  const newCalculatedPrice = newData.calculated_price !== undefined 
+    ? Number(newData.calculated_price)
+    : Number((newData.production_cost * (1 + newData.profit_margin / 100)).byFixed(2));
+
   return {
     variant_id,
     previous_production_cost: oldData.production_cost || 0,
-    new_production_cost: newData.production_cost,
+    new_production_cost: Number(newData.production_cost),
     previous_profit_margin: oldData.profit_margin || 0,
-    new_profit_margin: newData.profit_margin,
+    new_profit_margin: Number(newData.profit_margin),
     previous_calculated_price: oldData.calculated_price || 0,
-    new_calculated_price: newData.calculated_price,
+    new_calculated_price: newCalculatedPrice,
     change_type,
     changed_by: userId,
-    change_date: new Date()
+    change_date: new Date(),
+    change_description: change_type === 'initial' ? 'Precio inicial establecido al crear la variante' : null
   };
 }
 
@@ -134,6 +140,18 @@ function parseAndValidateInput(variants, customizations) {
     parsedVariants = variants;
   }
   if (!Array.isArray(parsedVariants)) throw new Error('Las variantes deben ser un arreglo');
+
+  for (const variant of parsedVariants) {
+    if (typeof variant.production_cost !== 'number' || variant.production_cost < 0) {
+      throw new Error(`El costo de producción de la variante ${variant.sku} debe ser un número no negativo`);
+    }
+    if (typeof variant.profit_margin !== 'number' || variant.profit_margin < 0) {
+      throw new Error(`El margen de ganancia de la variante ${variant.sku} debe ser un número no negativo`);
+    }
+    if (!variant.sku || typeof variant.sku !== 'string') {
+      throw new Error('El SKU de la variante debe ser una cadena no vacía');
+    }
+  }
 
   let parsedCustomizations;
   if (typeof customizations === 'string') {
@@ -341,7 +359,11 @@ async function processVariants(product_id, variants, files, categoryIdNum, userI
     });
 
     variantRecords.push(newVariant);
-    priceHistoryRecords.push(createPriceHistoryRecord(newVariant.variant_id, {}, variant, 'initial', userId));
+    priceHistoryRecords.push(createPriceHistoryRecord(newVariant.variant_id, {}, {
+      production_cost: variant.production_cost,
+      profit_margin: variant.profit_margin,
+      calculated_price // Pasamos calculated_price explícitamente
+    }, 'initial', userId));
     imageRecords.push(...await processVariantImages(newVariant, files, index, variant.sku));
     attributeRecords.push(...await processVariantAttributes(newVariant.variant_id, variant.attributes, categoryIdNum));
   }
