@@ -36,7 +36,7 @@ const validateProduct = [
     optionalInt('variants.*.stock_threshold').withMessage('El umbral de stock debe ser un número entero positivo'),
     optionalArray('variants.*.attributes').withMessage('Los atributos deben ser un arreglo'),
     requiredInt('variants.*.attributes.*.attribute_id').withMessage('El ID del atributo debe ser un número entero'),
-    requiredString('variants.*.attributes.*.value').withMessage('El valor del atributo es obligatorio'),
+    optionalString('variants.*.attributes.*.value').withMessage('El valor del atributo debe ser una cadena válida'),
 ];
 
 const validateDeleteProduct = [positiveInt('product_id').withMessage('El ID del producto debe ser un número entero positivo').toInt()];
@@ -57,7 +57,7 @@ const validateUpdateProduct = [
     requiredInt('variants.*.imagesToDelete.*').withMessage('Los IDs de imágenes a eliminar deben ser números enteros'),
     optionalArray('variants.*.attributes').withMessage('Los atributos deben ser un arreglo'),
     optionalInt('variants.*.attributes.*.attribute_id').withMessage('El ID del atributo debe ser un número entero'),
-    requiredString('variants.*.attributes.*.value').optional().withMessage('El valor del atributo no puede estar vacío'),
+    optionalString('variants.*.attributes.*.value').withMessage('El valor del atributo debe ser una cadena válida'),
     optionalArray('customizations').withMessage('Las personalizaciones deben ser un arreglo'),
     body('customizations.*.type').isIn(['text', 'image', 'file']).withMessage('Tipo de personalización no válido'),
     requiredString('customizations.*.description').optional().withMessage('La descripción de la personalización no puede estar vacía'),

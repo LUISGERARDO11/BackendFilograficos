@@ -212,9 +212,29 @@ async function processVariantAttributes(variant_id, attributes, categoryIdNum) {
       throw new Error(`El atributo con ID ${attributeIdNum} no pertenece a esta categoría`);
     }
     const attribute = validAttributes.find(a => a.attribute_id === attributeIdNum);
-    if (attribute.data_type === 'lista' && attribute.allowed_values && !attribute.allowed_values.split(',').includes(attr.value)) {
-      throw new Error(`El valor "${attr.value}" no es permitido para el atributo "${attribute.attribute_name}"`);
+    
+    // Permitir valores vacíos para cualquier tipo de atributo
+    if (attr.value === '') {
+      attributeRecords.push({ variant_id, attribute_id: attributeIdNum, value: '' });
+      continue;
     }
+
+    // Validar valores no vacíos según el tipo de atributo
+    if (attribute.data_type === 'lista' && attribute.allowed_values) {
+      const allowedValues = attribute.allowed_values.split(',');
+      if (!allowedValues.includes(attr.value)) {
+        throw new Error(`El valor "${attr.value}" no es permitido para el atributo "${attribute.attribute_name}"`);
+      }
+    } else if (attribute.data_type === 'numero') {
+      if (isNaN(Number(attr.value))) {
+        throw new Error(`El valor "${attr.value}" no es un número válido para el atributo "${attribute.attribute_name}"`);
+      }
+    } else if (attribute.data_type === 'boolean') {
+      if (attr.value !== 'true' && attr.value !== 'false') {
+        throw new Error(`El valor "${attr.value}" no es un booleano válido para el atributo "${attribute.attribute_name}"`);
+      }
+    }
+
     attributeRecords.push({ variant_id, attribute_id: attributeIdNum, value: attr.value });
   }
   return attributeRecords;
