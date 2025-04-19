@@ -33,6 +33,7 @@ const ProductImage = require('./ProductImage');
 const PriceHistory = require('./PriceHistory');
 const CustomizationOption = require('./CustomizationOption');
 const Customization = require('./Customization');
+const UploadedFiles = require('./UploadedFiles');
 const ShippingOption = require('./ShippingOption');
 const DeliveryPoint = require('./DeliveryPoint');
 const Cart = require('./Cart');
@@ -157,6 +158,9 @@ Customization.belongsTo(CustomizationOption, { foreignKey: 'option_id' });
 
 Order.hasMany(Customization, { foreignKey: 'order_id' });
 Customization.belongsTo(Order, { foreignKey: 'order_id' });
+
+UploadedFiles.belongsTo(Customization, { foreignKey: 'customization_id' });
+Customization.hasMany(UploadedFiles, { foreignKey: 'customization_id' });
 
 // Relaciones de Opciones de Envío
 ShippingOption.hasMany(DeliveryPoint, { foreignKey: 'shipping_option_id' });
@@ -285,6 +289,7 @@ module.exports = {
   PriceHistory,
   CustomizationOption,
   Customization,
+  UploadedFiles,
   ShippingOption,
   DeliveryPoint,
   Cart,

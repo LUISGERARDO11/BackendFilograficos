@@ -142,7 +142,7 @@ exports.deleteProduct = async (req, res) => {
     if (product.status === 'inactive') return res.status(400).json({ message: 'El producto ya está inactivo' });
 
     await product.update({ status: 'inactive' });
-    await ProductVariant.update({ is_deleted: ChargePointStatus }, { where: { product_id } });
+    await ProductVariant.update({ is_deleted: true }, { where: { product_id } });
 
     loggerUtils.logUserActivity(userId, 'delete', `Producto eliminado lógicamente: ${product.name} (${product_id})`);
     res.status(200).json({ message: 'Producto eliminado lógicamente exitosamente' });
