@@ -48,7 +48,7 @@ function createPriceHistoryRecord(variant_id, oldData, newData, change_type, use
   // Calcular new_calculated_price si no está definido
   const newCalculatedPrice = newData.calculated_price !== undefined 
     ? Number(newData.calculated_price)
-    : Number((newData.production_cost * (1 + newData.profit_margin / 100)).byFixed(2));
+    : Number((newData.production_cost * (1 + newData.profit_margin / 100)).toFixed(2));
 
   return {
     variant_id,
@@ -92,11 +92,11 @@ function formatProductResponse(product) {
       stock: variant.stock,
       stock_threshold: variant.stock_threshold,
       attributes: variant.ProductAttributeValues?.map(attr => ({
-        attribute_id: attr.ProductAttribute.attribute_id,
-        attribute_name: attr.ProductAttribute.attribute_name,
+        attribute_id: attr.ProductAttribute?.attribute_id || null,
+        attribute_name: attr.ProductAttribute?.attribute_name || 'Desconocido',
         value: attr.value,
-        data_type: attr.ProductAttribute.data_type,
-        allowed_values: attr.ProductAttribute.allowed_values
+        data_type: attr.ProductAttribute?.data_type || 'texto',
+        allowed_values: attr.ProductAttribute?.allowed_values || null
       })) || [],
       images: variant.ProductImages?.map(img => ({
         image_id: img.image_id,
