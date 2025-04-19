@@ -65,8 +65,14 @@ function createPriceHistoryRecord(variant_id, oldData, newData, change_type, use
   };
 }
 
-// Validar SKU único
+// Validar SKU único y formato
 async function validateUniqueSku(sku, variant_id = null) {
+  // Validar formato: [A-Z]{4}-[0-9]{6}-[0-9]{2}
+  const skuRegex = /^[A-Z]{4}-[0-9]{6}-[0-9]{2}$/;
+  if (!skuRegex.test(sku)) {
+    throw new Error(`El SKU ${sku} no cumple con el formato requerido: AAAA-NNNNNN-NN`);
+  }
+
   const existingVariant = await ProductVariant.findOne({ where: { sku } });
   if (existingVariant && existingVariant.variant_id !== variant_id) {
     throw new Error(`El SKU ${sku} ya existe`);
@@ -339,18 +345,20 @@ async function updateOrCreateVariant(product_id, variant, existingVariants, file
 }
 
 // Procesar variantes para createProduct
-async function processVariants(product_id, variants, files, categoryIdNum, userId) {
+async function processVariants(product_id, variants, files, categoryIdNum, userId, productName) {
   const variantRecords = [];
   const attributeRecords = [];
   const imageRecords = [];
   const priceHistoryRecords = [];
 
   for (const [index, variant] of variants.entries()) {
-    await validateUniqueSku(variant.sku);
+    const sku = variant.sku;
+    await validateUniqueSku(sku);
+
     const calculated_price = Number((variant.production_cost * (1 + variant.profit_margin / 100)).toFixed(2));
     const newVariant = await ProductVariant.create({
       product_id,
-      sku: variant.sku,
+      sku,
       production_cost: variant.production_cost,
       profit_margin: variant.profit_margin,
       calculated_price,
@@ -362,9 +370,9 @@ async function processVariants(product_id, variants, files, categoryIdNum, userI
     priceHistoryRecords.push(createPriceHistoryRecord(newVariant.variant_id, {}, {
       production_cost: variant.production_cost,
       profit_margin: variant.profit_margin,
-      calculated_price // Pasamos calculated_price explícitamente
+      calculated_price
     }, 'initial', userId));
-    imageRecords.push(...await processVariantImages(newVariant, files, index, variant.sku));
+    imageRecords.push(...await processVariantImages(newVariant, files, index, sku));
     attributeRecords.push(...await processVariantAttributes(newVariant.variant_id, variant.attributes, categoryIdNum));
   }
 
