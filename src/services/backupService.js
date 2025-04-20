@@ -56,15 +56,21 @@ async function handleOAuthCallback(code, adminId) {
     });
 
     // Encriptar refresh token
-    const cipher = crypto.createCipher(ENCRYPTION_ALGORITHM, Buffer.from(process.env.ENCRYPTION_KEY, 'hex'));
+    const iv = crypto.randomBytes(16); // Generar IV aleatorio
+    const cipher = crypto.createCipheriv(
+      ENCRYPTION_ALGORITHM,
+      Buffer.from(process.env.ENCRYPTION_KEY, 'hex'),
+      iv
+    );
     let encryptedToken = cipher.update(tokens.refresh_token, 'utf8', 'hex');
     encryptedToken += cipher.final('hex');
+    const encryptedTokenWithIv = iv.toString('hex') + ':' + encryptedToken; // Almacenar IV junto con el token encriptado
 
     // Actualizar o crear configuración
     const existingConfig = await BackupConfig.findOne({ where: { storage_type: 'google_drive' } });
     if (existingConfig) {
       await existingConfig.update({
-        refresh_token: encryptedToken,
+        refresh_token: encryptedTokenWithIv,
         folder_id: folder.data.id,
         created_by: adminId
       });
@@ -73,7 +79,7 @@ async function handleOAuthCallback(code, adminId) {
         frequency: 'daily',
         data_types: JSON.stringify(['transactions', 'clients']),
         storage_type: 'google_drive',
-        refresh_token: encryptedToken,
+        refresh_token: encryptedTokenWithIv,
         folder_id: folder.data.id,
         schedule_time: '02:00:00',
         created_by: adminId
@@ -92,8 +98,14 @@ async function getDriveClient() {
   if (!config) throw new Error('No hay configuración de Google Drive');
 
   // Desencriptar refresh token
-  const decipher = crypto.createDecipher(ENCRYPTION_ALGORITHM, Buffer.from(process.env.ENCRYPTION_KEY, 'hex'));
-  let decryptedToken = decipher.update(config.refresh_token, 'hex', 'utf8');
+  const [ivHex, encryptedToken] = config.refresh_token.split(':');
+  const iv = Buffer.from(ivHex, 'hex');
+  const decipher = crypto.createDecipheriv(
+    ENCRYPTION_ALGORITHM,
+    Buffer.from(process.env.ENCRYPTION_KEY, 'hex'),
+    iv
+  );
+  let decryptedToken = decipher.update(encryptedToken, 'hex', 'utf8');
   decryptedToken += decipher.final('utf8');
 
   oauth2Client.setCredentials({ refresh_token: decryptedToken });
