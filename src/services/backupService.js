@@ -47,7 +47,7 @@ async function handleOAuthCallback(code, adminId) {
     // Crear carpeta en Google Drive
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
     const folderMetadata = {
-      name: 'MyAppBackups',
+      name: 'FilograficosBackups',
       mimeType: 'application/vnd.google-apps.folder'
     };
     const folder = await drive.files.create({
