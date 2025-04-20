@@ -49,6 +49,8 @@ const NotificationLog = require('./NotificationLog');
 const CategoryAttributes = require('./CategoryAttributes');
 const CommunicationPreference = require('./CommunicationPreference');
 const SystemConfig = require('./Systemconfig');
+const BackupConfig = require('./BackupConfig');
+const BackupFiles = require('./BackupFiles');
 
 // Relaciones de Usuarios
 User.hasOne(Account, { foreignKey: 'user_id' });
@@ -80,6 +82,9 @@ RestorationLog.belongsTo(User, { foreignKey: 'performed_by' });
 
 User.hasMany(PriceHistory, { foreignKey: 'changed_by' });
 PriceHistory.belongsTo(User, { foreignKey: 'changed_by' });
+
+User.hasMany(BackupConfig, { foreignKey: 'created_by' });
+BackupConfig.belongsTo(User, { foreignKey: 'created_by' });
 
 // Relaciones de Cuentas
 Account.hasMany(TwoFactorConfig, { foreignKey: 'account_id' });
@@ -120,6 +125,9 @@ OrderHistory.belongsTo(Order, { foreignKey: 'order_id' });
 // Relaciones de Respaldo y Restauración
 BackupLog.hasMany(RestorationLog, { foreignKey: 'backup_id' });
 RestorationLog.belongsTo(BackupLog, { foreignKey: 'backup_id' });
+
+BackupLog.hasMany(BackupFiles, { foreignKey: 'backup_id' });
+BackupFiles.belongsTo(BackupLog, { foreignKey: 'backup_id' });
 
 // Relaciones de Productos
 Product.hasMany(ProductVariant, { foreignKey: 'product_id' });
@@ -187,7 +195,6 @@ CustomizationOption.hasMany(CartDetail, { foreignKey: 'option_id' });
 Order.hasMany(OrderDetail, { foreignKey: 'order_id' });
 OrderDetail.belongsTo(Order, { foreignKey: 'order_id' });
 
-// Corrección: OrderDetail se relaciona con ProductVariant usando variant_id
 OrderDetail.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
 ProductVariant.hasMany(OrderDetail, { foreignKey: 'variant_id' });
 
@@ -244,7 +251,7 @@ NotificationLog.belongsTo(User, { foreignKey: 'user_id' });
 User.hasOne(CommunicationPreference, { foreignKey: 'user_id' });
 CommunicationPreference.belongsTo(User, { foreignKey: 'user_id' });
 
-// Asociaciones para CategoryAttributes (many-to-many entre Category y ProductAttribute)
+// Asociaciones para CategoryAttributes
 CategoryAttributes.belongsTo(Category, { foreignKey: 'category_id' });
 CategoryAttributes.belongsTo(ProductAttribute, { foreignKey: 'attribute_id' });
 
@@ -306,5 +313,7 @@ module.exports = {
   CommunicationPreference,
   SystemConfig,
   Company,
-  SocialMedia
+  SocialMedia,
+  BackupConfig,
+  BackupFiles
 };

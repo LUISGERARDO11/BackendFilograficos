@@ -18,8 +18,11 @@ const BackupLog = sequelize.define('BackupLog', {
     allowNull: false
   },
   location: {
-    type: DataTypes.STRING(255),
-    allowNull: false
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    validate: {
+      isIn: [['google_drive']] // Por ahora, solo Google Drive
+    }
   },
   file_size: {
     type: DataTypes.DECIMAL(10, 2), // Tamaño del archivo en MB
@@ -37,19 +40,22 @@ const BackupLog = sequelize.define('BackupLog', {
     type: DataTypes.INTEGER, // ID del usuario que realizó el respaldo
     allowNull: false,
     references: {
-      model: 'users', // Relación con la tabla de usuarios
+      model: 'users',
       key: 'user_id'
     }
   }
 }, {
-  tableName: 'backup_logs', // Nombre de la tabla en la base de datos
-  timestamps: false, // No usar createdAt y updatedAt
+  tableName: 'backup_logs',
+  timestamps: false,
   indexes: [
     {
-      fields: ['backup_datetime'] // Índice para la fecha y hora del respaldo
+      fields: ['backup_datetime']
     },
     {
-      fields: ['status'] // Índice para el estado del respaldo
+      fields: ['status']
+    },
+    {
+      fields: ['performed_by']
     }
   ]
 });
