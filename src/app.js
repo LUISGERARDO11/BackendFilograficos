@@ -2,6 +2,7 @@
 const express = require('express');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
+const cron = require('node-cron');
 
 // Importar configuraciones
 const logger = require('./config/logger');
@@ -14,6 +15,10 @@ const { generalLimiter } = require('./middlewares/expressRateLimit');
 
 // Importar utilidades
 const authUtils = require('./utils/authUtils');
+
+// Importar servicio de respaldo
+const backupService = require('./services/backupService');
+const { BackupConfig } = require('./models/Associations');
 
 // Importar rutas disponibles
 const routes = [
@@ -40,6 +45,7 @@ const routes = [
   { path: '/api/categories', router: require('./routes/categoriesRoutes') },
   { path: '/api/cart', router: require('./routes/cartRoutes') },
   { path: '/api/customizations', router: require('./routes/customizationRoutes') },
+  { path: '/api/backups', router: require('./routes/backupRoutes') },
 ];
 
 // Inicializar la aplicación Express
@@ -90,6 +96,26 @@ authUtils.loadPasswordList();
 // Registrar todas las rutas dinámicamente
 routes.forEach(({ path, router }) => {
   app.use(path, router);
+});
+
+// Programar respaldos automáticos
+cron.schedule('* * * * *', async () => {
+  try {
+    const config = await BackupConfig.findOne({ where: { storage_type: 'google_drive' } });
+    if (!config) return;
+    const { frequency, schedule_time, data_types, created_by } = config;
+    const [hours, minutes] = schedule_time.split(':');
+    const now = new Date();
+    const shouldRun =
+      (frequency === 'daily' && now.getHours() === parseInt(hours) && now.getMinutes() === parseInt(minutes)) ||
+      (frequency === 'weekly' && now.getDay() === 1 && now.getHours() === parseInt(hours) && now.getMinutes() === parseInt(minutes)) ||
+      (frequency === 'monthly' && now.getDate() === 1 && now.getHours() === parseInt(hours) && now.getMinutes() === parseInt(minutes));
+    if (shouldRun) {
+      await backupService.generateBackup(created_by, JSON.parse(data_types));
+    }
+  } catch (error) {
+    logger.error('Error en cron job:', error);
+  }
 });
 
 // Middleware para manejar errores
