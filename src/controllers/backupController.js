@@ -38,7 +38,7 @@ exports.configureBackup = [
       const updatedConfig = await BackupConfig.findOne({ where: { storage_type: 'google_drive' } });
       await updatedConfig.update({
         frequency,
-        data_types: JSON.stringify(data_types),
+        data_types, // Pasar como array
         schedule_time,
         created_by: userId
       });
@@ -49,7 +49,7 @@ exports.configureBackup = [
         message: 'Configuración de respaldo actualizada',
         config: {
           ...updatedConfig.toJSON(),
-          data_types: JSON.parse(updatedConfig.data_types)
+          data_types: updatedConfig.data_types // Ya es un array
         }
       });
     } catch (error) {
