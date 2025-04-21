@@ -67,17 +67,19 @@ async function handleOAuthCallback(code, adminId) {
     const encryptedTokenWithIv = iv.toString('hex') + ':' + encryptedToken; // Almacenar IV junto con el token encriptado
 
     // Actualizar o crear configuración
+    const defaultDataTypes = ['transactions', 'clients']; // Usar array directamente
     const existingConfig = await BackupConfig.findOne({ where: { storage_type: 'google_drive' } });
     if (existingConfig) {
       await existingConfig.update({
         refresh_token: encryptedTokenWithIv,
         folder_id: folder.data.id,
-        created_by: adminId
+        created_by: adminId,
+        data_types: defaultDataTypes // Asegurar que data_types sea válido
       });
     } else {
       await BackupConfig.create({
         frequency: 'daily',
-        data_types: JSON.stringify(['transactions', 'clients']),
+        data_types: defaultDataTypes, // Usar array directamente
         storage_type: 'google_drive',
         refresh_token: encryptedTokenWithIv,
         folder_id: folder.data.id,
@@ -328,7 +330,7 @@ async function getConfig() {
   if (config) {
     return {
       ...config.toJSON(),
-      data_types: JSON.parse(config.data_types)
+      data_types: Array.isArray(config.data_types) ? config.data_types : JSON.parse(config.data_types)
     };
   }
   return null;
