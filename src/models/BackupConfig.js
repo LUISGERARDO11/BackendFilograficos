@@ -17,11 +17,22 @@ const BackupConfig = sequelize.define('BackupConfig', {
     allowNull: false,
     validate: {
       isValidDataTypes(value) {
-        if (!Array.isArray(value) || value.length === 0) {
+        let parsedValue = value;
+        // Si el valor es un string (caso de actualización desde la DB), parsearlo
+        if (typeof value === 'string') {
+          try {
+            parsedValue = JSON.parse(value);
+          } catch (error) {
+            throw new Error('data_types debe ser un JSON válido');
+          }
+        }
+        // Validar que sea un array no vacío
+        if (!Array.isArray(parsedValue) || parsedValue.length === 0) {
           throw new Error('data_types debe ser un array no vacío');
         }
-        const validTypes = ['transactions', 'clients', 'configuration'];
-        if (!value.every(type => validTypes.includes(type))) {
+        // Validar los tipos permitidos
+        const validTypes = ['transactions', 'clients', 'configuration', 'full'];
+        if (!parsedValue.every(type => validTypes.includes(type))) {
           throw new Error('Tipos de datos inválidos');
         }
       }
