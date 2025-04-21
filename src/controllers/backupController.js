@@ -1,5 +1,6 @@
 const { body, query, validationResult } = require('express-validator');
 const backupService = require('../services/backupService');
+const { BackupConfig } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 
 // Validaciones para configurar respaldos
