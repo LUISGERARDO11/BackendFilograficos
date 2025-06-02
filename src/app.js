@@ -99,22 +99,51 @@ routes.forEach(({ path, router }) => {
 });
 
 // Programar respaldos automáticos
-cron.schedule('* * * * *', async () => {
+// Full backup: Cada domingo a las 00:00
+cron.schedule('0 0 * * 0', async () => {
   try {
-    const config = await BackupConfig.findOne({ where: { storage_type: 'google_drive' } });
-    if (!config) return;
-    const { frequency, schedule_time, data_types, created_by } = config;
-    const [hours, minutes] = schedule_time.split(':');
-    const now = new Date();
-    const shouldRun =
-      (frequency === 'daily' && now.getHours() === parseInt(hours) && now.getMinutes() === parseInt(minutes)) ||
-      (frequency === 'weekly' && now.getDay() === 1 && now.getHours() === parseInt(hours) && now.getMinutes() === parseInt(minutes)) ||
-      (frequency === 'monthly' && now.getDate() === 1 && now.getHours() === parseInt(hours) && now.getMinutes() === parseInt(minutes));
-    if (shouldRun) {
-      await backupService.generateBackup(created_by, JSON.parse(data_types));
+    const config = await BackupConfig.findOne({ where: { storage_type: 'google_drive', backup_type: 'full' } });
+    if (!config) {
+      logger.error('No se encontró configuración para respaldo completo');
+      return;
     }
+    const { data_types, created_by } = config;
+    await backupService.generateBackup(created_by, JSON.parse(data_types), 'full');
+    logger.info('Respaldo completo ejecutado exitosamente');
   } catch (error) {
-    logger.error('Error en cron job:', error);
+    logger.error('Error en cron job de respaldo completo:', error);
+  }
+});
+
+// Diferencial backup: Cada noche a las 00:00, excepto domingos
+cron.schedule('0 0 * * 1-6', async () => {
+  try {
+    const config = await BackupConfig.findOne({ where: { storage_type: 'google_drive', backup_type: 'differential' } });
+    if (!config) {
+      logger.error('No se encontró configuración para respaldo diferencial');
+      return;
+    }
+    const { data_types, created_by } = config;
+    await backupService.generateBackup(created_by, JSON.parse(data_types), 'differential');
+    logger.info('Respaldo diferencial ejecutado exitosamente');
+  } catch (error) {
+    logger.error('Error en cron job de respaldo diferencial:', error);
+  }
+});
+
+// Transaccional backup: Cada hora
+cron.schedule('0 * * * *', async () => {
+  try {
+    const config = await BackupConfig.findOne({ where: { storage_type: 'google_drive', backup_type: 'transactional' } });
+    if (!config) {
+      logger.error('No se encontró configuración para respaldo transaccional');
+      return;
+    }
+    const { data_types, created_by } = config;
+    await backupService.generateBackup(created_by, JSON.parse(data_types), 'transactional');
+    logger.info('Respaldo transaccional ejecutado exitosamente');
+  } catch (error) {
+    logger.error('Error en cron job de respaldo transaccional:', error);
   }
 });
 

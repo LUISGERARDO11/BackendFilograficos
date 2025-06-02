@@ -144,7 +144,7 @@ exports.verifyEmail = async (req, res) => {
 exports.login = [
   body('email').isEmail().normalizeEmail(),
   body('password').not().isEmpty().trim().escape(),
-  body('recaptchaToken').not().isEmpty().withMessage('Se requiere el token de reCAPTCHA'),
+  //body('recaptchaToken').not().isEmpty().withMessage('Se requiere el token de reCAPTCHA'),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -155,10 +155,10 @@ exports.login = [
     const { email, password, recaptchaToken } = req.body;
 
     try {
-      const recaptchaValid = await verifyRecaptcha(recaptchaToken, res);
+      /*const recaptchaValid = await verifyRecaptcha(recaptchaToken, res);
       if (!recaptchaValid) {
         return;
-      }
+      }*/
 
       const user = await User.findOne({ where: { email } });
       if (!user) {

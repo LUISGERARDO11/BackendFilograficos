@@ -27,36 +27,36 @@ router.get(
   backupController.handleGoogleAuthCallback
 );
 
-// Ruta para configurar respaldos
+// Ruta para configurar respaldos por tipo
 router.post(
-  '/config',
+  '/config/:backup_type',
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
   backupController.configureBackup
 );
 
-// Ruta para obtener la configuración de respaldos
+// Ruta para obtener la configuración de respaldos por tipo
 router.get(
-  '/config',
+  '/config/:backup_type',
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
   backupController.getBackupConfig
 );
 
-// Ruta para listar respaldos
+// Ruta para listar respaldos (opcionalmente filtrado por backup_type)
 router.get(
   '/history',
   authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
+ tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
   backupController.listBackups
 );
 
-// Ruta para ejecutar un respaldo manual
+// Ruta para ejecutar un respaldo manual por tipo
 router.post(
-  '/run',
+  '/run/:backup_type',
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),

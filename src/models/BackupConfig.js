@@ -8,9 +8,29 @@ const BackupConfig = sequelize.define('BackupConfig', {
     autoIncrement: true,
     allowNull: false
   },
+  backup_type: {
+    type: DataTypes.ENUM('full', 'differential', 'transactional'),
+    allowNull: false,
+    validate: {
+      isIn: [['full', 'differential', 'transactional']]
+    }
+  },
   frequency: {
-    type: DataTypes.ENUM('daily', 'weekly', 'monthly'),
-    allowNull: false
+    type: DataTypes.ENUM('daily', 'weekly', 'hourly'),
+    allowNull: false,
+    validate: {
+      isValidFrequency(value) {
+        if (this.backup_type === 'full' && value !== 'weekly') {
+          throw new Error('El respaldo completo debe tener frecuencia "weekly"');
+        }
+        if (this.backup_type === 'differential' && value !== 'daily') {
+          throw new Error('El respaldo diferencial debe tener frecuencia "daily"');
+        }
+        if (this.backup_type === 'transactional' && value !== 'hourly') {
+          throw new Error('El respaldo transaccional debe tener frecuencia "hourly"');
+        }
+      }
+    }
   },
   data_types: {
     type: DataTypes.JSON,
@@ -18,7 +38,6 @@ const BackupConfig = sequelize.define('BackupConfig', {
     validate: {
       isValidDataTypes(value) {
         let parsedValue = value;
-        // Si el valor es un string (caso de actualización desde la DB), parsearlo
         if (typeof value === 'string') {
           try {
             parsedValue = JSON.parse(value);
@@ -26,14 +45,15 @@ const BackupConfig = sequelize.define('BackupConfig', {
             throw new Error('data_types debe ser un JSON válido');
           }
         }
-        // Validar que sea un array no vacío
         if (!Array.isArray(parsedValue) || parsedValue.length === 0) {
           throw new Error('data_types debe ser un array no vacío');
         }
-        // Validar los tipos permitidos
         const validTypes = ['transactions', 'clients', 'configuration', 'full'];
         if (!parsedValue.every(type => validTypes.includes(type))) {
           throw new Error('Tipos de datos inválidos');
+        }
+        if (this.backup_type === 'transactional' && parsedValue.length !== 1 && parsedValue[0] !== 'transactions') {
+          throw new Error('El respaldo transaccional solo puede incluir "transactions"');
         }
       }
     }
@@ -53,6 +73,10 @@ const BackupConfig = sequelize.define('BackupConfig', {
     type: DataTypes.STRING(255),
     allowNull: true
   },
+  static_folder_id: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
   schedule_time: {
     type: DataTypes.TIME,
     allowNull: false,
@@ -61,6 +85,9 @@ const BackupConfig = sequelize.define('BackupConfig', {
         const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/;
         if (!timeRegex.test(value)) {
           throw new Error('Formato de hora inválido (HH:mm:ss)');
+        }
+        if (this.backup_type === 'transactional' && value !== '00:00:00') {
+          throw new Error('El respaldo transaccional debe tener schedule_time "00:00:00"');
         }
       }
     }
@@ -82,6 +109,9 @@ const BackupConfig = sequelize.define('BackupConfig', {
     },
     {
       fields: ['storage_type']
+    },
+    {
+      fields: ['backup_type']
     }
   ]
 });
