@@ -16,8 +16,8 @@ const oauth2Client = new google.auth.OAuth2(
 
 const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 
-// Directorio temporal para archivos
-const TEMP_DIR = path.join('/tmp', 'ecommerce_backups');
+// Directorio temporal para archivos (compatible con Windows)
+const TEMP_DIR = path.join('C:\\Users\\luis3\\PRYFILOGRAFICOS\\BackendFilograficos\\temp');
 const ENCRYPTION_ALGORITHM = 'aes-256-cbc';
 
 // Asegurar que el directorio temporal exista
@@ -56,7 +56,7 @@ async function handleOAuthCallback(code, adminId) {
     });
 
     // Crear subcarpetas para cada tipo de respaldo
-    const subfolders = ['full', 'diff', 'txn', 'others'];
+    const subfolders = ['full', 'diff', 'txn'];
     const subfolderIds = {};
     for (const subfolder of subfolders) {
       const subfolderMetadata = {
@@ -117,16 +117,6 @@ async function handleOAuthCallback(code, adminId) {
       }
     }
 
-    // Configurar subcarpeta para archivos estáticos (others)
-    const fullConfig = await BackupConfig.findOne({ 
-      where: { storage_type: 'google_drive', backup_type: 'full' } 
-    });
-    if (fullConfig) {
-      await fullConfig.update({
-        static_folder_id: subfolderIds.others
-      });
-    }
-
     return folder.data.id;
   } catch (error) {
     throw new Error(`Error en callback OAuth2: ${error.message}`);
@@ -173,8 +163,17 @@ async function generateBackup(adminId, dataTypes, backupType) {
   await ensureTempDir();
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   let backupFileName, tempSqlPath, tempEncryptedPath, tempCompressedPath;
+  const configFilePath = 'C:\\Users\\luis3\\PRYFILOGRAFICOS\\BackendFilograficos\\temp\\my.cnf';
+  const sslCaPath = path.join(TEMP_DIR, 'ca.pem');
 
   try {
+    // Verificar que el archivo de configuración exista
+    try {
+      await fs.access(configFilePath, fs.constants.R_OK);
+    } catch (err) {
+      throw new Error(`El archivo de configuración ${configFilePath} no existe o no es accesible. Verifica la ruta y los permisos.`);
+    }
+
     // Configuración según tipo de respaldo
     const config = await BackupConfig.findOne({ where: { storage_type: 'google_drive', backup_type: backupType } });
     if (!config) throw new Error(`No hay configuración para respaldo ${backupType}`);
@@ -183,7 +182,7 @@ async function generateBackup(adminId, dataTypes, backupType) {
     const tableGroups = {
       transactions: ['orders', 'order_details', 'payments', 'order_history', 'coupon_usages'],
       clients: ['users', 'accounts', 'addresses', 'communication_preferences', 'carts', 'cart_details'],
-      configuration: ['system_config', 'email_templates', 'categories', 'promotions', 'banners']
+      configuration: ['systemconfig', 'emailtemplates', 'categories', 'promotions', 'banners']
     };
     let tables = [];
     let parsedDataTypes = dataTypes;
@@ -212,18 +211,16 @@ async function generateBackup(adminId, dataTypes, backupType) {
     }
 
     // Generar respaldo
+    await fs.writeFile(sslCaPath, process.env.DB_SSL_CA);
+
     if (backupType === 'transactional') {
       // Respaldo de binlog
-      const binlogDir = process.env.MYSQL_BINLOG_DIR || '/var/log/mysql';
-      await execPromise(`mysqladmin -h ${process.env.DB_HOST} -u ${process.env.DB_USER} -p${process.env.DB_PASSWORD} flush-logs`);
-      const binlogFiles = await fs.readdir(binlogDir);
-      const latestBinlog = binlogFiles.filter(f => f.startsWith('binlog.')).sort().pop();
-      if (!latestBinlog) throw new Error('No se encontró un binlog reciente');
-      await fs.copyFile(path.join(binlogDir, latestBinlog), tempSqlPath);
+      const mysqlbinlogCmd = `mysqlbinlog --defaults-file=${configFilePath} --read-from-remote-server ${process.env.MYSQL_BINLOG_DIR || '/var/log/mysql'}/binlog.000001 > "${tempSqlPath}"`;
+      await execPromise(mysqlbinlogCmd);
     } else {
       // Respaldo completo o diferencial con mysqldump
-      const mysqldumpOptions = backupType === 'differential' ? '--no-create-info' : '--single-transaction';
-      const mysqldumpCmd = `mysqldump -h ${process.env.DB_HOST} -u ${process.env.DB_USER} -p${process.env.DB_PASSWORD} ${mysqldumpOptions} ${process.env.DB_NAME} ${tables.join(' ')} > ${tempSqlPath}`;
+      const mysqldumpOptions = backupType === 'differential' ? '--no-create-info --set-gtid-purged=OFF' : '--single-transaction --set-gtid-purged=OFF';
+      const mysqldumpCmd = `mysqldump --defaults-file=${configFilePath} ${mysqldumpOptions} ${process.env.DB_NAME} ${tables.join(' ')} > "${tempSqlPath}"`;
       await execPromise(mysqldumpCmd);
     }
 
@@ -265,7 +262,7 @@ async function generateBackup(adminId, dataTypes, backupType) {
       differential: 'differential',
       transactional: 'transactional'
     };
-    const dataType = dataTypeMap[backupType] || 'full'; // Por defecto, 'full' si no coincide
+    const dataType = dataTypeMap[backupType] || 'full';
 
     // Registrar en base de datos
     const backupLog = await BackupLog.create({
@@ -289,14 +286,12 @@ async function generateBackup(adminId, dataTypes, backupType) {
     await Promise.all([
       fs.unlink(tempSqlPath),
       fs.unlink(tempEncryptedPath),
-      fs.unlink(tempCompressedPath)
+      fs.unlink(tempCompressedPath),
+      fs.unlink(sslCaPath)
     ]);
 
-    // Si es respaldo completo, incluir archivos estáticos y limpiar respaldos antiguos
-    if (backupType === 'full') {
-      await backupStaticFiles(adminId, drive, config.static_folder_id || config.folder_id);
-      await cleanOldBackups(drive);
-    }
+    // Limpiar respaldos antiguos
+    await cleanOldBackups(drive);
 
     return backupLog;
   } catch (error) {
@@ -306,7 +301,7 @@ async function generateBackup(adminId, dataTypes, backupType) {
       differential: 'differential',
       transactional: 'transactional'
     };
-    const dataType = dataTypeMap[backupType] || 'full'; // Por defecto, 'full' si no coincide
+    const dataType = dataTypeMap[backupType] || 'full';
 
     // Registrar error
     await BackupLog.create({
@@ -321,80 +316,9 @@ async function generateBackup(adminId, dataTypes, backupType) {
     await Promise.all([
       fs.unlink(tempSqlPath).catch(() => {}),
       fs.unlink(tempEncryptedPath).catch(() => {}),
-      fs.unlink(tempCompressedPath).catch(() => {})
+      fs.unlink(tempCompressedPath).catch(() => {}),
+      fs.unlink(sslCaPath).catch(() => {})
     ]);
-    throw error;
-  }
-}
-
-// Respaldar archivos estáticos (frontend y backend)
-async function backupStaticFiles(adminId, drive, staticFolderId) {
-  await ensureTempDir();
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const staticBackupFileName = `others_backup_${timestamp}.tar.gz`;
-  const tempStaticPath = path.join(TEMP_DIR, staticBackupFileName);
-
-  try {
-    // Comprimir archivos estáticos
-    const staticDirs = [
-      path.join(__dirname, '../../frontend/dist'), // Angular frontend
-      path.join(__dirname, '../..') // Express backend (excluyendo node_modules)
-    ];
-    const tarCmd = `tar --exclude='node_modules' -czf ${tempStaticPath} ${staticDirs.join(' ')}`;
-    await execPromise(tarCmd);
-
-    // Calcular checksum
-    const compressed = await fs.readFile(tempStaticPath);
-    const hash = crypto.createHash('sha256');
-    hash.update(compressed);
-    const checksum = hash.digest('hex');
-
-    // Subir a Google Drive
-    const fileMetadata = {
-      name: staticBackupFileName,
-      parents: [staticFolderId]
-    };
-    const media = {
-      mimeType: 'application/gzip',
-      body: require('fs').createReadStream(tempStaticPath)
-    };
-    const file = await drive.files.create({
-      resource: fileMetadata,
-      media,
-      fields: 'id'
-    });
-
-    // Registrar en base de datos
-    const backupLog = await BackupLog.create({
-      backup_datetime: new Date(),
-      data_type: 'others',
-      location: 'google_drive',
-      file_size: (await fs.stat(tempStaticPath)).size / (1024 * 1024),
-      status: 'successful',
-      performed_by: adminId
-    });
-
-    await BackupFiles.create({
-      backup_id: backupLog.backup_id,
-      file_drive_id: file.data.id,
-      file_name: staticBackupFileName,
-      file_size: (await fs.stat(tempStaticPath)).size,
-      checksum
-    });
-
-    // Limpiar archivo temporal
-    await fs.unlink(tempStaticPath);
-  } catch (error) {
-    // Registrar error
-    await BackupLog.create({
-      backup_datetime: new Date(),
-      data_type: 'others',
-      location: 'google_drive',
-      status: 'failed',
-      error_message: error.message,
-      performed_by: adminId
-    });
-    await fs.unlink(tempStaticPath).catch(() => {});
     throw error;
   }
 }
@@ -405,13 +329,15 @@ async function cleanOldBackups(drive) {
     const retentionPolicies = {
       full: 28, // 4 semanas
       differential: 7, // 1 semana
-      transactional: 2, // 2 días
-      others: 28 // 4 semanas
+      transactional: 2 // 2 días
     };
 
     for (const backupType of Object.keys(retentionPolicies)) {
       const config = await BackupConfig.findOne({ where: { storage_type: 'google_drive', backup_type: backupType } });
-      if (!config) continue;
+      if (!config || !config.folder_id) {
+        console.warn(`No se encontró configuración o folder_id para el tipo de respaldo ${backupType}. Saltando limpieza.`);
+        continue;
+      }
 
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - retentionPolicies[backupType]);
@@ -422,11 +348,28 @@ async function cleanOldBackups(drive) {
         fields: 'files(id, name, createdTime)'
       });
 
+      console.log(`Archivos encontrados en la carpeta ${config.folder_id} (${backupType}):`, response.data.files);
+
+      if (!response.data.files || response.data.files.length === 0) {
+        console.log(`No hay archivos para limpiar en la carpeta ${config.folder_id} (${backupType}).`);
+        continue;
+      }
+
       for (const file of response.data.files) {
+        if (!file.id || typeof file.id !== 'string' || file.id.trim() === '') {
+          console.warn(`Archivo inválido encontrado en ${backupType}:`, file);
+          continue;
+        }
+
         const fileDate = new Date(file.createdTime);
         if (fileDate < cutoffDate) {
-          await drive.files.delete({ fileId: file.id });
-          await BackupFiles.destroy({ where: { file_drive_id: file.id } });
+          try {
+            await drive.files.delete({ fileId: file.id });
+            await BackupFiles.destroy({ where: { file_drive_id: file.id } });
+            console.log(`Archivo eliminado: ${file.name} (${file.id})`);
+          } catch (deleteError) {
+            console.error(`Error al eliminar el archivo ${file.id}: ${deleteError.message}`);
+          }
         }
       }
     }
@@ -441,6 +384,8 @@ async function restoreBackup(adminId, backupId) {
   const tempCompressedPath = path.join(TEMP_DIR, `restore_${backupId}.gz`);
   const tempEncryptedPath = path.join(TEMP_DIR, `restore_${backupId}.enc`);
   const tempSqlPath = path.join(TEMP_DIR, `restore_${backupId}.sql`);
+  const configFilePath = 'C:\\Users\\luis3\\PRYFILOGRAFICOS\\BackendFilograficos\\temp\\my.cnf';
+  const sslCaPath = path.join(TEMP_DIR, 'ca.pem');
 
   try {
     // Verificar respaldo
@@ -491,8 +436,10 @@ async function restoreBackup(adminId, backupId) {
     await fs.writeFile(tempSqlPath, decrypted);
 
     // Restaurar base de datos
+    await fs.writeFile(sslCaPath, process.env.DB_SSL_CA);
+
     if (backupType === 'full') {
-      const mysqlCmd = `mysql -h ${process.env.DB_HOST} -u ${process.env.DB_USER} -p${process.env.DB_PASSWORD} ${process.env.DB_NAME} < ${tempSqlPath}`;
+      const mysqlCmd = `mysql --defaults-file=${configFilePath} ${process.env.DB_NAME} < "${tempSqlPath}"`;
       await execPromise(mysqlCmd);
     } else if (backupType === 'differential') {
       // Restaurar el full backup más reciente primero
@@ -531,11 +478,11 @@ async function restoreBackup(adminId, backupId) {
       const fullDecrypted = Buffer.concat([fullDecipher.update(fullEncrypted), fullDecipher.final()]);
       await fs.writeFile(fullTempSqlPath, fullDecrypted);
 
-      const fullMysqlCmd = `mysql -h ${process.env.DB_HOST} -u ${process.env.DB_USER} -p${process.env.DB_PASSWORD} ${process.env.DB_NAME} < ${fullTempSqlPath}`;
+      const fullMysqlCmd = `mysql --defaults-file=${configFilePath} ${process.env.DB_NAME} < "${fullTempSqlPath}"`;
       await execPromise(fullMysqlCmd);
 
       // Aplicar diferencial
-      const diffMysqlCmd = `mysql -h ${process.env.DB_HOST} -u ${process.env.DB_USER} -p${process.env.DB_PASSWORD} ${process.env.DB_NAME} < ${tempSqlPath}`;
+      const diffMysqlCmd = `mysql --defaults-file=${configFilePath} ${process.env.DB_NAME} < "${tempSqlPath}"`;
       await execPromise(diffMysqlCmd);
 
       // Limpiar archivos temporales del full backup
@@ -587,7 +534,7 @@ async function restoreBackup(adminId, backupId) {
       const fullDecrypted = Buffer.concat([fullDecipher.update(fullEncrypted), fullDecipher.final()]);
       await fs.writeFile(fullTempSqlPath, fullDecrypted);
 
-      const fullMysqlCmd = `mysql -h ${process.env.DB_HOST} -u ${process.env.DB_USER} -p${process.env.DB_PASSWORD} ${process.env.DB_NAME} < ${fullTempSqlPath}`;
+      const fullMysqlCmd = `mysql --defaults-file=${configFilePath} ${process.env.DB_NAME} < "${fullTempSqlPath}"`;
       await execPromise(fullMysqlCmd);
 
       // Restaurar diferencial si existe
@@ -619,7 +566,7 @@ async function restoreBackup(adminId, backupId) {
         const diffDecrypted = Buffer.concat([diffDecipher.update(diffEncrypted), diffDecipher.final()]);
         await fs.writeFile(diffTempSqlPath, diffDecrypted);
 
-        const diffMysqlCmd = `mysql -h ${process.env.DB_HOST} -u ${process.env.DB_USER} -p${process.env.DB_PASSWORD} ${process.env.DB_NAME} < ${diffTempSqlPath}`;
+        const diffMysqlCmd = `mysql --defaults-file=${configFilePath} ${process.env.DB_NAME} < "${tempSqlPath}"`;
         await execPromise(diffMysqlCmd);
 
         await Promise.all([
@@ -631,10 +578,10 @@ async function restoreBackup(adminId, backupId) {
 
       // Convertir binlog a SQL y aplicar
       const binlogSqlPath = path.join(TEMP_DIR, `binlog_restore_${backupId}.sql`);
-      const mysqlbinlogCmd = `mysqlbinlog --verbose ${tempSqlPath} > ${binlogSqlPath}`;
+      const mysqlbinlogCmd = `mysqlbinlog --defaults-file=${configFilePath} --verbose "${tempSqlPath}" > "${binlogSqlPath}"`;
       await execPromise(mysqlbinlogCmd);
 
-      const binlogMysqlCmd = `mysql -h ${process.env.DB_HOST} -u ${process.env.DB_USER} -p${process.env.DB_PASSWORD} ${process.env.DB_NAME} < ${binlogSqlPath}`;
+      const binlogMysqlCmd = `mysql --defaults-file=${configFilePath} ${process.env.DB_NAME} < "${binlogSqlPath}"`;
       await execPromise(binlogMysqlCmd);
 
       await fs.unlink(binlogSqlPath);
@@ -655,7 +602,8 @@ async function restoreBackup(adminId, backupId) {
     await Promise.all([
       fs.unlink(tempCompressedPath),
       fs.unlink(tempEncryptedPath),
-      fs.unlink(tempSqlPath)
+      fs.unlink(tempSqlPath),
+      fs.unlink(sslCaPath)
     ]);
 
     return restorationLog;
@@ -674,7 +622,8 @@ async function restoreBackup(adminId, backupId) {
     await Promise.all([
       fs.unlink(tempCompressedPath).catch(() => {}),
       fs.unlink(tempEncryptedPath).catch(() => {}),
-      fs.unlink(tempSqlPath).catch(() => {})
+      fs.unlink(tempSqlPath).catch(() => {}),
+      fs.unlink(sslCaPath).catch(() => {})
     ]);
     throw error;
   }
