@@ -124,6 +124,7 @@ cron.schedule('0 0 * * 1-6', async () => {
       return;
     }
     const { data_types, created_by } = config;
+    console.log('data_types type:', typeof data_types, 'value:', data_types); // Debug log
     await backupService.generateBackup(created_by, JSON.parse(data_types), 'differential');
     logger.info('Respaldo diferencial ejecutado exitosamente');
   } catch (error) {
@@ -140,6 +141,7 @@ cron.schedule('0 * * * *', async () => {
       return;
     }
     const { data_types, created_by } = config;
+    console.log('data_types type:', typeof data_types, 'value:', data_types); // Debug log
     await backupService.generateBackup(created_by, JSON.parse(data_types), 'transactional');
     logger.info('Respaldo transaccional ejecutado exitosamente');
   } catch (error) {

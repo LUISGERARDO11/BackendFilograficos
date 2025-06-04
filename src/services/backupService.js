@@ -56,7 +56,7 @@ async function handleOAuthCallback(code, adminId) {
     });
 
     // Crear subcarpetas para cada tipo de respaldo
-    const subfolders = ['full', 'diff', 'txn', 'static'];
+    const subfolders = ['full', 'diff', 'txn', 'others'];
     const subfolderIds = {};
     for (const subfolder of subfolders) {
       const subfolderMetadata = {
@@ -107,7 +107,7 @@ async function handleOAuthCallback(code, adminId) {
         await BackupConfig.create({
           backup_type: backupType,
           frequency: defaultFrequencies[backupType],
-          data_types: defaultDataTypes[backupType],
+          data_types: JSON.stringify(defaultDataTypes[backupType]),
           storage_type: 'google_drive',
           refresh_token: encryptedTokenWithIv,
           folder_id: subfolderIds[backupType],
@@ -117,13 +117,13 @@ async function handleOAuthCallback(code, adminId) {
       }
     }
 
-    // Configurar subcarpeta para archivos estáticos
-    const staticConfig = await BackupConfig.findOne({ 
+    // Configurar subcarpeta para archivos estáticos (others)
+    const fullConfig = await BackupConfig.findOne({ 
       where: { storage_type: 'google_drive', backup_type: 'full' } 
     });
-    if (staticConfig) {
-      await staticConfig.update({
-        static_folder_id: subfolderIds.static
+    if (fullConfig) {
+      await fullConfig.update({
+        static_folder_id: subfolderIds.others
       });
     }
 
@@ -186,10 +186,14 @@ async function generateBackup(adminId, dataTypes, backupType) {
       configuration: ['system_config', 'email_templates', 'categories', 'promotions', 'banners']
     };
     let tables = [];
-    dataTypes.forEach(type => {
+    let parsedDataTypes = dataTypes;
+    if (typeof dataTypes === 'string') {
+      parsedDataTypes = JSON.parse(dataTypes);
+    }
+    parsedDataTypes.forEach(type => {
       if (tableGroups[type]) tables.push(...tableGroups[type]);
     });
-    if (dataTypes.includes('full')) {
+    if (parsedDataTypes.includes('full')) {
       tables = Object.values(tableGroups).flat();
     }
     tables = [...new Set(tables)];
@@ -255,12 +259,20 @@ async function generateBackup(adminId, dataTypes, backupType) {
       fields: 'id'
     });
 
+    // Mapear backupType a data_type
+    const dataTypeMap = {
+      full: 'full',
+      differential: 'differential',
+      transactional: 'transactional'
+    };
+    const dataType = dataTypeMap[backupType] || 'full'; // Por defecto, 'full' si no coincide
+
     // Registrar en base de datos
     const backupLog = await BackupLog.create({
       backup_datetime: new Date(),
-      data_type: backupType,
+      data_type: dataType,
       location: 'google_drive',
-      file_size: (await fs.stat(tempCompressedPath)).size / (1024 * 1024), // MB
+      file_size: (await fs.stat(tempCompressedPath)).size / (1024 * 1024),
       status: 'successful',
       performed_by: adminId
     });
@@ -288,10 +300,18 @@ async function generateBackup(adminId, dataTypes, backupType) {
 
     return backupLog;
   } catch (error) {
+    // Mapear backupType a data_type
+    const dataTypeMap = {
+      full: 'full',
+      differential: 'differential',
+      transactional: 'transactional'
+    };
+    const dataType = dataTypeMap[backupType] || 'full'; // Por defecto, 'full' si no coincide
+
     // Registrar error
     await BackupLog.create({
       backup_datetime: new Date(),
-      data_type: backupType,
+      data_type: dataType,
       location: 'google_drive',
       status: 'failed',
       error_message: error.message,
@@ -311,7 +331,7 @@ async function generateBackup(adminId, dataTypes, backupType) {
 async function backupStaticFiles(adminId, drive, staticFolderId) {
   await ensureTempDir();
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const staticBackupFileName = `static_backup_${timestamp}.tar.gz`;
+  const staticBackupFileName = `others_backup_${timestamp}.tar.gz`;
   const tempStaticPath = path.join(TEMP_DIR, staticBackupFileName);
 
   try {
@@ -347,9 +367,9 @@ async function backupStaticFiles(adminId, drive, staticFolderId) {
     // Registrar en base de datos
     const backupLog = await BackupLog.create({
       backup_datetime: new Date(),
-      data_type: 'static',
+      data_type: 'others',
       location: 'google_drive',
-      file_size: (await fs.stat(tempStaticPath)).size / (1024 * 1024), // MB
+      file_size: (await fs.stat(tempStaticPath)).size / (1024 * 1024),
       status: 'successful',
       performed_by: adminId
     });
@@ -365,6 +385,15 @@ async function backupStaticFiles(adminId, drive, staticFolderId) {
     // Limpiar archivo temporal
     await fs.unlink(tempStaticPath);
   } catch (error) {
+    // Registrar error
+    await BackupLog.create({
+      backup_datetime: new Date(),
+      data_type: 'others',
+      location: 'google_drive',
+      status: 'failed',
+      error_message: error.message,
+      performed_by: adminId
+    });
     await fs.unlink(tempStaticPath).catch(() => {});
     throw error;
   }
@@ -377,7 +406,7 @@ async function cleanOldBackups(drive) {
       full: 28, // 4 semanas
       differential: 7, // 1 semana
       transactional: 2, // 2 días
-      static: 28 // 4 semanas
+      others: 28 // 4 semanas
     };
 
     for (const backupType of Object.keys(retentionPolicies)) {

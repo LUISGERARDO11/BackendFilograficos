@@ -14,7 +14,7 @@ const BackupLog = sequelize.define('BackupLog', {
     allowNull: false
   },
   data_type: {
-    type: DataTypes.ENUM('transactions', 'clients', 'configuration', 'full'), // Tipo de datos respaldados
+    type: DataTypes.ENUM('full', 'differential', 'transactional', 'others'),
     allowNull: false
   },
   location: {
