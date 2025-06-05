@@ -89,9 +89,9 @@ async function handleOAuthCallback(code, adminId) {
       transactional: 'txn'
     };
     const defaultDataTypes = {
-      full: ['full'],
-      differential: ['transactions', 'clients', 'configuration'],
-      transactional: ['transactions']
+      full: ['all'],
+      differential: ['all'],
+      transactional: ['all']
     };
     const defaultFrequencies = {
       full: 'weekly',
@@ -107,7 +107,8 @@ async function handleOAuthCallback(code, adminId) {
         await existingConfig.update({
           refresh_token: encryptedTokenWithIv,
           folder_id: subfolderIds[subfolderName],
-          created_by: adminId
+          created_by: adminId,
+          data_types: JSON.stringify(defaultDataTypes[backupType])
         });
       } else {
         await BackupConfig.create({
@@ -184,25 +185,6 @@ async function generateBackup(adminId, dataTypes, backupType) {
     const config = await BackupConfig.findOne({ where: { storage_type: 'google_drive', backup_type: backupType } });
     if (!config) throw new Error(`No hay configuración para respaldo ${backupType}`);
 
-    // Mapear data_types a tablas
-    const tableGroups = {
-      transactions: ['orders', 'order_details', 'payments', 'order_history', 'coupon_usages'],
-      clients: ['users', 'accounts', 'addresses', 'communication_preferences', 'carts', 'cart_details'],
-      configuration: ['systemconfig', 'emailtemplates', 'categories', 'promotions', 'banners']
-    };
-    let tables = [];
-    let parsedDataTypes = dataTypes;
-    if (typeof dataTypes === 'string') {
-      parsedDataTypes = JSON.parse(dataTypes);
-    }
-    parsedDataTypes.forEach(type => {
-      if (tableGroups[type]) tables.push(...tableGroups[type]);
-    });
-    if (parsedDataTypes.includes('full')) {
-      tables = Object.values(tableGroups).flat();
-    }
-    tables = [...new Set(tables)];
-
     // Generar nombres de archivo según tipo
     if (backupType === 'transactional') {
       backupFileName = `txn_backup_${timestamp}.bin`;
@@ -224,9 +206,9 @@ async function generateBackup(adminId, dataTypes, backupType) {
       const mysqlbinlogCmd = `mysqlbinlog --defaults-file=${configFilePath} --read-from-remote-server ${process.env.MYSQL_BINLOG_DIR || '/var/log/mysql'}/binlog.000001 > "${tempSqlPath}"`;
       await execPromise(mysqlbinlogCmd);
     } else {
-      // Respaldo completo o diferencial con mysqldump
+      // Respaldo completo o diferencial con mysqldump de toda la base de datos
       const mysqldumpOptions = backupType === 'differential' ? '--no-create-info --set-gtid-purged=OFF' : '--single-transaction --set-gtid-purged=OFF';
-      const mysqldumpCmd = `mysqldump --defaults-file=${configFilePath} ${mysqldumpOptions} ${process.env.DB_NAME} ${tables.join(' ')} > "${tempSqlPath}"`;
+      const mysqldumpCmd = `mysqldump --defaults-file=${configFilePath} ${mysqldumpOptions} ${process.env.DB_NAME} > "${tempSqlPath}"`;
       await execPromise(mysqldumpCmd);
     }
 

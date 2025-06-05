@@ -35,6 +35,7 @@ const BackupConfig = sequelize.define('BackupConfig', {
   data_types: {
     type: DataTypes.JSON,
     allowNull: false,
+    defaultValue: ['all'],
     validate: {
       isValidDataTypes(value) {
         let parsedValue = value;
@@ -45,15 +46,8 @@ const BackupConfig = sequelize.define('BackupConfig', {
             throw new Error('data_types debe ser un JSON válido');
           }
         }
-        if (!Array.isArray(parsedValue) || parsedValue.length === 0) {
-          throw new Error('data_types debe ser un array no vacío');
-        }
-        const validTypes = ['transactions', 'clients', 'configuration', 'full'];
-        if (!parsedValue.every(type => validTypes.includes(type))) {
-          throw new Error('Tipos de datos inválidos');
-        }
-        if (this.backup_type === 'transactional' && parsedValue.length !== 1 && parsedValue[0] !== 'transactions') {
-          throw new Error('El respaldo transaccional solo puede incluir "transactions"');
+        if (!Array.isArray(parsedValue) || parsedValue.length !== 1 || parsedValue[0] !== 'all') {
+          throw new Error('data_types debe ser un array con el único valor "all"');
         }
       }
     }
