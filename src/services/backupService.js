@@ -83,6 +83,11 @@ async function handleOAuthCallback(code, adminId) {
     const encryptedTokenWithIv = iv.toString('hex') + ':' + encryptedToken;
 
     // Crear o actualizar configuraciones para cada tipo de respaldo
+    const backupTypeMap = {
+      full: 'full',
+      differential: 'diff',
+      transactional: 'txn'
+    };
     const defaultDataTypes = {
       full: ['full'],
       differential: ['transactions', 'clients', 'configuration'],
@@ -94,13 +99,14 @@ async function handleOAuthCallback(code, adminId) {
       transactional: 'hourly'
     };
     for (const backupType of ['full', 'differential', 'transactional']) {
+      const subfolderName = backupTypeMap[backupType];
       const existingConfig = await BackupConfig.findOne({ 
         where: { storage_type: 'google_drive', backup_type: backupType } 
       });
       if (existingConfig) {
         await existingConfig.update({
           refresh_token: encryptedTokenWithIv,
-          folder_id: subfolderIds[backupType],
+          folder_id: subfolderIds[subfolderName],
           created_by: adminId
         });
       } else {
@@ -110,7 +116,7 @@ async function handleOAuthCallback(code, adminId) {
           data_types: JSON.stringify(defaultDataTypes[backupType]),
           storage_type: 'google_drive',
           refresh_token: encryptedTokenWithIv,
-          folder_id: subfolderIds[backupType],
+          folder_id: subfolderIds[subfolderName],
           schedule_time: '00:00:00',
           created_by: adminId
         });
@@ -301,12 +307,12 @@ async function generateBackup(adminId, dataTypes, backupType) {
       differential: 'differential',
       transactional: 'transactional'
     };
-    const dataType = dataTypeMap[backupType] || 'full';
+    const data_type = dataTypeMap[backupType] || 'full';
 
     // Registrar error
     await BackupLog.create({
       backup_datetime: new Date(),
-      data_type: dataType,
+      data_type: data_type,
       location: 'google_drive',
       status: 'failed',
       error_message: error.message,
