@@ -159,7 +159,7 @@ async function getConfig(backupType) {
   if (config) {
     return {
       ...config.toJSON(),
-      data_types: Array.isArray(config.data_types) ? config.data_types : JSON.parse(config.data_types)
+      data_types: config.data_types // Usamos directamente data_types, ya que es un arreglo
     };
   }
   return null;
@@ -186,31 +186,26 @@ async function generateBackup(adminId, dataTypes, backupType) {
     if (!config) throw new Error(`No hay configuración para respaldo ${backupType}`);
 
     // Generar nombres de archivo según tipo
-    if (backupType === 'transactional') {
-      backupFileName = `txn_backup_${timestamp}.bin`;
-      tempSqlPath = path.join(TEMP_DIR, backupFileName);
-      tempEncryptedPath = path.join(TEMP_DIR, `${backupFileName}.enc`);
-      tempCompressedPath = path.join(TEMP_DIR, `${backupFileName}.gz`);
-    } else {
-      backupFileName = `${backupType === 'full' ? 'full' : 'diff'}_backup_${timestamp}.sql`;
-      tempSqlPath = path.join(TEMP_DIR, backupFileName);
-      tempEncryptedPath = path.join(TEMP_DIR, `${backupFileName}.enc`);
-      tempCompressedPath = path.join(TEMP_DIR, `${backupFileName}.gz`);
-    }
+    backupFileName = `${backupType}_backup_${timestamp}.sql`;
+    tempSqlPath = path.join(TEMP_DIR, backupFileName);
+    tempEncryptedPath = path.join(TEMP_DIR, `${backupFileName}.enc`);
+    tempCompressedPath = path.join(TEMP_DIR, `${backupFileName}.gz`);
 
     // Generar respaldo
     await fs.writeFile(sslCaPath, process.env.DB_SSL_CA);
 
-    if (backupType === 'transactional') {
-      // Respaldo de binlog
-      const mysqlbinlogCmd = `mysqlbinlog --defaults-file=${configFilePath} --read-from-remote-server ${process.env.MYSQL_BINLOG_DIR || '/var/log/mysql'}/binlog.000001 > "${tempSqlPath}"`;
-      await execPromise(mysqlbinlogCmd);
-    } else {
-      // Respaldo completo o diferencial con mysqldump de toda la base de datos
-      const mysqldumpOptions = backupType === 'differential' ? '--no-create-info --set-gtid-purged=OFF' : '--single-transaction --set-gtid-purged=OFF';
-      const mysqldumpCmd = `mysqldump --defaults-file=${configFilePath} ${mysqldumpOptions} ${process.env.DB_NAME} > "${tempSqlPath}"`;
-      await execPromise(mysqldumpCmd);
+    // Configurar mysqldump según el tipo de respaldo
+    let mysqldumpOptions;
+    if (backupType === 'full') {
+      mysqldumpOptions = '--single-transaction --set-gtid-purged=OFF';
+    } else if (backupType === 'differential') {
+      mysqldumpOptions = '--no-create-info --set-gtid-purged=OFF';
+    } else if (backupType === 'transactional') {
+      mysqldumpOptions = '--no-create-db --no-create-info --skip-triggers --set-gtid-purged=OFF';
     }
+
+    const mysqldumpCmd = `mysqldump --defaults-file="${configFilePath}" ${mysqldumpOptions} ${process.env.DB_NAME} > "${tempSqlPath}"`;
+    await execPromise(mysqldumpCmd);
 
     // Encriptar archivo
     const input = await fs.readFile(tempSqlPath);
@@ -317,7 +312,7 @@ async function cleanOldBackups(drive) {
     const retentionPolicies = {
       full: 28, // 4 semanas
       differential: 7, // 1 semana
-      transactional: 2 // 2 días
+      transactional: 2 // 2 días (sin uso, pero mantenido)
     };
 
     for (const backupType of Object.keys(retentionPolicies)) {
@@ -427,7 +422,7 @@ async function restoreBackup(adminId, backupId) {
     await fs.writeFile(sslCaPath, process.env.DB_SSL_CA);
 
     if (backupType === 'full') {
-      const mysqlCmd = `mysql --defaults-file=${configFilePath} ${process.env.DB_NAME} < "${tempSqlPath}"`;
+      const mysqlCmd = `mysql --defaults-file="${configFilePath}" ${process.env.DB_NAME} < "${tempSqlPath}"`;
       await execPromise(mysqlCmd);
     } else if (backupType === 'differential') {
       // Restaurar el full backup más reciente primero
@@ -466,11 +461,11 @@ async function restoreBackup(adminId, backupId) {
       const fullDecrypted = Buffer.concat([fullDecipher.update(fullEncrypted), fullDecipher.final()]);
       await fs.writeFile(fullTempSqlPath, fullDecrypted);
 
-      const fullMysqlCmd = `mysql --defaults-file=${configFilePath} ${process.env.DB_NAME} < "${fullTempSqlPath}"`;
+      const fullMysqlCmd = `mysql --defaults-file="${configFilePath}" ${process.env.DB_NAME} < "${fullTempSqlPath}"`;
       await execPromise(fullMysqlCmd);
 
       // Aplicar diferencial
-      const diffMysqlCmd = `mysql --defaults-file=${configFilePath} ${process.env.DB_NAME} < "${tempSqlPath}"`;
+      const diffMysqlCmd = `mysql --defaults-file="${configFilePath}" ${process.env.DB_NAME} < "${tempSqlPath}"`;
       await execPromise(diffMysqlCmd);
 
       // Limpiar archivos temporales del full backup
@@ -480,99 +475,7 @@ async function restoreBackup(adminId, backupId) {
         fs.unlink(fullTempSqlPath)
       ]);
     } else if (backupType === 'transactional') {
-      // Restaurar full y diferencial más recientes, luego aplicar binlog
-      const latestFullBackup = await BackupLog.findOne({
-        where: { data_type: 'full', status: 'successful' },
-        order: [['backup_datetime', 'DESC']],
-        include: [{ model: BackupFiles }]
-      });
-      if (!latestFullBackup) throw new Error('No se encontró un respaldo completo reciente');
-
-      const latestDiffBackup = await BackupLog.findOne({
-        where: { data_type: 'differential', status: 'successful' },
-        order: [['backup_datetime', 'DESC']],
-        include: [{ model: BackupFiles }]
-      });
-
-      // Restaurar full
-      const fullBackupFile = latestFullBackup.BackupFiles[0];
-      const fullTempCompressedPath = path.join(TEMP_DIR, `full_restore_${latestFullBackup.backup_id}.gz`);
-      const fullTempEncryptedPath = path.join(TEMP_DIR, `full_restore_${latestFullBackup.backup_id}.enc`);
-      const fullTempSqlPath = path.join(TEMP_DIR, `full_restore_${latestFullBackup.backup_id}.sql`);
-
-      const fullFileStream = await drive.files.get(
-        { fileId: fullBackupFile.file_drive_id, alt: 'media' },
-        { responseType: 'stream' }
-      );
-      const fullWriteStream = require('fs').createWriteStream(fullTempCompressedPath);
-      await new Promise((resolve, reject) => {
-        fullFileStream.data.pipe(fullWriteStream)
-          .on('finish', resolve)
-          .on('error', reject);
-      });
-
-      const fullFileData = await fs.readFile(fullTempCompressedPath);
-      const fullDecompressed = zlib.gunzipSync(fullFileData);
-      await fs.writeFile(fullTempEncryptedPath, fullDecompressed);
-
-      const fullEncryptedData = await fs.readFile(fullTempEncryptedPath);
-      const fullIv = fullEncryptedData.slice(0, 16);
-      const fullEncrypted = fullEncryptedData.slice(16);
-      const fullDecipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, Buffer.from(process.env.ENCRYPTION_KEY, 'hex'), fullIv);
-      const fullDecrypted = Buffer.concat([fullDecipher.update(fullEncrypted), fullDecipher.final()]);
-      await fs.writeFile(fullTempSqlPath, fullDecrypted);
-
-      const fullMysqlCmd = `mysql --defaults-file=${configFilePath} ${process.env.DB_NAME} < "${fullTempSqlPath}"`;
-      await execPromise(fullMysqlCmd);
-
-      // Restaurar diferencial si existe
-      if (latestDiffBackup) {
-        const diffBackupFile = latestDiffBackup.BackupFiles[0];
-        const diffTempCompressedPath = path.join(TEMP_DIR, `diff_restore_${latestDiffBackup.backup_id}.gz`);
-        const diffTempEncryptedPath = path.join(TEMP_DIR, `diff_restore_${latestDiffBackup.backup_id}.enc`);
-        const diffTempSqlPath = path.join(TEMP_DIR, `diff_restore_${latestDiffBackup.backup_id}.sql`);
-
-        const diffFileStream = await drive.files.get(
-          { fileId: diffBackupFile.file_drive_id, alt: 'media' },
-          { responseType: 'stream' }
-        );
-        const diffWriteStream = require('fs').createWriteStream(diffTempCompressedPath);
-        await new Promise((resolve, reject) => {
-          diffFileStream.data.pipe(diffWriteStream)
-            .on('finish', resolve)
-            .on('error', reject);
-        });
-
-        const diffFileData = await fs.readFile(diffTempCompressedPath);
-        const diffDecompressed = zlib.gunzipSync(diffFileData);
-        await fs.writeFile(diffTempEncryptedPath, diffDecompressed);
-
-        const diffEncryptedData = await fs.readFile(diffTempEncryptedPath);
-        const diffIv = diffEncryptedData.slice(0, 16);
-        const diffEncrypted = diffEncryptedData.slice(16);
-        const diffDecipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, Buffer.from(process.env.ENCRYPTION_KEY, 'hex'), diffIv);
-        const diffDecrypted = Buffer.concat([diffDecipher.update(diffEncrypted), diffDecipher.final()]);
-        await fs.writeFile(diffTempSqlPath, diffDecrypted);
-
-        const diffMysqlCmd = `mysql --defaults-file=${configFilePath} ${process.env.DB_NAME} < "${tempSqlPath}"`;
-        await execPromise(diffMysqlCmd);
-
-        await Promise.all([
-          fs.unlink(diffTempCompressedPath),
-          fs.unlink(diffTempEncryptedPath),
-          fs.unlink(diffTempSqlPath)
-        ]);
-      }
-
-      // Convertir binlog a SQL y aplicar
-      const binlogSqlPath = path.join(TEMP_DIR, `binlog_restore_${backupId}.sql`);
-      const mysqlbinlogCmd = `mysqlbinlog --defaults-file=${configFilePath} --verbose "${tempSqlPath}" > "${binlogSqlPath}"`;
-      await execPromise(mysqlbinlogCmd);
-
-      const binlogMysqlCmd = `mysql --defaults-file=${configFilePath} ${process.env.DB_NAME} < "${binlogSqlPath}"`;
-      await execPromise(binlogMysqlCmd);
-
-      await fs.unlink(binlogSqlPath);
+      throw new Error('Los respaldos transaccionales no están habilitados actualmente.');
     }
 
     // Registrar restauración

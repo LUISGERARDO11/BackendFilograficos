@@ -1,4 +1,4 @@
-const { body, query, param, validationResult } = require('express-validator');
+const { body, param, query, validationResult } = require('express-validator');
 const backupService = require('../services/backupService');
 const { BackupConfig, BackupLog } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
@@ -17,8 +17,8 @@ exports.configureBackup = [
     .notEmpty()
     .withMessage('data_types no puede estar vacío'),
   body('data_types.*')
-    .isIn(['transactions', 'clients', 'configuration', 'full'])
-    .withMessage('Cada elemento de data_types debe ser "transactions", "clients", "configuration" o "full"'),
+    .isIn(['all'])
+    .withMessage('Cada elemento de data_types debe ser "all"'),
   body('schedule_time')
     .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$/)
     .withMessage('schedule_time debe estar en formato HH:mm:ss (24 horas)'),
@@ -30,6 +30,7 @@ exports.configureBackup = [
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.log('Errores de validación:', errors.array());
         return res.status(400).json({ success: false, message: 'Errores de validación', errors: errors.array() });
       }
 
@@ -43,11 +44,11 @@ exports.configureBackup = [
       if (backup_type === 'transactional' && frequency !== 'hourly') {
         return res.status(400).json({ success: false, message: 'El respaldo transaccional debe tener frecuencia "hourly"' });
       }
-      if (backup_type === 'transactional' && (data_types.length !== 1 || data_types[0] !== 'transactions')) {
-        return res.status(400).json({ success: false, message: 'El respaldo transaccional solo puede incluir "transactions"' });
+      if (data_types.length !== 1 || data_types[0] !== 'all') {
+        return res.status(400).json({ success: false, message: 'data_types debe contener exactamente ["all"]' });
       }
-      if (backup_type === 'full' && (data_types.length !== 1 || data_types[0] !== 'full')) {
-        return res.status(400).json({ success: false, message: 'El respaldo completo solo puede incluir "full"' });
+      if (backup_type === 'transactional' && schedule_time !== '00:00:00') {
+        return res.status(400).json({ success: false, message: 'El respaldo transaccional debe tener schedule_time "00:00:00"' });
       }
 
       // Verificar autenticación con Google Drive
@@ -61,7 +62,7 @@ exports.configureBackup = [
       if (updatedConfig) {
         await updatedConfig.update({
           frequency,
-          data_types,
+          data_types: JSON.stringify(data_types),
           schedule_time,
           created_by: userId
         });
@@ -69,7 +70,7 @@ exports.configureBackup = [
         updatedConfig = await BackupConfig.create({
           backup_type,
           frequency,
-          data_types,
+          data_types: JSON.stringify(data_types),
           storage_type: 'google_drive',
           refresh_token: existingConfig.refresh_token,
           folder_id: existingConfig.folder_id,
@@ -84,7 +85,7 @@ exports.configureBackup = [
         message: 'Configuración de respaldo actualizada',
         config: {
           ...updatedConfig.toJSON(),
-          data_types: updatedConfig.data_types
+          data_types: updatedConfig.data_types // Ya es un arreglo gracias a DataTypes.JSON
         }
       });
     } catch (error) {
@@ -109,7 +110,6 @@ exports.getBackupConfig = [
 
     try {
       const config = await backupService.getConfig(backup_type);
-
       res.status(200).json({
         success: true,
         config: config || {}
@@ -174,7 +174,7 @@ exports.handleGoogleAuthCallback = [
 // Ejecutar respaldo manual
 exports.runBackup = [
   param('backup_type')
-    .isIn(['full', 'differential', 'transactional'])
+    .isIn(['full', 'differential', 'transactional']) // Agregamos 'transactional'
     .withMessage('El backup_type debe ser "full", "differential" o "transactional"'),
   async (req, res) => {
     const userId = req.user.user_id;
@@ -186,7 +186,7 @@ exports.runBackup = [
         return res.status(400).json({ success: false, message: `No hay configuración para respaldo ${backup_type}` });
       }
 
-      const backup = await backupService.generateBackup(userId, config.data_types, backup_type);
+      const backup = await backupService.generateBackup(userId, JSON.parse(config.data_types), backup_type);
 
       loggerUtils.logUserActivity(userId, 'run_backup', `Respaldo manual ${backup_type} ejecutado por el usuario ${userId}`);
       res.status(200).json({
@@ -225,7 +225,7 @@ exports.restoreBackup = [
       if (!backupLog) {
         return res.status(400).json({ success: false, message: 'Respaldo no encontrado' });
       }
-      if (!['full', 'differential', 'transactional'].includes(backupLog.data_type)) {
+      if (!['full', 'differential'].includes(backupLog.data_type)) {
         return res.status(400).json({ success: false, message: 'Tipo de respaldo no soportado para restauración' });
       }
 
@@ -252,7 +252,7 @@ exports.restoreBackup = [
 exports.listBackups = [
   query('backup_type')
     .optional()
-    .isIn(['full', 'differential', 'transactional', 'static'])
+    .isIn(['full', 'differential', 'transactional', 'static']) // Agregamos 'transactional'
     .withMessage('El backup_type debe ser "full", "differential", "transactional" o "static"'),
   async (req, res) => {
     const userId = req.user.user_id;

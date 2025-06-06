@@ -49,7 +49,7 @@ router.get(
 router.get(
   '/history',
   authMiddleware,
- tokenExpirationMiddleware.verifyTokenExpiration,
+  tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
   backupController.listBackups
 );

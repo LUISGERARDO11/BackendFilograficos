@@ -132,7 +132,7 @@ cron.schedule('0 0 * * 1-6', async () => {
   }
 });
 
-// Transaccional backup: Cada hora
+/* Transaccional backup: Cada hora
 cron.schedule('0 * * * *', async () => {
   try {
     const config = await BackupConfig.findOne({ where: { storage_type: 'google_drive', backup_type: 'transactional' } });
@@ -147,7 +147,7 @@ cron.schedule('0 * * * *', async () => {
   } catch (error) {
     logger.error('Error en cron job de respaldo transaccional:', error);
   }
-});
+});*/
 
 // Middleware para manejar errores
 app.use(errorHandler);
