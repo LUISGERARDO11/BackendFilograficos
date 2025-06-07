@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { google } = require('googleapis');
 const crypto = require('crypto');
 const { exec } = require('child_process');
@@ -8,6 +9,7 @@ const util = require('util');
 const execPromise = util.promisify(exec);
 const { BackupConfig, BackupLog, BackupFiles, RestorationLog, SystemConfig } = require('../models/Associations');
 
+// Configuración de OAuth2 para Google Drive
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
@@ -170,17 +172,9 @@ async function generateBackup(adminId, dataTypes, backupType) {
   await ensureTempDir();
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   let backupFileName, tempSqlPath, tempEncryptedPath, tempCompressedPath;
-  const configFilePath = 'C:\\Users\\luis3\\PRYFILOGRAFICOS\\BackendFilograficos\\temp\\my.cnf';
   const sslCaPath = path.join(TEMP_DIR, 'ca.pem');
 
   try {
-    // Verificar que el archivo de configuración exista
-    try {
-      await fs.access(configFilePath, fs.constants.R_OK);
-    } catch (err) {
-      throw new Error(`El archivo de configuración ${configFilePath} no existe o no es accesible. Verifica la ruta y los permisos.`);
-    }
-
     // Configuración según tipo de respaldo
     const config = await BackupConfig.findOne({ where: { storage_type: 'google_drive', backup_type: backupType } });
     if (!config) throw new Error(`No hay configuración para respaldo ${backupType}`);
@@ -192,7 +186,7 @@ async function generateBackup(adminId, dataTypes, backupType) {
     tempCompressedPath = path.join(TEMP_DIR, `${backupFileName}.gz`);
 
     // Generar respaldo
-    await fs.writeFile(sslCaPath, process.env.DB_SSL_CA);
+    await fs.writeFile(sslCaPath, process.env.DB_SSL_CA); // Usar DB_SSL_CA en lugar de DB_SSL_CA_PATH
 
     // Configurar mysqldump según el tipo de respaldo
     let mysqldumpOptions;
@@ -204,7 +198,8 @@ async function generateBackup(adminId, dataTypes, backupType) {
       mysqldumpOptions = '--no-create-db --no-create-info --skip-triggers --set-gtid-purged=OFF';
     }
 
-    const mysqldumpCmd = `mysqldump --defaults-file="${configFilePath}" ${mysqldumpOptions} ${process.env.DB_NAME} > "${tempSqlPath}"`;
+    // Usar credenciales desde process.env y el nombre correcto de la base de datos
+    const mysqldumpCmd = `mysqldump -u${process.env.DB_USER} -p${process.env.DB_PASSWORD} -h${process.env.DB_HOST} -P${process.env.DB_PORT} --ssl-ca="${sslCaPath}" ${mysqldumpOptions} ${process.env.DB_NAME} > "${tempSqlPath}"`;
     await execPromise(mysqldumpCmd);
 
     // Encriptar archivo
@@ -367,7 +362,6 @@ async function restoreBackup(adminId, backupId) {
   const tempCompressedPath = path.join(TEMP_DIR, `restore_${backupId}.gz`);
   const tempEncryptedPath = path.join(TEMP_DIR, `restore_${backupId}.enc`);
   const tempSqlPath = path.join(TEMP_DIR, `restore_${backupId}.sql`);
-  const configFilePath = 'C:\\Users\\luis3\\PRYFILOGRAFICOS\\BackendFilograficos\\temp\\my.cnf';
   const sslCaPath = path.join(TEMP_DIR, 'ca.pem');
 
   try {
@@ -419,10 +413,10 @@ async function restoreBackup(adminId, backupId) {
     await fs.writeFile(tempSqlPath, decrypted);
 
     // Restaurar base de datos
-    await fs.writeFile(sslCaPath, process.env.DB_SSL_CA);
+    await fs.writeFile(sslCaPath, process.env.DB_SSL_CA); // Usar DB_SSL_CA en lugar de DB_SSL_CA_PATH
 
     if (backupType === 'full') {
-      const mysqlCmd = `mysql --defaults-file="${configFilePath}" ${process.env.DB_NAME} < "${tempSqlPath}"`;
+      const mysqlCmd = `mysql -u${process.env.DB_USER} -p${process.env.DB_PASSWORD} -h${process.env.DB_HOST} -P${process.env.DB_PORT} --ssl-ca="${sslCaPath}" ${process.env.DB_NAME} < "${tempSqlPath}"`;
       await execPromise(mysqlCmd);
     } else if (backupType === 'differential') {
       // Restaurar el full backup más reciente primero
@@ -461,11 +455,11 @@ async function restoreBackup(adminId, backupId) {
       const fullDecrypted = Buffer.concat([fullDecipher.update(fullEncrypted), fullDecipher.final()]);
       await fs.writeFile(fullTempSqlPath, fullDecrypted);
 
-      const fullMysqlCmd = `mysql --defaults-file="${configFilePath}" ${process.env.DB_NAME} < "${fullTempSqlPath}"`;
+      const fullMysqlCmd = `mysql -u${process.env.DB_USER} -p${process.env.DB_PASSWORD} -h${process.env.DB_HOST} -P${process.env.DB_PORT} --ssl-ca="${sslCaPath}" ${process.env.DB_NAME} < "${fullTempSqlPath}"`;
       await execPromise(fullMysqlCmd);
 
       // Aplicar diferencial
-      const diffMysqlCmd = `mysql --defaults-file="${configFilePath}" ${process.env.DB_NAME} < "${tempSqlPath}"`;
+      const diffMysqlCmd = `mysql -u${process.env.DB_USER} -p${process.env.DB_PASSWORD} -h${process.env.DB_HOST} -P${process.env.DB_PORT} --ssl-ca="${sslCaPath}" ${process.env.DB_NAME} < "${tempSqlPath}"`;
       await execPromise(diffMysqlCmd);
 
       // Limpiar archivos temporales del full backup
