@@ -27,7 +27,7 @@ router.get(
   promotionController.getAllPromotions
 );
 
-// Obtener todas las variantes (movida antes de la ruta dinámica /:id)
+// Obtener todas las variantes
 router.get(
   '/variants',
   authMiddleware,
@@ -36,7 +36,7 @@ router.get(
   promotionController.getAllVariants
 );
 
-// Obtener una promoción por ID (movida después de /variants)
+// Obtener una promoción por ID
 router.get(
   '/:id',
   authMiddleware,
@@ -61,6 +61,22 @@ router.delete(
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
   promotionController.deletePromotion
+);
+
+// Aplicar una promoción al carrito
+router.post(
+  '/apply',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  promotionController.applyPromotion
+);
+
+// Obtener promociones disponibles para el usuario
+router.get(
+  '/available',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  promotionController.getAvailablePromotions
 );
 
 module.exports = router;
