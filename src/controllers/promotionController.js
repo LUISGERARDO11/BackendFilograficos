@@ -141,7 +141,7 @@ exports.getAllPromotions = [
       const { search, page: pageParam = 1, pageSize: pageSizeParam = 10, sort } = req.query;
       const page = parseInt(pageParam);
       const pageSize = parseInt(pageSizeParam);
-      const isAdmin = req.user.roles.includes('administrador');
+      const isAdmin = req.user.user_type.includes('administrador');
 
       if (page < 1 || pageSize < 1) {
         return res.status(400).json({ message: 'Parámetros de paginación inválidos' });
