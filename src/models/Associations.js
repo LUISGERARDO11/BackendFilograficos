@@ -145,9 +145,6 @@ ProductImage.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
 ProductVariant.hasMany(PriceHistory, { foreignKey: 'variant_id' });
 PriceHistory.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
 
-Product.hasMany(Customization, { foreignKey: 'product_id' });
-Customization.belongsTo(Product, { foreignKey: 'product_id' });
-
 Product.hasMany(CustomizationOption, { foreignKey: 'product_id' });
 CustomizationOption.belongsTo(Product, { foreignKey: 'product_id' });
 
@@ -164,17 +161,34 @@ Collaborator.hasMany(Product, { foreignKey: 'collaborator_id' });
 CustomizationOption.hasMany(Customization, { foreignKey: 'option_id' });
 Customization.belongsTo(CustomizationOption, { foreignKey: 'option_id' });
 
+CartDetail.hasOne(Customization, { foreignKey: 'cart_detail_id' });
+Customization.belongsTo(CartDetail, { foreignKey: 'cart_detail_id' });
+
+OrderDetail.hasOne(Customization, { foreignKey: 'order_detail_id' });
+Customization.belongsTo(OrderDetail, { foreignKey: 'order_detail_id' });
+
 Order.hasMany(Customization, { foreignKey: 'order_id' });
 Customization.belongsTo(Order, { foreignKey: 'order_id' });
 
 UploadedFiles.belongsTo(Customization, { foreignKey: 'customization_id' });
 Customization.hasMany(UploadedFiles, { foreignKey: 'customization_id' });
 
+CartDetail.belongsTo(CustomizationOption, { foreignKey: 'option_id' });
+CustomizationOption.hasMany(CartDetail, { foreignKey: 'option_id' });
+
+OrderDetail.belongsTo(CustomizationOption, { foreignKey: 'option_id' });
+CustomizationOption.hasMany(OrderDetail, { foreignKey: 'option_id' });
+
+CartDetail.belongsTo(Customization, { foreignKey: 'customization_id' });
+Customization.hasOne(CartDetail, { foreignKey: 'customization_id' });
+
+OrderDetail.belongsTo(Customization, { foreignKey: 'customization_id' });
+Customization.hasOne(OrderDetail, { foreignKey: 'customization_id' });
+
 // Relaciones de Opciones de Envío
 ShippingOption.hasMany(DeliveryPoint, { foreignKey: 'shipping_option_id' });
 DeliveryPoint.belongsTo(ShippingOption, { foreignKey: 'shipping_option_id' });
 
-//HAILIE
 // Relaciones de Carrito
 Cart.hasMany(CartDetail, { foreignKey: 'cart_id' });
 CartDetail.belongsTo(Cart, { foreignKey: 'cart_id' });
@@ -188,8 +202,8 @@ Product.hasMany(CartDetail, { foreignKey: 'product_id' });
 CartDetail.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
 ProductVariant.hasMany(CartDetail, { foreignKey: 'variant_id' });
 
-CartDetail.belongsTo(CustomizationOption, { foreignKey: 'option_id' });
-CustomizationOption.hasMany(CartDetail, { foreignKey: 'option_id' });
+Cart.belongsTo(Promotion, { foreignKey: 'promotion_id' });
+Promotion.hasMany(Cart, { foreignKey: 'promotion_id' });
 
 // Relaciones de Pedidos
 Order.hasMany(OrderDetail, { foreignKey: 'order_id' });
@@ -217,6 +231,9 @@ CouponUsage.belongsTo(User, { foreignKey: 'user_id' });
 
 Order.hasMany(CouponUsage, { foreignKey: 'order_id' });
 CouponUsage.belongsTo(Order, { foreignKey: 'order_id' });
+
+Cart.hasMany(CouponUsage, { foreignKey: 'cart_id' });
+CouponUsage.belongsTo(Cart, { foreignKey: 'cart_id' });
 
 // Relaciones de PromotionProduct
 Promotion.hasMany(PromotionProduct, { foreignKey: 'promotion_id' });

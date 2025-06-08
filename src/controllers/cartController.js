@@ -6,7 +6,7 @@ exports.addToCart = async (req, res) => {
   const transaction = await Cart.sequelize.transaction(); // Iniciar una transacción
   try {
     // Obtener datos del cuerpo de la solicitud
-    const { product_id, variant_id, quantity, customization_option_id } = req.body;
+    const { product_id, variant_id, quantity, option_id } = req.body;
 
     // Obtener el user_id del usuario autenticado (ajustado para usar req.user.user_id)
     const user_id = req.user?.user_id; // Alineado con userController.js
@@ -46,8 +46,8 @@ exports.addToCart = async (req, res) => {
 
     // Verificar la personalización (si se proporciona)
     let customization = null;
-    if (customization_option_id) {
-      customization = await CustomizationOption.findByPk(customization_option_id, { transaction });
+    if (option_id) {
+      customization = await CustomizationOption.findByPk(option_id, { transaction });
       if (!customization || customization.product_id !== product_id) {
         await transaction.rollback();
         return res.status(404).json({ message: 'Opción de personalización no encontrada o no pertenece al producto' });
@@ -74,7 +74,7 @@ exports.addToCart = async (req, res) => {
         cart_id: cart.cart_id,
         product_id,
         variant_id,
-        customization_option_id: customization_option_id || null
+        option_id: option_id || null
       },
       transaction
     });
@@ -101,7 +101,7 @@ exports.addToCart = async (req, res) => {
           cart_id: cart.cart_id,
           product_id,
           variant_id,
-          customization_option_id: customization_option_id || null,
+          option_id: option_id || null,
           quantity,
           unit_price: variant.calculated_price,
           subtotal: quantity * variant.calculated_price

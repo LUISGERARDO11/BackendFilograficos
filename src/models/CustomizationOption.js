@@ -26,7 +26,12 @@ const CustomizationOption = sequelize.define('CustomizationOption', {
   }
 }, {
   tableName: 'customization_options',
-  timestamps: false
+  timestamps: false,
+  indexes: [
+    {
+      fields: ['product_id']
+    }
+  ]
 });
 
 module.exports = CustomizationOption;

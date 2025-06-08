@@ -16,9 +16,27 @@ const Customization = sequelize.define('Customization', {
       key: 'product_id'
     }
   },
+  option_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'customization_options',
+      key: 'option_id'
+    },
+    field: 'option_id'
+  },
+  cart_detail_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'cart_details',
+      key: 'cart_detail_id'
+    },
+    field: 'cart_detail_id'
+  },
   order_id: {
     type: DataTypes.INTEGER,
-    allowNull: true, // Permitimos NULL porque no todas las personalizaciones estarán vinculadas a un pedido desde el inicio
+    allowNull: true,
     references: {
       model: 'orders',
       key: 'order_id'
@@ -52,7 +70,21 @@ const Customization = sequelize.define('Customization', {
   }
 }, {
   tableName: 'customizations',
-  timestamps: false
+  timestamps: false,
+  indexes: [
+    {
+      fields: ['product_id']
+    },
+    {
+      fields: ['option_id']
+    },
+    {
+      fields: ['cart_detail_id']
+    },
+    {
+      fields: ['order_id']
+    }
+  ]
 });
 
 module.exports = Customization;

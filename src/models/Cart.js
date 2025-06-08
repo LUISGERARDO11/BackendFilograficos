@@ -21,6 +21,27 @@ const Cart = sequelize.define('Cart', {
     defaultValue: 'active',
     allowNull: false
   },
+  promotion_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'promotions',
+      key: 'promotion_id'
+    },
+    field: 'promotion_id'
+  },
+  total_discount: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0.00,
+    field: 'total_discount'
+  },
+  total: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0.00,
+    field: 'total'
+  },
   created_at: {
     type: DataTypes.DATE,
     allowNull: false,
@@ -35,7 +56,12 @@ const Cart = sequelize.define('Cart', {
   tableName: 'carts',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  indexes: [
+    {
+      fields: ['user_id', 'status']
+    }
+  ]
 });
 
 module.exports = Cart;

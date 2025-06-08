@@ -27,7 +27,6 @@ const CartDetail = sequelize.define('CartDetail', {
     },
     field: 'product_id'
   },
-  //HAILIE
   variant_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -37,16 +36,24 @@ const CartDetail = sequelize.define('CartDetail', {
     },
     field: 'variant_id'
   },
-  customization_option_id: {
+  option_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
     references: {
       model: 'customization_options',
       key: 'option_id'
     },
-    field: 'customization_option_id'
+    field: 'option_id'
   },
-  //
+  customization_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'customizations',
+      key: 'customization_id'
+    },
+    field: 'customization_id'
+  },
   quantity: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -59,11 +66,38 @@ const CartDetail = sequelize.define('CartDetail', {
   },
   subtotal: {
     type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
     field: 'subtotal'
+  },
+  discount_applied: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0.00,
+    field: 'discount_applied'
+  },
+  unit_measure: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 1.00,
+    field: 'unit_measure'
   }
 }, {
   tableName: 'cart_details',
   timestamps: false,
+  indexes: [
+    {
+      fields: ['cart_id']
+    },
+    {
+      fields: ['variant_id']
+    },
+    {
+      fields: ['option_id']
+    },
+    {
+      fields: ['customization_id']
+    }
+  ],
   hooks: {
     beforeSave: (cartDetail) => {
       // Calcular el subtotal automáticamente antes de guardar

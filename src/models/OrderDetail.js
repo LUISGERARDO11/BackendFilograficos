@@ -13,19 +13,37 @@ const OrderDetail = sequelize.define('OrderDetail', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'orders', // Nombre de la tabla de pedidos
+      model: 'orders',
       key: 'order_id'
     },
     field: 'order_id'
   },
-  variant_id: { // Cambiado de product_id a variant_id
+  variant_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'product_variants', // Referencia a la tabla de variantes
+      model: 'product_variants',
       key: 'variant_id'
     },
     field: 'variant_id'
+  },
+  option_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'customization_options',
+      key: 'option_id'
+    },
+    field: 'option_id'
+  },
+  customization_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'customizations',
+      key: 'customization_id'
+    },
+    field: 'customization_id'
   },
   quantity: {
     type: DataTypes.INTEGER,
@@ -42,28 +60,41 @@ const OrderDetail = sequelize.define('OrderDetail', {
     allowNull: false,
     field: 'subtotal'
   },
-  unit_measure: { // Añadido para soportar metros u otras unidades
+    unit_measure: {
     type: DataTypes.DECIMAL(10, 2),
-    defaultValue: 1.00, // Por defecto 1 unidad
-    allowNull: false
+    allowNull: false,
+    defaultValue: 1.00,
+    field: 'unit_measure'
   },
   discount_applied: {
-    type: DataTypes.DECIMAL(10, 2), // Descuento aplicado
-    defaultValue: 0.00
-  }
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0.00,
+    field: 'discount_applied'
+  },
 }, {
   tableName: 'order_details',
   timestamps: false,
   indexes: [
     {
-      name: 'idx_order_id', // Índice para order_id
       fields: ['order_id']
     },
     {
-      name: 'idx_variant_id', // Índice actualizado para variant_id
       fields: ['variant_id']
+    },
+    {
+      fields: ['option_id']
+    },
+    {
+      fields: ['customization_id']
     }
-  ]
+  ],
+  hooks: {
+    beforeSave: (orderDetail) => {
+      // Calcular el subtotal automáticamente antes de guardar
+      orderDetail.subtotal = orderDetail.quantity * orderDetail.unit_price;
+    }
+  }
 });
 
 module.exports = OrderDetail;

@@ -13,7 +13,7 @@ const CouponUsage = sequelize.define('CouponUsage', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'promotions', // Nombre de la tabla de promociones en inglés
+      model: 'promotions',
       key: 'promotion_id'
     },
     field: 'promotion_id'
@@ -22,7 +22,7 @@ const CouponUsage = sequelize.define('CouponUsage', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'users', // Nombre de la tabla de usuarios en inglés
+      model: 'users',
       key: 'user_id'
     },
     field: 'user_id'
@@ -31,19 +31,34 @@ const CouponUsage = sequelize.define('CouponUsage', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'orders', // Nombre de la tabla de pedidos en inglés
+      model: 'orders',
       key: 'order_id'
     },
     field: 'order_id'
   },
+  cart_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'carts',
+      key: 'cart_id'
+    },
+    field: 'cart_id'
+  },
   applied_at: {
     type: DataTypes.DATE,
+    allowNull: false,
     defaultValue: DataTypes.NOW,
     field: 'applied_at'
   }
 }, {
-  tableName: 'coupon_usages', // Nombre de la tabla en inglés
-  timestamps: false // No se necesitan campos de timestamp adicionales
+  tableName: 'coupon_usages',
+  timestamps: false,
+  indexes: [
+    {
+      fields: ['user_id', 'promotion_id']
+    }
+  ]
 });
 
 module.exports = CouponUsage;
