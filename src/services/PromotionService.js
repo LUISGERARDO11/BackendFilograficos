@@ -5,10 +5,10 @@ const { Promotion, Order, PromotionProduct, PromotionCategory, ProductVariant, P
 
 class PromotionService {
   /**
-   * Obtiene todas las promociones aplicables al carrito del usuario.
-   * @param {Array} cartDetails - Detalles del carrito (variant_id, quantity, unit_measure, subtotal).
+   * Obtiene todas las promociones aplicables al carrito del usuario con detalles por ítem.
+   * @param {Array} cartDetails - Detalles del carrito (variant_id, quantity, unit_measure, subtotal, category_id).
    * @param {number} userId - ID del usuario autenticado.
-   * @returns {Array} Promociones aplicables.
+   * @returns {Array} Promociones aplicables con ítems asociados.
    */
   async getApplicablePromotions(cartDetails, userId) {
     const now = new Date();
@@ -19,26 +19,73 @@ class PromotionService {
         end_date: { [Op.gte]: now }
       },
       include: [
-        { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id', 'sku'] },
-        { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id', 'name'] }
+        { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id'] },
+        { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id'] }
       ]
     });
 
     const applicablePromotions = [];
+
     for (const promotion of promotions) {
-      if (await this.isPromotionApplicable(promotion, cartDetails, userId)) {
-        applicablePromotions.push(promotion);
+      const variantIds = promotion.ProductVariants.map(v => v.variant_id);
+      const categoryIds = promotion.Categories.map(c => c.category_id);
+      let applicableItems = [];
+      let isEligible = false;
+
+      if (promotion.promotion_type === 'order_count_discount') {
+        // Para order_count_discount, verificar solo el conteo de pedidos
+        const orderCount = await this.countOrders(userId);
+        isEligible = orderCount >= (promotion.min_order_count || 0);
+        // Incluir todos los ítems del carrito si es elegible, ya que aplica al total
+        if (isEligible) {
+          applicableItems = cartDetails;
+        }
+      } else {
+        // Para otros tipos de promociones, verificar ítems del carrito
+        applicableItems = cartDetails.filter(detail => {
+          const isItemEligible =
+            (promotion.applies_to === 'all') ||
+            (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
+            (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id));
+
+          if (!isItemEligible) return false;
+
+          if (promotion.promotion_type === 'quantity_discount') {
+            return detail.quantity >= (promotion.min_quantity || 0);
+          } else if (promotion.promotion_type === 'unit_discount') {
+            return detail.unit_measure >= (promotion.min_unit_measure || 0);
+          }
+          return false;
+        });
+        isEligible = applicableItems.length > 0;
+      }
+
+      if (isEligible) {
+        applicablePromotions.push({
+          promotion_id: promotion.promotion_id,
+          name: promotion.name,
+          promotion_type: promotion.promotion_type,
+          discount_value: promotion.discount_value,
+          applies_to: promotion.applies_to,
+          is_exclusive: promotion.is_exclusive,
+          min_order_count: promotion.min_order_count,
+          applicable_items: applicableItems.map(item => ({
+            variant_id: item.variant_id,
+            quantity: item.quantity,
+            unit_measure: item.unit_measure
+          }))
+        });
       }
     }
 
-    // Si hay promociones exclusivas, solo devolver la primera exclusiva
+    // Si hay promociones exclusivas, devolver solo la primera exclusiva
     const hasExclusive = applicablePromotions.some(p => p.is_exclusive);
     return hasExclusive ? applicablePromotions.filter(p => p.is_exclusive).slice(0, 1) : applicablePromotions;
   }
 
   /**
    * Verifica si una promoción es aplicable al carrito.
-   * @param {Object} promotion - Objeto de la promoción.
+   * @param {Object} promotion - Promoción.
    * @param {Array} cartDetails - Detalles del carrito.
    * @param {number} userId - ID del usuario.
    * @returns {boolean} True si la promoción es aplicable.
@@ -63,31 +110,7 @@ class PromotionService {
    * @returns {boolean} True si la cantidad total es suficiente.
    */
   async checkQuantityDiscount(promotion, cartDetails) {
-    const variantIds = await PromotionProduct.findAll({
-      where: { promotion_id: promotion.promotion_id },
-      attributes: ['variant_id']
-    }).map(p => p.variant_id);
-
-    const categoryIds = await PromotionCategory.findAll({
-      where: { promotion_id: promotion.promotion_id },
-      attributes: ['category_id']
-    }).map(c => c.category_id);
-
-    const totalQuantity = await cartDetails.reduce(async (sumPromise, detail) => {
-      const sum = await sumPromise;
-      const variant = await ProductVariant.findByPk(detail.variant_id, {
-        include: [{ model: Product, attributes: ['category_id'] }]
-      });
-      if (
-        (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
-        (promotion.applies_to === 'specific_categories' && categoryIds.includes(variant.Product.category_id)) ||
-        promotion.applies_to === 'all'
-      ) {
-        return sum + detail.quantity;
-      }
-      return sum;
-    }, Promise.resolve(0));
-
+    const totalQuantity = await this.getTotalQuantityEligible(promotion, cartDetails);
     return totalQuantity >= (promotion.min_quantity || 0);
   }
 
@@ -98,9 +121,7 @@ class PromotionService {
    * @returns {boolean} True si el número de pedidos es suficiente.
    */
   async checkOrderCountDiscount(promotion, userId) {
-    const orderCount = await Order.count({
-      where: { user_id: userId, order_status: 'delivered' }
-    });
+    const orderCount = await this.countOrders(userId);
     return orderCount >= (promotion.min_order_count || 0);
   }
 
@@ -111,21 +132,7 @@ class PromotionService {
    * @returns {boolean} True si la medida total es suficiente.
    */
   async checkUnitDiscount(promotion, cartDetails) {
-    const variantIds = await PromotionProduct.findAll({
-      where: { promotion_id: promotion.promotion_id },
-      attributes: ['variant_id']
-    }).map(p => p.variant_id);
-
-    const totalUnits = cartDetails.reduce((sum, detail) => {
-      if (
-        (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
-        promotion.applies_to === 'all'
-      ) {
-        return sum + (detail.unit_measure || 0);
-      }
-      return sum;
-    }, 0);
-
+    const totalUnits = await this.getTotalUnitsEligible(promotion, cartDetails);
     return totalUnits >= (promotion.min_unit_measure || 0);
   }
 
@@ -137,26 +144,60 @@ class PromotionService {
    */
   async applyPromotions(cartDetails, promotions) {
     let totalDiscount = 0;
-    for (const detail of cartDetails) {
-      let detailDiscount = 0;
-      for (const promotion of promotions) {
-        if (await this.isVariantEligible(promotion, detail.variant_id)) {
-          detailDiscount += detail.subtotal * (promotion.discount_value / 100);
+    const updatedOrderDetails = cartDetails.map(detail => ({ ...detail, discount_applied: 0 }));
+
+    for (const promotion of promotions) {
+      const variantIds = await PromotionProduct.findAll({
+        where: { promotion_id: promotion.promotion_id },
+        attributes: ['variant_id']
+      }).map(p => p.variant_id);
+      const categoryIds = await PromotionCategory.findAll({
+        where: { promotion_id: promotion.promotion_id },
+        attributes: ['category_id']
+      }).map(c => c.category_id);
+
+      for (const detail of updatedOrderDetails) {
+        const isEligible =
+          (promotion.applies_to === 'all') ||
+          (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
+          (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id));
+
+        if (!isEligible) continue;
+
+        let isApplicable = false;
+        if (promotion.promotion_type === 'quantity_discount' && detail.quantity >= (promotion.min_quantity || 0)) {
+          isApplicable = true;
+        } else if (promotion.promotion_type === 'unit_discount' && detail.unit_measure >= (promotion.min_unit_measure || 0)) {
+          isApplicable = true;
+        } else if (promotion.promotion_type === 'order_count_discount' && promotion.min_order_count) {
+          const orderCount = await this.countOrders(detail.user_id || userId);
+          isApplicable = orderCount >= promotion.min_order_count;
+        }
+
+        if (isApplicable) {
+          const discount = detail.subtotal * (promotion.discount_value / 100);
+          detail.discount_applied = (detail.discount_applied || 0) + discount;
+          totalDiscount += discount;
         }
       }
-      detail.discount_applied = Math.min(detailDiscount, detail.subtotal);
-      totalDiscount += detail.discount_applied;
     }
-    return { updatedOrderDetails: cartDetails, totalDiscount };
+
+    // Asegurar que el descuento no exceda el subtotal
+    for (const detail of updatedOrderDetails) {
+      detail.discount_applied = Math.min(detail.discount_applied, detail.subtotal);
+    }
+
+    return { updatedOrderDetails, totalDiscount };
   }
 
   /**
    * Verifica si una variante es elegible para una promoción.
    * @param {Object} promotion - Promoción.
    * @param {number} variantId - ID de la variante.
+   * @param {number} categoryId - ID de la categoría.
    * @returns {boolean} True si la variante es elegible.
    */
-  async isVariantEligible(promotion, variantId) {
+  async isVariantEligible(promotion, variantId, categoryId) {
     if (promotion.applies_to === 'all') return true;
     if (promotion.applies_to === 'specific_products') {
       const promoProduct = await PromotionProduct.findOne({ 
@@ -165,14 +206,11 @@ class PromotionService {
       return !!promoProduct;
     }
     if (promotion.applies_to === 'specific_categories') {
-      const variant = await ProductVariant.findByPk(variantId, { 
-        include: [{ model: Product, attributes: ['category_id'] }] 
-      });
       const categoryIds = await PromotionCategory.findAll({
         where: { promotion_id: promotion.promotion_id },
         attributes: ['category_id']
       }).map(c => c.category_id);
-      return categoryIds.includes(variant.Product.category_id);
+      return categoryIds.includes(categoryId);
     }
     return false;
   }
@@ -186,6 +224,8 @@ class PromotionService {
    */
   async getPromotionProgress(promotion, cartDetails, userId) {
     let message = '';
+    const isEligible = await this.isPromotionApplicable(promotion, cartDetails, userId);
+
     if (promotion.promotion_type === 'quantity_discount') {
       const totalQuantity = await this.getTotalQuantityEligible(promotion, cartDetails);
       const remaining = (promotion.min_quantity || 0) - totalQuantity;
@@ -198,7 +238,7 @@ class PromotionService {
       const orderCount = await this.countOrders(userId);
       const remaining = (promotion.min_order_count || 0) - orderCount;
       if (remaining > 0) {
-        message = `Te faltan ${remaining} pedidos para obtener un ${promotion.discount_value}% de descuento (${orderCount + 1}º pedido).`;
+        message = `Te faltan ${remaining} pedidos completados para obtener un ${promotion.discount_value}% de descuento (≥${promotion.min_order_count} pedidos).`;
       } else {
         message = `¡Promoción válida! Este es tu ${orderCount}º pedido, aplica un ${promotion.discount_value}% de descuento.`;
       }
@@ -211,7 +251,8 @@ class PromotionService {
         message = `¡Promoción válida! Aplica un ${promotion.discount_value}% por comprar ${totalUnits.toFixed(2)} metros (≥${promotion.min_unit_measure}).`;
       }
     }
-    return { message };
+
+    return { message, is_eligible: isEligible };
   }
 
   /**
@@ -231,22 +272,16 @@ class PromotionService {
       attributes: ['category_id']
     }).map(c => c.category_id);
 
-    const totalQuantity = await cartDetails.reduce(async (sumPromise, detail) => {
-      const sum = await sumPromise;
-      const variant = await ProductVariant.findByPk(detail.variant_id, {
-        include: [{ model: Product, attributes: ['category_id'] }]
-      });
+    return cartDetails.reduce((sum, detail) => {
       if (
         (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
-        (promotion.applies_to === 'specific_categories' && categoryIds.includes(variant.Product.category_id)) ||
+        (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id)) ||
         promotion.applies_to === 'all'
       ) {
         return sum + detail.quantity;
       }
       return sum;
-    }, Promise.resolve(0));
-
-    return totalQuantity;
+    }, 0);
   }
 
   /**
@@ -272,9 +307,15 @@ class PromotionService {
       attributes: ['variant_id']
     }).map(p => p.variant_id);
 
+    const categoryIds = await PromotionCategory.findAll({
+      where: { promotion_id: promotion.promotion_id },
+      attributes: ['category_id']
+    }).map(c => c.category_id);
+
     return cartDetails.reduce((sum, detail) => {
       if (
         (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
+        (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id)) ||
         promotion.applies_to === 'all'
       ) {
         return sum + (detail.unit_measure || 0);

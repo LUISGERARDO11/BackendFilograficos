@@ -36,6 +36,22 @@ router.get(
   promotionController.getAllVariants
 );
 
+// Aplicar una promoción al carrito
+router.post(
+  '/apply',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  promotionController.applyPromotion
+);
+
+// Obtener promociones disponibles para el usuario
+router.get(
+  '/available',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  promotionController.getAvailablePromotions
+);
+
 // Obtener una promoción por ID
 router.get(
   '/:id',
@@ -63,20 +79,5 @@ router.delete(
   promotionController.deletePromotion
 );
 
-// Aplicar una promoción al carrito
-router.post(
-  '/apply',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  promotionController.applyPromotion
-);
-
-// Obtener promociones disponibles para el usuario
-router.get(
-  '/available',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  promotionController.getAvailablePromotions
-);
 
 module.exports = router;

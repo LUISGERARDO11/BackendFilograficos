@@ -1,21 +1,20 @@
-const { Cart, CartDetail, Product, ProductVariant, ProductImage, CustomizationOption, User } = require('../models/Associations');
+const { Cart, CartDetail, Product, ProductVariant, ProductImage, CustomizationOption, User, Promotion, Order } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');
+const PromotionService = require('../services/PromotionService');
+
+const promotionService = new PromotionService();
 
 exports.addToCart = async (req, res) => {
-  const transaction = await Cart.sequelize.transaction(); // Iniciar una transacción
+  const transaction = await Cart.sequelize.transaction();
   try {
-    // Obtener datos del cuerpo de la solicitud
     const { product_id, variant_id, quantity, option_id } = req.body;
-
-    // Obtener el user_id del usuario autenticado (ajustado para usar req.user.user_id)
-    const user_id = req.user?.user_id; // Alineado con userController.js
+    const user_id = req.user?.user_id;
     if (!user_id) {
       await transaction.rollback();
       return res.status(401).json({ message: 'Usuario no autenticado' });
     }
 
-    // Validar datos de entrada
     if (!product_id || !variant_id || !quantity) {
       await transaction.rollback();
       return res.status(400).json({ message: 'Faltan datos requeridos: product_id, variant_id y quantity son obligatorios' });
@@ -25,7 +24,6 @@ exports.addToCart = async (req, res) => {
       return res.status(400).json({ message: 'La cantidad debe ser mayor que 0' });
     }
 
-    // Verificar que el producto y la variante existan
     const product = await Product.findByPk(product_id, { transaction });
     if (!product) {
       await transaction.rollback();
@@ -38,13 +36,11 @@ exports.addToCart = async (req, res) => {
       return res.status(404).json({ message: 'Variante no encontrada o no pertenece al producto' });
     }
 
-    // Verificar stock
     if (variant.stock < quantity) {
       await transaction.rollback();
       return res.status(400).json({ message: 'Stock insuficiente' });
     }
 
-    // Verificar la personalización (si se proporciona)
     let customization = null;
     if (option_id) {
       customization = await CustomizationOption.findByPk(option_id, { transaction });
@@ -54,13 +50,11 @@ exports.addToCart = async (req, res) => {
       }
     }
 
-    // Buscar un carrito activo para el usuario
     let cart = await Cart.findOne({
       where: { user_id, status: 'active' },
       transaction
     });
 
-    // Si no existe un carrito activo, crear uno
     if (!cart) {
       cart = await Cart.create(
         { user_id, status: 'active' },
@@ -68,7 +62,6 @@ exports.addToCart = async (req, res) => {
       );
     }
 
-    // Buscar si el producto con la misma variante y personalización ya está en el carrito
     const existingCartDetail = await CartDetail.findOne({
       where: {
         cart_id: cart.cart_id,
@@ -80,7 +73,6 @@ exports.addToCart = async (req, res) => {
     });
 
     if (existingCartDetail) {
-      // Si ya existe, actualizar la cantidad y el subtotal
       const newQuantity = existingCartDetail.quantity + quantity;
       if (variant.stock < newQuantity) {
         await transaction.rollback();
@@ -95,7 +87,6 @@ exports.addToCart = async (req, res) => {
         { transaction }
       );
     } else {
-      // Si no existe, crear un nuevo registro en CartDetail
       await CartDetail.create(
         {
           cart_id: cart.cart_id,
@@ -110,7 +101,6 @@ exports.addToCart = async (req, res) => {
       );
     }
 
-    // Confirmar la transacción
     await transaction.commit();
     res.status(200).json({ message: 'Producto añadido al carrito exitosamente' });
   } catch (error) {
@@ -119,28 +109,26 @@ exports.addToCart = async (req, res) => {
     res.status(500).json({ message: 'Error al añadir al carrito', error: error.message });
   }
 };
-// Añadir al final de cartController.js
+
 exports.getCart = async (req, res) => {
   try {
-    // Obtener el user_id del usuario autenticado
     const user_id = req.user?.user_id;
     if (!user_id) {
       return res.status(401).json({ message: 'Usuario no autenticado' });
     }
 
-    // Buscar un carrito activo para el usuario
     const cart = await Cart.findOne({
       where: { user_id, status: 'active' },
       include: [
         {
           model: CartDetail,
           include: [
-            { model: Product, attributes: ['product_id', 'name'] },
+            { model: Product, attributes: ['product_id', 'name', 'category_id'] },
             {
               model: ProductVariant,
               attributes: ['variant_id', 'sku', 'calculated_price', 'stock'],
               include: [
-                { model: ProductImage, attributes: ['image_url', 'order'] } // Incluir las imágenes de la variante
+                { model: ProductImage, attributes: ['image_url', 'order'] }
               ]
             },
             { model: CustomizationOption, attributes: ['option_id', 'option_type', 'description'], required: false }
@@ -150,7 +138,29 @@ exports.getCart = async (req, res) => {
     });
 
     if (!cart) {
-      return res.status(200).json({ items: [], total: 0 });
+      // Obtener promoción de order_count_discount para carrito vacío
+      const orderCountPromotions = await Promotion.findAll({
+        where: {
+          status: 'active',
+          promotion_type: 'order_count_discount',
+          start_date: { [Op.lte]: new Date() },
+          end_date: { [Op.gte]: new Date() }
+        }
+      });
+
+      const promotionProgress = await Promise.all(orderCountPromotions.map(async (promo) => {
+        const { message, is_eligible } = await promotionService.getPromotionProgress(promo, [], user_id);
+        return {
+          promotion_id: promo.promotion_id,
+          name: promo.name,
+          promotion_type: promo.promotion_type,
+          discount_value: parseFloat(promo.discount_value).toFixed(2),
+          is_applicable: is_eligible,
+          progress_message: message
+        };
+      }));
+
+      return res.status(200).json({ items: [], total: 0, promotions: promotionProgress });
     }
 
     // Formatear los ítems del carrito
@@ -164,6 +174,8 @@ exports.getCart = async (req, res) => {
       quantity: detail.quantity,
       unit_price: parseFloat(detail.unit_price),
       subtotal: parseFloat(detail.subtotal),
+      unit_measure: parseFloat(detail.unit_measure || 0).toFixed(2),
+      category_id: detail.Product.category_id,
       customization: detail.CustomizationOption
         ? {
             option_id: detail.CustomizationOption.option_id,
@@ -174,19 +186,106 @@ exports.getCart = async (req, res) => {
       images: detail.ProductVariant.ProductImages.map(img => ({
         image_url: img.image_url,
         order: img.order
-      })) // Incluir las imágenes de la variante
+      })),
+      applicable_promotions: []
     }));
+
+    // Preparar detalles del carrito para PromotionService
+    const cartDetails = items.map(item => ({
+      variant_id: item.variant_id,
+      quantity: item.quantity,
+      unit_measure: parseFloat(item.unit_measure),
+      subtotal: item.subtotal,
+      category_id: item.category_id
+    }));
+
+    // Obtener promociones aplicables
+    const applicablePromotions = await promotionService.getApplicablePromotions(cartDetails, user_id);
+
+    // Obtener promociones de tipo order_count_discount
+    const orderCountPromotions = await Promotion.findAll({
+      where: {
+        status: 'active',
+        promotion_type: 'order_count_discount',
+        start_date: { [Op.lte]: new Date() },
+        end_date: { [Op.gte]: new Date() }
+      }
+    });
+
+    // Combinar promociones aplicables con order_count_discount, evitando duplicados
+    const allPromotions = [
+      ...applicablePromotions,
+      ...orderCountPromotions.filter(op => !applicablePromotions.some(ap => ap.promotion_id === op.promotion_id)).map(op => ({
+        promotion_id: op.promotion_id,
+        name: op.name,
+        promotion_type: op.promotion_type,
+        discount_value: op.discount_value,
+        applies_to: op.applies_to,
+        is_exclusive: op.is_exclusive,
+        min_order_count: op.min_order_count,
+        applicable_items: []
+      }))
+    ];
+
+    // Mapear promociones a ítems y generar mensajes de progreso
+    const promotionProgress = [];
+    for (const promo of allPromotions) {
+      // Obtener mensaje de progreso y verificar si es aplicable
+      const { message, is_eligible } = await promotionService.getPromotionProgress(
+        {
+          promotion_id: promo.promotion_id,
+          promotion_type: promo.promotion_type,
+          discount_value: promo.discount_value,
+          min_quantity: promo.promotion_type === 'quantity_discount' ? promo.min_quantity : null,
+          min_order_count: promo.promotion_type === 'order_count_discount' ? promo.min_order_count : null,
+          min_unit_measure: promo.promotion_type === 'unit_discount' ? promo.min_unit_measure : null,
+          applies_to: promo.applies_to
+        },
+        cartDetails,
+        user_id
+      );
+
+      // Asignar promoción a ítems solo si es aplicable
+      if (is_eligible) {
+        const applicableItems = items.filter(item => 
+          promo.applicable_items.some(ap => ap.variant_id === item.variant_id) ||
+          promo.promotion_type === 'order_count_discount'
+        );
+
+        applicableItems.forEach(item => {
+          item.applicable_promotions.push({
+            promotion_id: promo.promotion_id,
+            name: promo.name,
+            discount_value: parseFloat(promo.discount_value),
+            promotion_type: promo.promotion_type
+          });
+        });
+      }
+
+      promotionProgress.push({
+        promotion_id: promo.promotion_id,
+        name: promo.name,
+        promotion_type: promo.promotion_type,
+        discount_value: parseFloat(promo.discount_value).toFixed(2),
+        is_applicable: is_eligible,
+        progress_message: message
+      });
+    }
+
+    // Calcular total monetario
+    const total = items.reduce((sum, item) => sum + item.subtotal, 0);
 
     res.status(200).json({
       items,
-      total: items.reduce((sum, item) => sum + item.quantity, 0) // Total de ítems (ajusta si el backend debería devolver el total monetario)
+      total,
+      promotions: promotionProgress
     });
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener el carrito', error: error.message });
   }
 };
-// Actualizar la cantidad de un ítem en el carrito
+
 exports.updateCartItem = async (req, res) => {
   const transaction = await Cart.sequelize.transaction();
   try {
@@ -208,7 +307,6 @@ exports.updateCartItem = async (req, res) => {
       return res.status(400).json({ message: 'La cantidad debe ser mayor que 0' });
     }
 
-    // Buscar el detalle del carrito
     const cartDetail = await CartDetail.findByPk(cart_detail_id, {
       include: [
         { model: Cart, where: { user_id, status: 'active' } },
@@ -222,13 +320,11 @@ exports.updateCartItem = async (req, res) => {
       return res.status(404).json({ message: 'Ítem no encontrado en el carrito' });
     }
 
-    // Verificar stock
     if (cartDetail.ProductVariant.stock < quantity) {
       await transaction.rollback();
       return res.status(400).json({ message: 'Stock insuficiente' });
     }
 
-    // Actualizar la cantidad y el subtotal
     await cartDetail.update(
       {
         quantity,
@@ -246,7 +342,6 @@ exports.updateCartItem = async (req, res) => {
   }
 };
 
-// Eliminar un ítem del carrito
 exports.removeCartItem = async (req, res) => {
   const transaction = await Cart.sequelize.transaction();
   try {
@@ -258,7 +353,6 @@ exports.removeCartItem = async (req, res) => {
       return res.status(401).json({ message: 'Usuario no autenticado' });
     }
 
-    // Buscar el detalle del carrito
     const cartDetail = await CartDetail.findByPk(cart_detail_id, {
       include: [{ model: Cart, where: { user_id, status: 'active' } }],
       transaction
@@ -269,7 +363,6 @@ exports.removeCartItem = async (req, res) => {
       return res.status(404).json({ message: 'Ítem no encontrado en el carrito' });
     }
 
-    // Eliminar el ítem
     await cartDetail.destroy({ transaction });
 
     await transaction.commit();
