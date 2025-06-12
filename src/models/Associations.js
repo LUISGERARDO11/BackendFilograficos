@@ -119,8 +119,11 @@ Faq.belongsTo(FaqCategory, { foreignKey: 'category_id', as: 'category' });
 Order.hasOne(Payment, { foreignKey: 'order_id' });
 Payment.belongsTo(Order, { foreignKey: 'order_id' });
 
-Order.hasOne(OrderHistory, { foreignKey: 'order_id' });
+Order.hasMany(OrderHistory, { foreignKey: 'order_id' }); // Cambiado de hasOne a hasMany
 OrderHistory.belongsTo(Order, { foreignKey: 'order_id' });
+
+Order.belongsTo(Address, { foreignKey: 'address_id' }); // Nueva relación
+Address.hasMany(Order, { foreignKey: 'address_id' });
 
 // Relaciones de Respaldo y Restauración
 BackupLog.hasMany(RestorationLog, { foreignKey: 'backup_id' });

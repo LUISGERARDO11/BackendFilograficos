@@ -12,42 +12,43 @@ const Payment = sequelize.define('Payment', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'orders', // Relación con la tabla de pedidos
+      model: 'orders',
       key: 'order_id'
     }
   },
   payment_method: {
-    type: DataTypes.ENUM('bank_transfer'), // Método de pago
+    type: DataTypes.ENUM('bank_transfer_oxxo', 'bank_transfer_bbva', 'bank_transfer', 'paypal', 'stripe'),
     allowNull: false
   },
   amount: {
-    type: DataTypes.DECIMAL(10, 2), // Monto del pago
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: false
   },
   receipt_url: {
-    type: DataTypes.STRING(255), // URL del comprobante
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  transaction_id: {
+    type: DataTypes.STRING(100),
     allowNull: true
   },
   status: {
-    type: DataTypes.ENUM('pending', 'validated', 'failed'), // Estado del pago
+    type: DataTypes.ENUM('pending', 'validated', 'failed'),
     defaultValue: 'pending'
   },
   attempts: {
-    type: DataTypes.INTEGER, // Número de intentos
-    defaultValue: 0
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    allowNull: false
   }
 }, {
-  tableName: 'payments', // Nombre de la tabla en la base de datos
-  timestamps: true, // Sequelize manejará automáticamente createdAt y updatedAt
+  tableName: 'payments',
+  timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
   indexes: [
-    {
-      fields: ['order_id'] // Índice para el ID del pedido
-    },
-    {
-      fields: ['status'] // Índice para el estado del pago
-    }
+    { fields: ['order_id'] },
+    { fields: ['status'] }
   ]
 });
 

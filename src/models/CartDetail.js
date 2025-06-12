@@ -84,6 +84,7 @@ const CartDetail = sequelize.define('CartDetail', {
 }, {
   tableName: 'cart_details',
   timestamps: false,
+  freezeTableName: true, // Evitar pluralización
   indexes: [
     {
       fields: ['cart_id']

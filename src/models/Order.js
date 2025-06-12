@@ -12,28 +12,42 @@ const Order = sequelize.define('Order', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'users', // Relación con la tabla de usuarios
+      model: 'users',
       key: 'user_id'
     }
   },
+  address_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'addresses',
+      key: 'address_id'
+    }
+  },
   total: {
-    type: DataTypes.DECIMAL(10, 2), // Total original
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: false
   },
+  discount: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0.00
+  },
   shipping_cost: {
-    type: DataTypes.DECIMAL(10, 2), // Costo de envío
+    type: DataTypes.DECIMAL(10, 2),
     defaultValue: 0.00
   },
   payment_status: {
-    type: DataTypes.ENUM('pending', 'validated', 'failed'), // Estado del pago
+    type: DataTypes.ENUM('pending', 'validated', 'failed'),
     defaultValue: 'pending'
   },
   payment_method: {
-    type: DataTypes.ENUM('bank_transfer'), // Método de pago
-    defaultValue: 'bank_transfer'
+    type: DataTypes.ENUM('bank_transfer_oxxo', 'bank_transfer_bbva', 'bank_transfer', 'paypal', 'stripe'),
+    defaultValue: 'bank_transfer',
+    allowNull: true
   },
   order_status: {
-    type: DataTypes.ENUM('pending', 'processing', 'shipped', 'delivered'), // Estado del pedido
+    type: DataTypes.ENUM('pending', 'processing', 'shipped', 'delivered'),
     defaultValue: 'pending'
   },
   is_urgent: {
@@ -42,17 +56,14 @@ const Order = sequelize.define('Order', {
     allowNull: false
   }
 }, {
-  tableName: 'orders', // Nombre de la tabla en la base de datos
-  timestamps: true, // Sequelize manejará automáticamente createdAt y updatedAt
+  tableName: 'orders',
+  timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
   indexes: [
-    {
-      fields: ['user_id'] // Índice para el ID del usuario
-    },
-    {
-      fields: ['order_status'] // Índice para el estado del pedido
-    }
+    { fields: ['user_id'] },
+    { fields: ['address_id'] },
+    { fields: ['order_status'] }
   ]
 });
 
