@@ -4,6 +4,22 @@ require('dotenv').config();
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');
 
+// Importar todos los modelos necesarios al inicio del archivo
+const { 
+  Cart, 
+  CartDetail, 
+  Order, 
+  OrderDetail, 
+  OrderHistory, 
+  Payment, 
+  Address, 
+  CouponUsage, 
+  Promotion, 
+  ProductVariant, 
+  Customization,
+  Product
+} = require('../models/Associations');
+
 class OrderService {
   /**
    * Creates an order from the user's cart, generates related records, and clears the cart.
@@ -13,8 +29,6 @@ class OrderService {
    * @throws {Error} - If the cart is empty, address is invalid, or any operation fails.
    */
   async createOrder(userId, { address_id, is_urgent, payment_method, coupon_code }) {
-    const { Cart, CartDetail, Order, OrderDetail, OrderHistory, Payment, Address, CouponUsage, Promotion, ProductVariant, Customization } = require('../models/Associations');
-
     try {
       // Verificar dirección si se proporciona
       let address = null;
@@ -49,7 +63,8 @@ class OrderService {
                   status: 'active',
                   start_date: { [Op.lte]: new Date() },
                   end_date: { [Op.gte]: new Date() }
-                }
+                },
+                required: false
               }
             ]
           },
@@ -164,7 +179,7 @@ class OrderService {
         await OrderHistory.destroy({ where: { order_id: order.order_id } });
         await OrderDetail.destroy({ where: { order_id: order.order_id } });
         await Order.destroy({ where: { order_id: order.order_id } });
-        throw new Error(`Error al crear registro de pago: ${error.message}`);
+        throw new Error(`Error al añadir registro de pago: ${error.message}`);
       }
 
       // Manejar cupones
@@ -219,6 +234,186 @@ class OrderService {
       throw new Error(`Error al crear la orden: ${error.message}`);
     }
   }
+
+  /**
+   * Retrieves the details of a specific order for the authenticated user.
+   * @param {number} userId - The ID of the authenticated user.
+   * @param {number} orderId - The ID of the order to retrieve.
+   * @returns {Object} - The order details including items, address, payment instructions, and status.
+   * @throws {Error} - If the order is not found or does not belong to the user.
+   */
+async getOrderById(userId, orderId) {
+  try {
+    const order = await Order.findOne({
+      where: {
+        order_id: orderId,
+        user_id: userId
+      },
+      include: [
+        {
+          model: OrderDetail,
+          attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure'],
+          include: [
+            {
+              model: ProductVariant,
+              attributes: ['variant_id', 'calculated_price'],
+              include: [
+                {
+                  model: Product,
+                  attributes: ['name']
+                }
+              ],
+              required: false
+            },
+            {
+              model: Customization,
+              attributes: ['customization_id', 'content', 'file_url', 'comments'],
+              required: false
+            }
+          ]
+        },
+        {
+          model: Address,
+          attributes: ['address_id', 'street', 'city', 'state', 'postal_code'],
+          required: false
+        },
+        {
+          model: Payment,
+          attributes: ['payment_id', 'payment_method', 'amount', 'status'],
+          required: false
+        }
+      ]
+    });
+
+    if (!order) {
+      throw new Error('Orden no encontrada o acceso denegado');
+    }
+
+    // Generar instrucciones de pago
+    const paymentInstructions = this.generatePaymentInstructions(order.payment_method, order.total);
+
+    // Formatear la respuesta
+    const orderDetails = {
+      order_id: order.order_id,
+      user_id: order.user_id,
+      total: order.total,
+      subtotal: order.OrderDetails.reduce((sum, detail) => sum + detail.subtotal, 0),
+      discount: order.discount,
+      shipping_cost: order.shipping_cost,
+      payment_method: order.payment_method,
+      payment_status: Array.isArray(order.Payments) && order.Payments.length > 0 ? order.Payments[0].status : 'pending',
+      order_status: order.order_status,
+      is_urgent: order.is_urgent,
+      created_at: order.created_at,
+      address: order.Address ? {
+        address_id: order.Address.address_id,
+        street: order.Address.street,
+        city: order.Address.city,
+        state: order.Address.state,
+        postal_code: order.Address.postal_code
+      } : null,
+      items: order.OrderDetails.map(detail => ({
+        order_detail_id: detail.order_detail_id,
+        product_name: detail.ProductVariant?.Product?.name || 'Producto no disponible',
+        quantity: detail.quantity,
+        unit_price: detail.unit_price,
+        subtotal: detail.subtotal,
+        discount_applied: detail.discount_applied,
+        unit_measure: detail.unit_measure,
+        customization: detail.Customization ? {
+          customization_id: detail.Customization.customization_id,
+          content: detail.Customization.content,
+          file_url: detail.Customization.file_url,
+          comments: detail.Customization.comments
+        } : null
+      })),
+      payment_instructions: paymentInstructions
+    };
+
+    return orderDetails;
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    throw new Error(`Error al obtener los detalles de la orden: ${error.message}`);
+  }
+}
+
+  /**
+   * Retrieves a paginated list of all orders for the authenticated user.
+   * @param {number} userId - The ID of the authenticated user.
+   * @param {number} page - The page number (default: 1).
+   * @param {number} pageSize - The number of orders per page (default: 10).
+   * @returns {Object} - The list of orders and pagination metadata.
+   * @throws {Error} - If there is an error retrieving the orders.
+   */
+async getOrders(userId, page = 1, pageSize = 10) {
+  try {
+    const offset = (page - 1) * pageSize;
+    const { count, rows } = await Order.findAndCountAll({
+      where: { user_id: userId },
+      attributes: ['order_id', 'total', 'order_status', 'payment_method', 'created_at', 'discount', 'shipping_cost', 'is_urgent'],
+      include: [
+        {
+          model: OrderDetail,
+          attributes: ['order_detail_id', 'quantity', 'subtotal', 'unit_measure', 'variant_id'],
+          include: [
+            {
+              model: ProductVariant,
+              attributes: ['variant_id'],
+              include: [
+                {
+                  model: Product,
+                  attributes: ['name']
+                }
+              ],
+              required: false
+            }
+          ],
+          required: false,
+          limit: 1
+        },
+        {
+          model: Address,
+          attributes: ['city'],
+          required: false
+        },
+        {
+          model: Payment,
+          attributes: ['status'],
+          required: false
+        }
+      ],
+      order: [['created_at', 'DESC']],
+      limit: pageSize,
+      offset
+    });
+
+    const orders = rows.map(order => ({
+      order_id: order.order_id,
+      total: order.total,
+      order_status: order.order_status,
+      payment_status: Array.isArray(order.Payments) && order.Payments.length > 0 ? order.Payments[0].status : 'pending',
+      created_at: order.created_at,
+      items_count: Array.isArray(order.OrderDetails) && order.OrderDetails.length > 0 ? order.OrderDetails[0].quantity : 0,
+      first_item_name: Array.isArray(order.OrderDetails) && order.OrderDetails.length > 0 && order.OrderDetails[0].ProductVariant?.Product 
+        ? order.OrderDetails[0].ProductVariant.Product.name 
+        : 'Producto no disponible',
+      city: order.Address?.city || null
+    }));
+
+    return {
+      orders,
+      pagination: {
+        totalOrders: count,
+        currentPage: page,
+        pageSize,
+        totalPages: Math.ceil(count / pageSize)
+      }
+    };
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    throw new Error(`Error al obtener las órdenes: ${error.message}`);
+  }
+}
 
   /**
    * Generates payment instructions based on the payment method.
