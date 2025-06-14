@@ -138,11 +138,31 @@ exports.getOrders = [
     .isLength({ min: 1, max: 100 })
     .withMessage('El término de búsqueda debe ser una cadena entre 1 y 100 caracteres'),
 
-  // Validar dateFilter
+  // Validar dateFilter (aceptar año o rango de fechas)
   query('dateFilter')
     .optional()
-    .isInt({ min: 1000, max: 9999 }) // Validar que sea un año de 4 dígitos
-    .withMessage('El filtro de fecha debe ser un año válido (número de 4 dígitos)'),
+    .custom((value) => {
+      if (!value) return true; // Permitir valor vacío
+      const parts = value.split(',');
+      if (parts.length === 1) {
+        // Validar como año de 4 dígitos
+        return /^\d{4}$/.test(value) && parseInt(value) >= 1000 && parseInt(value) <= 9999;
+      } else if (parts.length === 2) {
+        // Validar como rango de fechas (YYYY-MM-DD,YYYY-MM-DD)
+        const [startDate, endDate] = parts;
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
+          throw new Error('El rango de fechas debe estar en formato YYYY-MM-DD,YYYY-MM-DD');
+        }
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+          throw new Error('El rango de fechas no es válido');
+        }
+        return true;
+      }
+      throw new Error('El filtro de fecha debe ser un año válido (número de 4 dígitos) o un rango en formato YYYY-MM-DD,YYYY-MM-DD');
+    }),
 
   async (req, res) => {
     const user_id = req.user.user_id;
@@ -160,7 +180,7 @@ exports.getOrders = [
       const page = parseInt(req.query.page) || 1;
       const pageSize = parseInt(req.query.pageSize) || 10;
       const searchTerm = req.query.searchTerm || '';
-      const dateFilter = req.query.dateFilter || ''; // Vacío significa "todas las órdenes"
+      const dateFilter = req.query.dateFilter || ''; // Puede ser año o rango
 
       const orderService = new OrderService();
       const orders = await orderService.getOrders(user_id, page, pageSize, searchTerm, dateFilter);

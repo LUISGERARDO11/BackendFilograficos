@@ -345,7 +345,7 @@ class OrderService {
    * @param {number} page - The page number (default: 1).
    * @param {number} pageSize - The number of orders per page (default: 10).
    * @param {string} searchTerm - Optional search term to filter products by name.
-   * @param {string} dateFilter - Optional year to filter orders by creation date.
+   * @param {string} dateFilter - Optional year or date range (YYYY or YYYY-MM-DD,YYYY-MM-DD) to filter orders by creation date.
    * @returns {Object} - The list of orders and pagination metadata.
    * @throws {Error} - If there is an error retrieving the orders.
    */
@@ -357,13 +357,28 @@ class OrderService {
       // Build date condition
       let dateCondition = {};
       if (dateFilter) {
-        const year = parseInt(dateFilter);
-        if (!isNaN(year)) {
+        const parts = dateFilter.split(',');
+        if (parts.length === 1) {
+          // Caso de un año de 4 dígitos
+          const year = parseInt(dateFilter);
+          if (!isNaN(year)) {
+            dateCondition = {
+              created_at: {
+                [Op.between]: [
+                  moment.tz(`${year}-01-01`, 'UTC').startOf('year').toDate(),
+                  moment.tz(`${year}-12-31`, 'UTC').endOf('year').toDate(),
+                ],
+              },
+            };
+          }
+        } else if (parts.length === 2) {
+          // Caso de rango de fechas (YYYY-MM-DD,YYYY-MM-DD)
+          const [startDate, endDate] = parts;
           dateCondition = {
             created_at: {
               [Op.between]: [
-                moment.tz(`${year}-01-01`, 'UTC').startOf('year').toDate(),
-                moment.tz(`${year}-12-31`, 'UTC').endOf('year').toDate(),
+                moment.tz(startDate, 'UTC').toDate(),
+                moment.tz(endDate, 'UTC').toDate(),
               ],
             },
           };
@@ -480,6 +495,7 @@ class OrderService {
       throw new Error(`Error al obtener las órdenes: ${error.message}`);
     }
   }
+
   /**
    * Generates payment instructions based on the payment method.
    * @param {string} paymentMethod - The payment method chosen by the user.
