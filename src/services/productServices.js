@@ -1,6 +1,4 @@
-/* The above code is a JavaScript module that exports several functions related to querying and
-formatting product data from a database using Sequelize ORM. Here is a summary of the functions
-provided: */
+/* Module that exports functions for querying and formatting product data with enhanced search functionality optimized for MySQL */
 const { Product, ProductVariant, Category, Collaborator, ProductAttributeValue, ProductAttribute, ProductImage, CustomizationOption, PriceHistory } = require('../models/Associations');
 const { Op } = require('sequelize');
 
@@ -15,43 +13,70 @@ const getProductsWithFilters = async ({ page, pageSize, sort, categoryId, search
         order = sortParams.map(([column, direction]) => {
             if (!validColumns.includes(column)) throw new Error(`Columna de ordenamiento inválida: ${column}`);
             if (!direction || !validDirections.includes(direction.toUpperCase())) throw new Error(`Dirección de ordenamiento inválida: ${direction}`);
+            if (column === 'min_price' || column === 'max_price') {
+                return [ProductVariant, 'calculated_price', direction.toUpperCase()];
+            }
             return [column, direction.toUpperCase()];
         });
     }
 
     const whereClause = { status: 'active' };
     const variantWhereClause = {};
+    const include = [
+        { 
+            model: Category, 
+            attributes: ['category_id', 'name'], 
+            required: false 
+        },
+        { 
+            model: ProductVariant, 
+            attributes: [], 
+            where: variantWhereClause, 
+            required: true 
+        },
+    ];
+
+    if (includeCollaborator) {
+        include.push({ 
+            model: Collaborator, 
+            attributes: ['collaborator_id', 'name'], 
+            required: false,
+            where: search ? { name: { [Op.like]: `%${search}%` } } : {}
+        });
+    }
+
     if (categoryId) whereClause.category_id = parseInt(categoryId, 10);
-    if (search) whereClause.name = { [Op.iLike]: `%${search}%` };
     if (minPrice) variantWhereClause.calculated_price = { [Op.gte]: parseFloat(minPrice) };
     if (maxPrice) variantWhereClause.calculated_price = { ...variantWhereClause.calculated_price, [Op.lte]: parseFloat(maxPrice) };
     if (collaboratorId) whereClause.collaborator_id = parseInt(collaboratorId, 10);
 
-    const include = [
-        { model: Category, attributes: ['category_id', 'name'] },
-        { model: ProductVariant, attributes: [], where: variantWhereClause, required: true },
-    ];
-    if (includeCollaborator) {
-        include.push({ model: Collaborator, attributes: ['collaborator_id', 'name'], required: false });
+    if (search) {
+        whereClause[Op.or] = [
+            { name: { [Op.like]: `%${search}%` } },
+            { description: { [Op.like]: `%${search}%` } },
+            { '$ProductVariants.sku$': { [Op.like]: `%${search}%` } },
+        ];
     }
 
     const { count, rows: products } = await Product.findAndCountAll({
         where: whereClause,
         attributes: [
-            'product_id', 'name', 'product_type',
+            'product_id', 
+            'name', 
+            'product_type',
             [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
             [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
             [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock'],
             [Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')), 'variantCount'],
         ],
         include,
-        group: ['Product.product_id', 'Product.name', 'Product.product_type', 'Category.category_id', 'Category.name']
-            .concat(includeCollaborator ? ['Collaborator.collaborator_id', 'Collaborator.name'] : []),
-        having: Product.sequelize.literal('SUM("ProductVariants"."stock") > 0'),
+        group: ['Product.product_id', 'Category.category_id', 'Category.name'],
+        having: Product.sequelize.literal('SUM(ProductVariants.stock) > 0'),
         order,
         limit: pageSize,
         offset,
         subQuery: false,
+        distinct: true,
     });
 
     return { count, products };
@@ -61,7 +86,13 @@ const formatProductList = async (products) => {
     return Promise.all(products.map(async (product) => {
         const firstVariant = await ProductVariant.findOne({
             where: { product_id: product.product_id },
-            include: [{ model: ProductImage, attributes: ['image_url'], where: { order: 1 }, required: false }],
+            attributes: ['variant_id', 'product_id'],
+            include: [{ 
+                model: ProductImage, 
+                attributes: ['image_url'], 
+                where: { order: 1 }, 
+                required: false 
+            }],
             order: [['variant_id', 'ASC']],
         });
 
@@ -82,22 +113,45 @@ const formatProductList = async (products) => {
 
 const getProductById = async (productId, includeCollaborator = false) => {
     const include = [
-        { model: Category, attributes: ['category_id', 'name'] },
+        { 
+            model: Category, 
+            attributes: ['category_id', 'name'], 
+            required: false 
+        },
         {
             model: ProductVariant,
+            attributes: ['variant_id', 'sku', 'calculated_price', 'stock'],
             include: [
-                { model: ProductAttributeValue, include: [{ model: ProductAttribute, attributes: ['attribute_name', 'data_type', 'allowed_values'] }] },
-                { model: ProductImage, attributes: ['image_url', 'order'] },
+                { 
+                    model: ProductAttributeValue, 
+                    attributes: ['value'], 
+                    include: [{ 
+                        model: ProductAttribute, 
+                        attributes: ['attribute_name', 'data_type', 'allowed_values'] 
+                    }] 
+                },
+                { 
+                    model: ProductImage, 
+                    attributes: ['image_url', 'order'] 
+                },
             ],
         },
-        { model: CustomizationOption, attributes: ['option_type', 'description'] },
+        { 
+            model: CustomizationOption, 
+            attributes: ['option_type', 'description'] 
+        },
     ];
     if (includeCollaborator) {
-        include.push({ model: Collaborator, attributes: ['collaborator_id', 'name'], required: false });
+        include.push({ 
+            model: Collaborator, 
+            attributes: ['collaborator_id', 'name'], 
+            required: false 
+        });
     }
 
     const product = await Product.findByPk(productId, {
         where: { status: 'active' },
+        attributes: ['product_id', 'name', 'description', 'product_type'],
         include,
     });
 
@@ -140,7 +194,11 @@ const getVariantsWithFilters = async ({ search, categoryId, productType, page, l
         where[Op.or] = [
             { sku: { [Op.like]: `%${search}%` } },
             { '$Product.name$': { [Op.like]: `%${search}%` } },
+            { '$Product.description$': { [Op.like]: `%${search}%` } },
         ];
+        if (includeCollaborator) {
+            where[Op.or].push({ '$Collaborator.name$': { [Op.like]: `%${search}%` } });
+        }
         if (!isNaN(parseInt(search))) productWhere.category_id = parseInt(search);
     }
     if (categoryId) productWhere.category_id = parseInt(categoryId);
@@ -164,21 +222,29 @@ const getVariantsWithFilters = async ({ search, categoryId, productType, page, l
                 model: Product,
                 where: productWhere,
                 attributes: ['name', 'description', 'category_id', 'product_type'],
-                include: [{ model: Category, attributes: ['name'] }],
+                include: [
+                    { model: Category, attributes: ['name'], required: false },
+                    { model: Collaborator, attributes: ['name'], required: false }
+                ],
             },
-            { model: ProductImage, attributes: ['image_url'], where: { order: 1 }, required: false },
+            { 
+                model: ProductImage, 
+                attributes: ['image_url'], 
+                where: { order: 1 }, 
+                required: false 
+            },
         ],
         attributes: ['variant_id', 'sku', 'production_cost', 'profit_margin', 'calculated_price'],
         limit,
         offset: (page - 1) * limit,
         order,
         subQuery: false,
+        distinct: true,
     });
 
     return { count, variants };
 };
 
-// Nuevas funciones auxiliares relacionadas con modelos (sin acceso directo)
 const calculatePrice = (productionCost, profitMargin) => {
     const newProductionCost = parseFloat(productionCost);
     const newProfitMargin = parseFloat(profitMargin);

@@ -2,7 +2,7 @@ const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
 const NotificationManager = require('../services/notificationManager');
 
-const notificationManager = new NotificationManager(); // Instanciar aquí
+const notificationManager = new NotificationManager();
 
 const ProductVariant = sequelize.define('ProductVariant', {
   variant_id: {
@@ -61,6 +61,12 @@ const ProductVariant = sequelize.define('ProductVariant', {
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['sku'], name: 'idx_product_variant_sku', unique: true },
+    { fields: ['product_id'], name: 'idx_product_variant_product_id' },
+    { fields: ['stock'], name: 'idx_product_variant_stock' },
+    { fields: ['calculated_price'], name: 'idx_product_variant_calculated_price' }
+  ],
   hooks: {
     afterUpdate: async (variant, options) => {
       const previousStock = variant._previousDataValues.stock;

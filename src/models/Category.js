@@ -17,25 +17,28 @@ const Category = sequelize.define('Category', {
   active: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
-    defaultValue: true // Por defecto, las categorías estarán activas
+    defaultValue: true
   },
-  imagen_url: { //  Campo para almacenar la URL de la imagen en Cloudinary
-    type: DataTypes.STRING(255),
-    allowNull: true // Opcional, permite categorías sin imagen
-  },
-  public_id: { // Nuevo campo para almacenar el public_id de Cloudinary
+  imagen_url: {
     type: DataTypes.STRING(255),
     allowNull: true
   },
-  color_fondo: { // Campo para el color de fondo como fallback (en formato hexadecimal)
+  public_id: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  color_fondo: {
     type: DataTypes.STRING(10),
-    allowNull: true // Opcional, permite categorías sin color definido
+    allowNull: true
   }
 }, {
   tableName: 'categories',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['name'], name: 'idx_category_name', unique: true }
+  ]
 });
 
 module.exports = Category;

@@ -18,7 +18,7 @@ const Collaborator = sequelize.define('Collaborator', {
   },
   contact: {
     type: DataTypes.STRING(255),
-    allowNull: true // O false si quieres hacerlo obligatorio
+    allowNull: true
   },  
   email: {
     type: DataTypes.STRING(255),
@@ -35,7 +35,11 @@ const Collaborator = sequelize.define('Collaborator', {
   tableName: 'collaborators',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['name'], name: 'idx_collaborator_name' },
+    { fields: ['email'], name: 'idx_collaborator_email', unique: true }
+  ]
 });
 
 module.exports = Collaborator;

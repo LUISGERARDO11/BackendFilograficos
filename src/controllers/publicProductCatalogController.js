@@ -9,7 +9,10 @@ exports.getAllProducts = async (req, res) => {
 
         console.log('Filtros recibidos:', params);
 
-        const { count, products } = await productServices.getProductsWithFilters({ ...params });
+        const { count, products } = await productServices.getProductsWithFilters({ 
+            ...params,
+            search: params.search 
+        });
         const formattedProducts = await productServices.formatProductList(products);
 
         res.status(200).json({

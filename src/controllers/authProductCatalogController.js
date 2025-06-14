@@ -1,6 +1,6 @@
 const loggerUtils = require('../utils/loggerUtils');
 const productServices = require('../services/productServices');
-const productUtils = require('../utils/productUtils')
+const productUtils = require('../utils/productUtils');
 
 exports.getAllProducts = async (req, res) => {
     try {
@@ -9,7 +9,11 @@ exports.getAllProducts = async (req, res) => {
 
         console.log('Filtros recibidos:', params);
 
-        const { count, products } = await productServices.getProductsWithFilters({ ...params, includeCollaborator: true });
+        const { count, products } = await productServices.getProductsWithFilters({ 
+            ...params, 
+            includeCollaborator: true,
+            search: params.search 
+        });
         const formattedProducts = await productServices.formatProductList(products);
 
         res.status(200).json({

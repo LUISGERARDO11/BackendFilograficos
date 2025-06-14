@@ -53,7 +53,15 @@ const Product = sequelize.define('Product', {
   tableName: 'products',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['name'], name: 'idx_product_name' },
+    { fields: [{ attribute: 'description', length: 512 }], name: 'idx_product_description' },
+    { fields: ['status'], name: 'idx_product_status' },
+    { fields: ['category_id'], name: 'idx_product_category_id' },
+    { fields: ['collaborator_id'], name: 'idx_product_collaborator_id' },
+    { fields: ['name', { attribute: 'description', length: 512 }], name: 'idx_product_search' }
+  ]
 });
 
 module.exports = Product;
