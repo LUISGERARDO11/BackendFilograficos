@@ -118,14 +118,31 @@ exports.getOrderById = [
 
 // Obtener todas las órdenes del usuario
 exports.getOrders = [
+  // Validar page
   query('page')
     .optional()
     .isInt({ min: 1 })
     .withMessage('La página debe ser un número entero positivo'),
+
+  // Validar pageSize
   query('pageSize')
     .optional()
     .isInt({ min: 1, max: 100 })
     .withMessage('El tamaño de página debe ser un número entero entre 1 y 100'),
+
+  // Validar searchTerm
+  query('searchTerm')
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 100 })
+    .withMessage('El término de búsqueda debe ser una cadena entre 1 y 100 caracteres'),
+
+  // Validar dateFilter
+  query('dateFilter')
+    .optional()
+    .isInt({ min: 1000, max: 9999 }) // Validar que sea un año de 4 dígitos
+    .withMessage('El filtro de fecha debe ser un año válido (número de 4 dígitos)'),
 
   async (req, res) => {
     const user_id = req.user.user_id;
@@ -142,10 +159,13 @@ exports.getOrders = [
 
       const page = parseInt(req.query.page) || 1;
       const pageSize = parseInt(req.query.pageSize) || 10;
-      const orderService = new OrderService();
-      const orders = await orderService.getOrders(user_id, page, pageSize);
+      const searchTerm = req.query.searchTerm || '';
+      const dateFilter = req.query.dateFilter || ''; // Vacío significa "todas las órdenes"
 
-      loggerUtils.logUserActivity(user_id, 'get_orders', `Lista de órdenes obtenida: página ${page}`);
+      const orderService = new OrderService();
+      const orders = await orderService.getOrders(user_id, page, pageSize, searchTerm, dateFilter);
+
+      loggerUtils.logUserActivity(user_id, 'get_orders', `Lista de órdenes obtenida: página ${page}, búsqueda: ${searchTerm}, filtro: ${dateFilter || 'ninguno'}`);
 
       res.status(200).json({
         success: true,

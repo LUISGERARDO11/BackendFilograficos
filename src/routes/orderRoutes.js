@@ -18,7 +18,7 @@ router.get('/:id',
   orderController.getOrderById
 );
 
-// Obtener todas las órdenes del usuario
+// Obtener todas las órdenes del usuario con búsqueda y filtro
 router.get('/', 
   authMiddleware, 
   tokenExpirationMiddleware.verifyTokenExpiration, 

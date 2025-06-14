@@ -2,7 +2,8 @@
    generation and cart cleanup, using direct model operations for consistency. */
 require('dotenv').config();
 const loggerUtils = require('../utils/loggerUtils');
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
+const moment = require('moment');
 
 // Importar todos los modelos necesarios al inicio del archivo
 const { 
@@ -17,7 +18,8 @@ const {
   Promotion, 
   ProductVariant, 
   Customization,
-  Product
+  Product,
+  ProductImage // Asumiendo que existe este modelo
 } = require('../models/Associations');
 
 class OrderService {
@@ -242,179 +244,242 @@ class OrderService {
    * @returns {Object} - The order details including items, address, payment instructions, and status.
    * @throws {Error} - If the order is not found or does not belong to the user.
    */
-async getOrderById(userId, orderId) {
-  try {
-    const order = await Order.findOne({
-      where: {
-        order_id: orderId,
-        user_id: userId
-      },
-      include: [
-        {
-          model: OrderDetail,
-          attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure'],
-          include: [
-            {
-              model: ProductVariant,
-              attributes: ['variant_id', 'calculated_price'],
-              include: [
-                {
-                  model: Product,
-                  attributes: ['name']
-                }
-              ],
-              required: false
-            },
-            {
-              model: Customization,
-              attributes: ['customization_id', 'content', 'file_url', 'comments'],
-              required: false
-            }
-          ]
+  async getOrderById(userId, orderId) {
+    try {
+      const order = await Order.findOne({
+        where: {
+          order_id: orderId,
+          user_id: userId
         },
-        {
-          model: Address,
-          attributes: ['address_id', 'street', 'city', 'state', 'postal_code'],
-          required: false
-        },
-        {
-          model: Payment,
-          attributes: ['payment_id', 'payment_method', 'amount', 'status'],
-          required: false
-        }
-      ]
-    });
+        include: [
+          {
+            model: OrderDetail,
+            attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure'],
+            include: [
+              {
+                model: ProductVariant,
+                attributes: ['variant_id', 'calculated_price'],
+                include: [
+                  {
+                    model: Product,
+                    attributes: ['name']
+                  }
+                ],
+                required: false
+              },
+              {
+                model: Customization,
+                attributes: ['customization_id', 'content', 'file_url', 'comments'],
+                required: false
+              }
+            ]
+          },
+          {
+            model: Address,
+            attributes: ['address_id', 'street', 'city', 'state', 'postal_code'],
+            required: false
+          },
+          {
+            model: Payment,
+            attributes: ['payment_id', 'payment_method', 'amount', 'status'],
+            required: false
+          }
+        ]
+      });
 
-    if (!order) {
-      throw new Error('Orden no encontrada o acceso denegado');
+      if (!order) {
+        throw new Error('Orden no encontrada o acceso denegado');
+      }
+
+      // Generar instrucciones de pago
+      const paymentInstructions = this.generatePaymentInstructions(order.payment_method, order.total);
+
+      // Formatear la respuesta
+      const orderDetails = {
+        order_id: order.order_id,
+        user_id: order.user_id,
+        total: order.total,
+        subtotal: order.OrderDetails.reduce((sum, detail) => sum + detail.subtotal, 0),
+        discount: order.discount,
+        shipping_cost: order.shipping_cost,
+        payment_method: order.payment_method,
+        payment_status: Array.isArray(order.Payments) && order.Payments.length > 0 ? order.Payments[0].status : 'pending',
+        order_status: order.order_status,
+        is_urgent: order.is_urgent,
+        created_at: order.created_at,
+        address: order.Address ? {
+          address_id: order.Address.address_id,
+          street: order.Address.street,
+          city: order.Address.city,
+          state: order.Address.state,
+          postal_code: order.Address.postal_code
+        } : null,
+        items: order.OrderDetails.map(detail => ({
+          order_detail_id: detail.order_detail_id,
+          product_name: detail.ProductVariant?.Product?.name || 'Producto no disponible',
+          quantity: detail.quantity,
+          unit_price: detail.unit_price,
+          subtotal: detail.subtotal,
+          discount_applied: detail.discount_applied,
+          unit_measure: detail.unit_measure,
+          customization: detail.Customization ? {
+            customization_id: detail.Customization.customization_id,
+            content: detail.Customization.content,
+            file_url: detail.Customization.file_url,
+            comments: detail.Customization.comments
+          } : null
+        })),
+        payment_instructions: paymentInstructions
+      };
+
+      return orderDetails;
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al obtener los detalles de la orden: ${error.message}`);
     }
-
-    // Generar instrucciones de pago
-    const paymentInstructions = this.generatePaymentInstructions(order.payment_method, order.total);
-
-    // Formatear la respuesta
-    const orderDetails = {
-      order_id: order.order_id,
-      user_id: order.user_id,
-      total: order.total,
-      subtotal: order.OrderDetails.reduce((sum, detail) => sum + detail.subtotal, 0),
-      discount: order.discount,
-      shipping_cost: order.shipping_cost,
-      payment_method: order.payment_method,
-      payment_status: Array.isArray(order.Payments) && order.Payments.length > 0 ? order.Payments[0].status : 'pending',
-      order_status: order.order_status,
-      is_urgent: order.is_urgent,
-      created_at: order.created_at,
-      address: order.Address ? {
-        address_id: order.Address.address_id,
-        street: order.Address.street,
-        city: order.Address.city,
-        state: order.Address.state,
-        postal_code: order.Address.postal_code
-      } : null,
-      items: order.OrderDetails.map(detail => ({
-        order_detail_id: detail.order_detail_id,
-        product_name: detail.ProductVariant?.Product?.name || 'Producto no disponible',
-        quantity: detail.quantity,
-        unit_price: detail.unit_price,
-        subtotal: detail.subtotal,
-        discount_applied: detail.discount_applied,
-        unit_measure: detail.unit_measure,
-        customization: detail.Customization ? {
-          customization_id: detail.Customization.customization_id,
-          content: detail.Customization.content,
-          file_url: detail.Customization.file_url,
-          comments: detail.Customization.comments
-        } : null
-      })),
-      payment_instructions: paymentInstructions
-    };
-
-    return orderDetails;
-  } catch (error) {
-    loggerUtils.logCriticalError(error);
-    throw new Error(`Error al obtener los detalles de la orden: ${error.message}`);
   }
-}
 
   /**
    * Retrieves a paginated list of all orders for the authenticated user.
    * @param {number} userId - The ID of the authenticated user.
    * @param {number} page - The page number (default: 1).
    * @param {number} pageSize - The number of orders per page (default: 10).
+   * @param {string} searchTerm - Optional search term to filter products by name.
+   * @param {string} dateFilter - Optional year to filter orders by creation date.
    * @returns {Object} - The list of orders and pagination metadata.
    * @throws {Error} - If there is an error retrieving the orders.
    */
-async getOrders(userId, page = 1, pageSize = 10) {
-  try {
-    const offset = (page - 1) * pageSize;
-    const { count, rows } = await Order.findAndCountAll({
-      where: { user_id: userId },
-      attributes: ['order_id', 'total', 'order_status', 'payment_method', 'created_at', 'discount', 'shipping_cost', 'is_urgent'],
-      include: [
+  async getOrders(userId, page = 1, pageSize = 10, searchTerm = '', dateFilter = '') {
+    try {
+      const offset = (page - 1) * pageSize;
+      const validStatuses = ['pending', 'delivered', 'processing', 'shipped'];
+
+      // Build date condition
+      let dateCondition = {};
+      if (dateFilter) {
+        const year = parseInt(dateFilter);
+        if (!isNaN(year)) {
+          dateCondition = {
+            created_at: {
+              [Op.between]: [
+                moment.tz(`${year}-01-01`, 'UTC').startOf('year').toDate(),
+                moment.tz(`${year}-12-31`, 'UTC').endOf('year').toDate(),
+              ],
+            },
+          };
+        }
+      }
+
+      // Configure search condition for products
+      let productCondition = {};
+      if (searchTerm) {
+        productCondition = { name: { [Op.like]: `%${searchTerm}%` } };
+      }
+
+      // Configure the query
+      const include = [
         {
           model: OrderDetail,
           attributes: ['order_detail_id', 'quantity', 'subtotal', 'unit_measure', 'variant_id'],
+          required: false, // Ensure OrderDetail is optional to include all orders
           include: [
             {
               model: ProductVariant,
               attributes: ['variant_id'],
+              required: false, // Ensure ProductVariant is optional
               include: [
                 {
                   model: Product,
-                  attributes: ['name']
-                }
+                  attributes: ['name'],
+                  where: productCondition, // Apply search term here
+                  required: true, // Product must exist (as per your DB constraint)
+                },
+                {
+                  model: ProductImage,
+                  attributes: ['image_url'],
+                  limit: 1,
+                  required: false,
+                },
               ],
-              required: false
-            }
+            },
           ],
-          required: false,
-          limit: 1
-        },
-        {
-          model: Address,
-          attributes: ['city'],
-          required: false
         },
         {
           model: Payment,
           attributes: ['status'],
-          required: false
-        }
-      ],
-      order: [['created_at', 'DESC']],
-      limit: pageSize,
-      offset
-    });
+          required: false,
+        },
+      ];
 
-    const orders = rows.map(order => ({
-      order_id: order.order_id,
-      total: order.total,
-      order_status: order.order_status,
-      payment_status: Array.isArray(order.Payments) && order.Payments.length > 0 ? order.Payments[0].status : 'pending',
-      created_at: order.created_at,
-      items_count: Array.isArray(order.OrderDetails) && order.OrderDetails.length > 0 ? order.OrderDetails[0].quantity : 0,
-      first_item_name: Array.isArray(order.OrderDetails) && order.OrderDetails.length > 0 && order.OrderDetails[0].ProductVariant?.Product 
-        ? order.OrderDetails[0].ProductVariant.Product.name 
-        : 'Producto no disponible',
-      city: order.Address?.city || null
-    }));
+      const where = {
+        user_id: userId,
+        order_status: { [Op.in]: validStatuses },
+        ...dateCondition,
+      };
 
-    return {
-      orders,
-      pagination: {
-        totalOrders: count,
-        currentPage: page,
-        pageSize,
-        totalPages: Math.ceil(count / pageSize)
+      // Add search condition to ensure orders have matching products
+      if (searchTerm) {
+        where[Op.or] = [
+          {
+            '$OrderDetails.ProductVariant.Product.name$': {
+              [Op.like]: `%${searchTerm}%`,
+            },
+          },
+        ];
       }
-    };
-  } catch (error) {
-    loggerUtils.logCriticalError(error);
-    throw new Error(`Error al obtener las órdenes: ${error.message}`);
-  }
-}
 
+      const { count, rows } = await Order.findAndCountAll({
+        where,
+        attributes: [
+          'order_id',
+          [Sequelize.cast(Sequelize.col('total'), 'FLOAT'), 'total'],
+          'order_status',
+          'payment_method',
+          'created_at',
+          'discount',
+          'shipping_cost',
+          'is_urgent',
+        ],
+        include,
+        order: [['created_at', 'DESC']],
+        limit: pageSize,
+        offset,
+        distinct: true,
+        subQuery: false, // Prevent subquery issues with complex includes
+      });
+
+      // Debug log
+      console.log(`Usuario ${userId}: ${count} órdenes contadas, ${rows.length} órdenes retornadas`);
+
+      const orders = rows.map((order) => ({
+        order_id: order.order_id,
+        total: parseFloat(order.total) || 0,
+        order_status: order.order_status,
+        payment_status: order.Payments?.[0]?.status || 'pending',
+        created_at: order.created_at,
+        total_items: order.OrderDetails?.reduce((sum, detail) => sum + (detail.quantity || 0), 0) || 0,
+        product_names: order.OrderDetails?.map(
+          (detail) => detail.ProductVariant?.Product?.name || 'Producto no disponible'
+        ) || [],
+        first_item_image:
+          order.OrderDetails?.[0]?.ProductVariant?.ProductImages?.[0]?.image_url ||
+          'https://via.placeholder.com/100?text=No+Image',
+      }));
+
+      return {
+        orders,
+        pagination: {
+          totalOrders: count,
+          currentPage: page,
+          pageSize,
+          totalPages: Math.ceil(count / pageSize),
+        },
+      };
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al obtener las órdenes: ${error.message}`);
+    }
+  }
   /**
    * Generates payment instructions based on the payment method.
    * @param {string} paymentMethod - The payment method chosen by the user.
