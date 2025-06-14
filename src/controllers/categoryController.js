@@ -2,11 +2,30 @@ const { Op } = require('sequelize');
 const { body, validationResult } = require('express-validator');
 const Category = require('../models/Category');
 const loggerUtils = require('../utils/loggerUtils');
+const { uploadCategoryImageToCloudinary, deleteFromCloudinary } = require('../services/cloudinaryService');
+
+// Validación para color hexadecimal
+const isHexColor = (value) => /^#([0-9A-F]{6}|[0-9A-F]{8})$/i.test(value);
+
+// Validación para URL
+const isValidUrl = (value) => /^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(value);
 
 // Crear nueva categoría
 exports.createCategory = [
   body('name').isString().trim().notEmpty().withMessage('El nombre es obligatorio.'),
   body('description').optional().isString(),
+  body('color_fondo').optional().custom((value) => {
+    if (value && !isHexColor(value)) {
+      throw new Error('El color de fondo debe ser un valor hexadecimal válido (ej. #FF5733 o #FF5733AA).');
+    }
+    return true;
+  }),
+  body('imagen_url').optional().custom((value) => {
+    if (value && !isValidUrl(value)) {
+      throw new Error('La URL de la imagen debe ser válida (http o https).');
+    }
+    return true;
+  }),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -15,7 +34,7 @@ exports.createCategory = [
     }
 
     try {
-      const { name, description } = req.body;
+      const { name, description, color_fondo, imagen_url } = req.body;
 
       // Verificar si la categoría ya existe
       const existingCategory = await Category.findOne({ where: { name } });
@@ -23,7 +42,26 @@ exports.createCategory = [
         return res.status(400).json({ message: 'La categoría ya existe.' });
       }
 
-      const newCategory = await Category.create({ name, description });
+      let final_imagen_url = null;
+      let public_id = null;
+
+      // Priorizar imagen_url sobre categoryImage
+      if (imagen_url) {
+        final_imagen_url = imagen_url;
+      } else if (req.file) {
+        const uploadResult = await uploadCategoryImageToCloudinary(req.file.buffer, name);
+        final_imagen_url = uploadResult.secure_url;
+        public_id = uploadResult.public_id;
+      }
+
+      const newCategory = await Category.create({
+        name,
+        description,
+        color_fondo,
+        imagen_url: final_imagen_url,
+        public_id
+      });
+
       loggerUtils.logUserActivity(req.user.user_id, 'create', `Categoría creada: ${name}`);
       res.status(201).json({ message: 'Categoría creada exitosamente.', category: newCategory });
 
@@ -39,7 +77,7 @@ exports.getCategories = async (req, res) => {
   try {
     const categories = await Category.findAll({
       where: { active: true },
-      attributes: ['category_id', 'name'],
+      attributes: ['category_id', 'name', 'imagen_url', 'color_fondo'],
       order: [['created_at', 'DESC']]
     });
 
@@ -68,7 +106,7 @@ exports.getAllCategories = async (req, res) => {
     // Construir el objeto where dinámicamente
     const whereClause = {};
 
-    // Filtro por estado (active) extraído como declaración independiente
+    // Filtro por estado (active)
     if (active !== undefined) {
       let activeValue;
       if (active === 'true') {
@@ -86,13 +124,14 @@ exports.getAllCategories = async (req, res) => {
       whereClause.name = { [Op.like]: `%${name}%` };
     }
 
-    const validSortFields = ['name'];
+    const validSortFields = ['name', 'created_at'];
     const order = sortBy && validSortFields.includes(sortBy)
       ? [[sortBy, sortOrder === 'ASC' ? 'ASC' : 'DESC']]
       : [['created_at', 'DESC']];
 
     const { count, rows: categories } = await Category.findAndCountAll({
       where: whereClause,
+      attributes: ['category_id', 'name', 'description', 'active', 'imagen_url', 'color_fondo'],
       order,
       limit: pageSize,
       offset: (page - 1) * pageSize
@@ -114,7 +153,9 @@ exports.getAllCategories = async (req, res) => {
 // Obtener una categoría por su ID
 exports.getCategoryById = async (req, res) => {
   try {
-    const category = await Category.findByPk(req.params.id);
+    const category = await Category.findByPk(req.params.id, {
+      attributes: ['category_id', 'name', 'description', 'active', 'imagen_url', 'color_fondo']
+    });
     if (!category) {
       return res.status(404).json({ message: 'Categoría no encontrada.' });
     }
@@ -133,7 +174,12 @@ exports.deleteCategory = async (req, res) => {
       return res.status(404).json({ message: 'Categoría no encontrada' });
     }
 
-    await category.update({ active: false });
+    // Eliminar la imagen de Cloudinary si existe
+    if (category.public_id) {
+      await deleteFromCloudinary(category.public_id);
+    }
+
+    await category.update({ active: false, imagen_url: null, public_id: null });
     loggerUtils.logUserActivity(req.user.user_id, 'delete', `Categoría desactivada: ${category.name}`);
     res.status(200).json({ message: 'Categoría desactivada correctamente.' });
 
@@ -147,6 +193,18 @@ exports.deleteCategory = async (req, res) => {
 exports.updateCategory = [
   body('name').optional().isString().trim(),
   body('description').optional().isString(),
+  body('color_fondo').optional().custom((value) => {
+    if (value && !isHexColor(value)) {
+      throw new Error('El color de fondo debe ser un valor hexadecimal válido (ej. #FF5733 o #FF5733AA).');
+    }
+    return true;
+  }),
+  body('imagen_url').optional().custom((value) => {
+    if (value && !isValidUrl(value)) {
+      throw new Error('La URL de la imagen debe ser válida (http o https).');
+    }
+    return true;
+  }),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -160,13 +218,44 @@ exports.updateCategory = [
         return res.status(404).json({ message: 'Categoría no encontrada.' });
       }
 
-      const { name, description } = req.body;
+      const { name, description, color_fondo, imagen_url, removeImage } = req.body;
+      let final_imagen_url = category.imagen_url;
+      let final_public_id = category.public_id;
 
-      // Actualizar los campos de la categoría si se pasan
+      // Priorizar imagen_url sobre categoryImage y removeImage
+      if (imagen_url) {
+        // Si la imagen anterior era de Cloudinary, eliminarla
+        if (category.public_id) {
+          await deleteFromCloudinary(category.public_id);
+        }
+        final_imagen_url = imagen_url;
+        final_public_id = null; // URL externa no tiene public_id
+      } else if (req.file) {
+        // Si la imagen anterior era de Cloudinary, eliminarla
+        if (category.public_id) {
+          await deleteFromCloudinary(category.public_id);
+        }
+        // Subir la nueva imagen a Cloudinary
+        const uploadResult = await uploadCategoryImageToCloudinary(req.file.buffer, name || category.name);
+        final_imagen_url = uploadResult.secure_url;
+        final_public_id = uploadResult.public_id;
+      } else if (removeImage === 'true') {
+        // Eliminar la imagen actual
+        if (category.public_id) {
+          await deleteFromCloudinary(category.public_id);
+        }
+        final_imagen_url = null;
+        final_public_id = null;
+      }
+
+      // Actualizar los campos de la categoría
       if (name) category.name = name;
-      if (description) category.description = description;
+      if (description !== undefined) category.description = description;
+      category.color_fondo = color_fondo !== undefined ? color_fondo : category.color_fondo;
+      category.imagen_url = final_imagen_url;
+      category.public_id = final_public_id;
 
-      await category.save(); // Guardamos los cambios
+      await category.save();
       loggerUtils.logUserActivity(req.user.user_id, 'update', `Categoría actualizada: ${category.name}`);
       res.status(200).json({ message: 'Categoría actualizada correctamente.', category });
 

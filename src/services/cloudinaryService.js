@@ -91,6 +91,36 @@ const uploadBannerToCloudinary = (fileBuffer, fileName = '') => {
   });
 };
 
+// Función para subir imágenes de categorías a la carpeta CategoryImages
+const uploadCategoryImageToCloudinary = (fileBuffer, fileName = '') => {
+  return new Promise((resolve, reject) => {
+    const options = {
+      folder: 'CategoryImages', // Carpeta específica para imágenes de categorías
+      resource_type: 'image', // Especifica que es una imagen
+      public_id: fileName.split('.')[0] || `category_${Date.now()}`, // Usa el nombre o un ID único
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'], // Formatos permitidos
+      transformation: [
+        { width: 800, height: 600, crop: 'fill' }, // Dimensiones optimizadas
+        { quality: 'auto', format: 'webp' } // Optimización automática
+      ]
+    };
+
+    cloudinary.uploader
+      .upload_stream(options, (error, result) => {
+        if (error) {
+          const errorMessage = error.message || 'Unknown error occurred during category image upload';
+          reject(new Error(`Error uploading category image to Cloudinary: ${errorMessage}`));
+        } else {
+          resolve({
+            secure_url: result.secure_url, // URL segura de la imagen
+            public_id: result.public_id // Identificador único en Cloudinary
+          });
+        }
+      })
+      .end(fileBuffer);
+  });
+};
+
 // Función para eliminar archivos de Cloudinary
 const deleteFromCloudinary = (publicId) => {
   return new Promise((resolve, reject) => {
@@ -110,5 +140,6 @@ module.exports = {
   uploadFilesToCloudinary,
   uploadProductImagesToCloudinary,
   uploadBannerToCloudinary,
+  uploadCategoryImageToCloudinary,
   deleteFromCloudinary
 };
