@@ -1,18 +1,14 @@
-const {  body, param, query, validationResult } = require('express-validator');
+const { body, param, query, validationResult } = require('express-validator');
 const OrderService = require('../services/orderService');
 const loggerUtils = require('../utils/loggerUtils');
 
 // Crear una orden a partir del carrito del usuario
 exports.createOrder = [
-  // Validaciones existentes
-body('address_id')
+  // Validaciones
+  body('address_id')
     .optional()
     .isInt({ min: 1 })
     .withMessage('El ID de la dirección debe ser un número entero positivo'),
-  body('is_urgent')
-    .optional()
-    .isBoolean()
-    .withMessage('El valor de pedido urgente debe ser un booleano'),
   body('payment_method')
     .notEmpty()
     .withMessage('El método de pago es obligatorio')
@@ -37,11 +33,10 @@ body('address_id')
         });
       }
 
-      const { address_id, is_urgent, payment_method, coupon_code } = req.body;
+      const { address_id, payment_method, coupon_code } = req.body;
       const orderService = new OrderService();
       const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
         address_id,
-        is_urgent: is_urgent || false,
         payment_method,
         coupon_code
       });

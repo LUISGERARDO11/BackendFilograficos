@@ -80,11 +80,16 @@ const CartDetail = sequelize.define('CartDetail', {
     allowNull: false,
     defaultValue: 1.00,
     field: 'unit_measure'
+  },
+  is_urgent: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
   }
 }, {
   tableName: 'cart_details',
   timestamps: false,
-  freezeTableName: true, // Evitar pluralización
+  freezeTableName: true,
   indexes: [
     {
       fields: ['cart_id']

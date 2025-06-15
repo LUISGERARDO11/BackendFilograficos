@@ -60,7 +60,7 @@ const OrderDetail = sequelize.define('OrderDetail', {
     allowNull: false,
     field: 'subtotal'
   },
-    unit_measure: {
+  unit_measure: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
     defaultValue: 1.00,
@@ -72,6 +72,16 @@ const OrderDetail = sequelize.define('OrderDetail', {
     defaultValue: 0.00,
     field: 'discount_applied'
   },
+  is_urgent: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
+  additional_cost: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0.00
+  }
 }, {
   tableName: 'order_details',
   timestamps: false,

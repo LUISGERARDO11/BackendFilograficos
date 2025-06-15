@@ -50,10 +50,9 @@ const Order = sequelize.define('Order', {
     type: DataTypes.ENUM('pending', 'processing', 'shipped', 'delivered'),
     defaultValue: 'pending'
   },
-  is_urgent: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    allowNull: false
+  estimated_delivery_date: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 }, {
   tableName: 'orders',

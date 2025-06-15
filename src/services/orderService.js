@@ -26,11 +26,11 @@ class OrderService {
   /**
    * Creates an order from the user's cart, generates related records, and clears the cart.
    * @param {number} userId - The ID of the authenticated user.
-   * @param {Object} orderData - The order data including address_id, is_urgent, payment_method, and coupon_code.
+   * @param {Object} orderData - The order data including address_id, payment_method, and coupon_code.
    * @returns {Object} - The created order, payment, and payment instructions.
    * @throws {Error} - If the cart is empty, address is invalid, or any operation fails.
    */
-  async createOrder(userId, { address_id, is_urgent, payment_method, coupon_code }) {
+  async createOrder(userId, { address_id, payment_method, coupon_code }) {
     try {
       // Verificar dirección si se proporciona
       let address = null;
@@ -59,6 +59,10 @@ class OrderService {
             model: ProductVariant,
             include: [
               {
+                model: Product,
+                attributes: ['product_id', 'urgent_delivery_enabled', 'urgent_delivery_days', 'urgent_delivery_cost']
+              },
+              {
                 model: Promotion,
                 through: { attributes: [] },
                 where: {
@@ -80,6 +84,18 @@ class OrderService {
 
       // Asignar detalles al carrito para mantener la compatibilidad con el resto del código
       cart.CartDetails = cartDetails;
+
+      // Determinar si la orden es urgente y calcular costo de envío
+      let isUrgent = false;
+      let shippingCost = 20.00; // Costo estándar por defecto
+      for (const detail of cartDetails) {
+        const product = detail.ProductVariant?.Product;
+        if (product?.urgent_delivery_enabled && product?.urgent_delivery_days) {
+          isUrgent = true;
+          shippingCost = product.urgent_delivery_cost || 50.00; // Usar costo urgente del producto o 50.00
+          break;
+        }
+      }
 
       // Calcular subtotal y descuentos
       let subtotal = 0;
@@ -119,8 +135,7 @@ class OrderService {
         });
       }
 
-      // Calcular costo de envío (simulado)
-      const shippingCost = is_urgent ? 50.00 : 20.00;
+      // Calcular total
       const total = Math.max(0, subtotal + shippingCost - discount);
 
       // Crear orden
@@ -132,8 +147,7 @@ class OrderService {
         shipping_cost: shippingCost,
         payment_status: 'pending',
         payment_method,
-        order_status: 'pending',
-        is_urgent
+        order_status: 'pending'
       });
 
       // Crear detalles del pedido
@@ -262,7 +276,7 @@ class OrderService {
                 include: [
                   {
                     model: Product,
-                    attributes: ['name']
+                    attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days']
                   }
                 ],
                 required: false
@@ -291,6 +305,20 @@ class OrderService {
         throw new Error('Orden no encontrada o acceso denegado');
       }
 
+      // Determinar si la orden es urgente
+      let isUrgent = false;
+      let deliveryDays = null;
+      for (const detail of order.OrderDetails) {
+        const product = detail.ProductVariant?.Product;
+        if (product?.urgent_delivery_enabled && product?.urgent_delivery_days) {
+          isUrgent = true;
+          deliveryDays = product.urgent_delivery_days;
+          break;
+        } else if (product?.standard_delivery_days) {
+          deliveryDays = deliveryDays ? Math.max(deliveryDays, product.standard_delivery_days) : product.standard_delivery_days;
+        }
+      }
+
       // Generar instrucciones de pago
       const paymentInstructions = this.generatePaymentInstructions(order.payment_method, order.total);
 
@@ -305,7 +333,8 @@ class OrderService {
         payment_method: order.payment_method,
         payment_status: Array.isArray(order.Payments) && order.Payments.length > 0 ? order.Payments[0].status : 'pending',
         order_status: order.order_status,
-        is_urgent: order.is_urgent,
+        is_urgent: isUrgent,
+        delivery_days: deliveryDays,
         created_at: order.created_at,
         address: order.Address ? {
           address_id: order.Address.address_id,
@@ -396,18 +425,18 @@ class OrderService {
         {
           model: OrderDetail,
           attributes: ['order_detail_id', 'quantity', 'subtotal', 'unit_measure', 'variant_id'],
-          required: false, // Ensure OrderDetail is optional to include all orders
+          required: false,
           include: [
             {
               model: ProductVariant,
               attributes: ['variant_id'],
-              required: false, // Ensure ProductVariant is optional
+              required: false,
               include: [
                 {
                   model: Product,
-                  attributes: ['name'],
-                  where: productCondition, // Apply search term here
-                  required: true, // Product must exist (as per your DB constraint)
+                  attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'],
+                  where: productCondition,
+                  required: true,
                 },
                 {
                   model: ProductImage,
@@ -453,33 +482,50 @@ class OrderService {
           'created_at',
           'discount',
           'shipping_cost',
-          'is_urgent',
         ],
         include,
         order: [['created_at', 'DESC']],
         limit: pageSize,
         offset,
         distinct: true,
-        subQuery: false, // Prevent subquery issues with complex includes
+        subQuery: false,
       });
 
       // Debug log
       console.log(`Usuario ${userId}: ${count} órdenes contadas, ${rows.length} órdenes retornadas`);
 
-      const orders = rows.map((order) => ({
-        order_id: order.order_id,
-        total: parseFloat(order.total) || 0,
-        order_status: order.order_status,
-        payment_status: order.Payments?.[0]?.status || 'pending',
-        created_at: order.created_at,
-        total_items: order.OrderDetails?.reduce((sum, detail) => sum + (detail.quantity || 0), 0) || 0,
-        product_names: order.OrderDetails?.map(
-          (detail) => detail.ProductVariant?.Product?.name || 'Producto no disponible'
-        ) || [],
-        first_item_image:
-          order.OrderDetails?.[0]?.ProductVariant?.ProductImages?.[0]?.image_url ||
-          'https://via.placeholder.com/100?text=No+Image',
-      }));
+      const orders = rows.map((order) => {
+        // Determinar si la orden es urgente
+        let isUrgent = false;
+        let deliveryDays = null;
+        for (const detail of order.OrderDetails || []) {
+          const product = detail.ProductVariant?.Product;
+          if (product?.urgent_delivery_enabled && product?.urgent_delivery_days) {
+            isUrgent = true;
+            deliveryDays = product.urgent_delivery_days;
+            break;
+          } else if (product?.standard_delivery_days) {
+            deliveryDays = deliveryDays ? Math.max(deliveryDays, product.standard_delivery_days) : product.standard_delivery_days;
+          }
+        }
+
+        return {
+          order_id: order.order_id,
+          total: parseFloat(order.total) || 0,
+          order_status: order.order_status,
+          payment_status: order.Payments?.[0]?.status || 'pending',
+          created_at: order.created_at,
+          total_items: order.OrderDetails?.reduce((sum, detail) => sum + (detail.quantity || 0), 0) || 0,
+          product_names: order.OrderDetails?.map(
+            (detail) => detail.ProductVariant?.Product?.name || 'Producto no disponible'
+          ) || [],
+          first_item_image:
+            order.OrderDetails?.[0]?.ProductVariant?.ProductImages?.[0]?.image_url ||
+            'https://via.placeholder.com/100?text=No+Image',
+          is_urgent: isUrgent,
+          delivery_days: deliveryDays
+        };
+      });
 
       return {
         orders,

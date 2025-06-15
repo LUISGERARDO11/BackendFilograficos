@@ -10,14 +10,14 @@ const { deleteFromCloudinary } = require('../services/cloudinaryService');
 
 // Crear un producto con variantes
 exports.createProduct = async (req, res) => {
-  const { name, description, product_type, category_id, collaborator_id, variants, customizations } = req.body;
+  const { name, description, product_type, category_id, collaborator_id, variants, customizations, standard_delivery_days, urgent_delivery_enabled, urgent_delivery_days, urgent_delivery_cost } = req.body;
   const files = req.files;
   const userId = req.user?.user_id ?? 'system';
   let newProduct;
 
   try {
-    const { parsedVariants, parsedCustomizations } = parseAndValidateInput(variants, customizations);
-    newProduct = await createProductBase(name, description, product_type, category_id, collaborator_id);
+    const { parsedVariants, parsedCustomizations } = parseAndValidateInput(variants, customizations, standard_delivery_days, urgent_delivery_enabled, urgent_delivery_days, urgent_delivery_cost);
+    newProduct = await createProductBase(name, description, product_type, category_id, collaborator_id, standard_delivery_days, urgent_delivery_enabled, urgent_delivery_days, urgent_delivery_cost);
     const customizationRecords = createCustomizationOptions(newProduct.product_id, product_type, parsedCustomizations);
     const { attributeRecords, imageRecords, priceHistoryRecords } = await processVariants(newProduct.product_id, parsedVariants, files, newProduct.category_id, userId);
 
@@ -36,11 +36,13 @@ exports.createProduct = async (req, res) => {
             ProductImage,
             {
               model: ProductAttributeValue,
-              include: [ProductAttribute] // Incluir la relación con ProductAttribute
+              include: [ProductAttribute]
             }
           ]
         },
-        { model: CustomizationOption }
+        { model: CustomizationOption },
+        { model: Category },
+        { model: Collaborator }
       ]
     });
 
@@ -84,7 +86,7 @@ exports.getAllProducts = async (req, res) => {
     const { count, rows: products } = await Product.findAndCountAll({
       where,
       attributes: [
-        'product_id', 'name', 'product_type', 'created_at', 'updated_at',
+        'product_id', 'name', 'product_type', 'created_at', 'updated_at', 'standard_delivery_days', 'urgent_delivery_enabled', 'urgent_delivery_days', 'urgent_delivery_cost',
         [Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')), 'variant_count'],
         [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
         [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
@@ -97,6 +99,7 @@ exports.getAllProducts = async (req, res) => {
       ],
       group: [
         'Product.product_id', 'Product.name', 'Product.product_type', 'Product.created_at', 'Product.updated_at',
+        'Product.standard_delivery_days', 'Product.urgent_delivery_enabled', 'Product.urgent_delivery_days', 'Product.urgent_delivery_cost',
         'Category.category_id', 'Category.name', 'Collaborator.collaborator_id', 'Collaborator.name'
       ],
       order,
@@ -110,6 +113,10 @@ exports.getAllProducts = async (req, res) => {
       name: product.name,
       category: product.Category?.name ?? null,
       product_type: product.product_type,
+      standard_delivery_days: product.standard_delivery_days,
+      urgent_delivery_enabled: product.urgent_delivery_enabled,
+      urgent_delivery_days: product.urgent_delivery_days,
+      urgent_delivery_cost: product.urgent_delivery_cost,
       variant_count: Number(product.get('variant_count') || 0),
       min_price: Number(product.get('min_price') || 0),
       max_price: Number(product.get('max_price') || 0),
@@ -180,7 +187,7 @@ exports.getProductById = async (req, res) => {
 // Actualizar un producto
 exports.updateProduct = async (req, res) => {
   const { product_id } = req.params;
-  const { name, description, product_type, category_id, collaborator_id, variants, customizations } = req.body;
+  const { name, description, product_type, category_id, collaborator_id, variants, customizations, standard_delivery_days, urgent_delivery_enabled, urgent_delivery_days, urgent_delivery_cost } = req.body;
   const files = req.files;
   const userId = req.user?.user_id ?? 'system';
 
@@ -188,8 +195,8 @@ exports.updateProduct = async (req, res) => {
     const product = await Product.findByPk(product_id, { include: [{ model: ProductVariant, include: [ProductImage] }, { model: CustomizationOption }] });
     if (!product) return res.status(404).json({ message: 'Producto no encontrado' });
 
-    const { parsedVariants, parsedCustomizations } = parseUpdateInput(variants, customizations);
-    await updateProductBase(product, { name, description, product_type, category_id, collaborator_id });
+    const { parsedVariants, parsedCustomizations } = parseUpdateInput(variants, customizations, standard_delivery_days, urgent_delivery_enabled, urgent_delivery_days, urgent_delivery_cost);
+    await updateProductBase(product, { name, description, product_type, category_id, collaborator_id, standard_delivery_days, urgent_delivery_enabled, urgent_delivery_days, urgent_delivery_cost });
     await updateCustomizations(product.product_id, parsedCustomizations);
 
     if (parsedVariants) {
@@ -201,9 +208,16 @@ exports.updateProduct = async (req, res) => {
       if (priceHistoryRecords.length > 0) await PriceHistory.bulkCreate(priceHistoryRecords);
     }
 
-    const updatedProduct = await Product.findByPk(product_id, { include: [{ model: ProductVariant, include: [ProductImage] }, { model: CustomizationOption }] });
+    const updatedProduct = await Product.findByPk(product_id, {
+      include: [
+        { model: ProductVariant, include: [ProductImage, { model: ProductAttributeValue, include: [ProductAttribute] }] },
+        { model: CustomizationOption },
+        { model: Category },
+        { model: Collaborator }
+      ]
+    });
     loggerUtils.logUserActivity(userId, 'update', `Producto actualizado: ${product.name} (${product_id})`);
-    res.status(200).json({ message: 'Producto actualizado exitosamente', product: updatedProduct });
+    res.status(200).json({ message: 'Producto actualizado exitosamente', product: formatProductResponse(updatedProduct) });
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(error.message.includes('no encontrada') ? 404 : 400).json({ message: 'Error al actualizar el producto', error: error.message });

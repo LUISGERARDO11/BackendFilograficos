@@ -48,6 +48,39 @@ const Product = sequelize.define('Product', {
   status: {
     type: DataTypes.ENUM('active', 'inactive'),
     defaultValue: 'active'
+  },
+  standard_delivery_days: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+    validate: {
+      min: 1 // Asegura que los días de entrega estándar sean al menos 1
+    }
+  },
+  urgent_delivery_enabled: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
+  urgent_delivery_days: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    validate: {
+      min: 1, // Asegura que los días de entrega urgente sean al menos 1
+      isLessThanStandard(value) {
+        if (this.urgent_delivery_enabled && value >= this.standard_delivery_days) {
+          throw new Error('Los días de entrega urgente deben ser menores que los días estándar.');
+        }
+      }
+    }
+  },
+  urgent_delivery_cost: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    defaultValue: 0.00,
+    validate: {
+      min: 0 // Asegura que el costo adicional no sea negativo
+    }
   }
 }, {
   tableName: 'products',
@@ -61,7 +94,16 @@ const Product = sequelize.define('Product', {
     { fields: ['category_id'], name: 'idx_product_category_id' },
     { fields: ['collaborator_id'], name: 'idx_product_collaborator_id' },
     { fields: ['name', { attribute: 'description', length: 512 }], name: 'idx_product_search' }
-  ]
+  ],
+  hooks: {
+    beforeValidate: (product) => {
+      // Validar que si urgent_delivery_enabled es falso, los campos relacionados sean nulos
+      if (!product.urgent_delivery_enabled) {
+        product.urgent_delivery_days = null;
+        product.urgent_delivery_cost = null;
+      }
+    }
+  }
 });
 
 module.exports = Product;

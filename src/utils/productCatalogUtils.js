@@ -45,7 +45,6 @@ async function processVariantImages(variant, files, index, sku, currentImages = 
 
 // Crear registro de historial de precios
 function createPriceHistoryRecord(variant_id, oldData, newData, change_type, userId) {
-  // Calcular new_calculated_price si no está definido
   const newCalculatedPrice = newData.calculated_price !== undefined 
     ? Number(newData.calculated_price)
     : Number((newData.production_cost * (1 + newData.profit_margin / 100)).toFixed(2));
@@ -53,10 +52,10 @@ function createPriceHistoryRecord(variant_id, oldData, newData, change_type, use
   return {
     variant_id,
     previous_production_cost: oldData.production_cost || 0,
-    new_production_cost: Number(newData.production_cost),
     previous_profit_margin: oldData.profit_margin || 0,
-    new_profit_margin: Number(newData.profit_margin),
     previous_calculated_price: oldData.calculated_price || 0,
+    new_production_cost: Number(newData.production_cost),
+    new_profit_margin: Number(newData.profit_margin),
     new_calculated_price: newCalculatedPrice,
     change_type,
     changed_by: userId,
@@ -67,7 +66,6 @@ function createPriceHistoryRecord(variant_id, oldData, newData, change_type, use
 
 // Validar SKU único y formato
 async function validateUniqueSku(sku, variant_id = null) {
-  // Validar formato: [A-Z]{4}-[0-9]{6}-[0-9]{2}
   const skuRegex = /^[A-Z]{4}-[0-9]{6}-[0-9]{2}$/;
   if (!skuRegex.test(sku)) {
     throw new Error(`El SKU ${sku} no cumple con el formato requerido: AAAA-NNNNNN-NN`);
@@ -89,6 +87,10 @@ function formatProductResponse(product) {
     category: product.Category ? { category_id: product.Category.category_id, name: product.Category.name } : null,
     collaborator: product.Collaborator ? { collaborator_id: product.Collaborator.collaborator_id, name: product.Collaborator.name } : null,
     status: product.status,
+    standard_delivery_days: product.standard_delivery_days,
+    urgent_delivery_enabled: product.urgent_delivery_enabled,
+    urgent_delivery_days: product.urgent_delivery_days,
+    urgent_delivery_cost: product.urgent_delivery_cost,
     variants: product.ProductVariants?.map(variant => ({
       variant_id: variant.variant_id,
       sku: variant.sku,
@@ -137,40 +139,73 @@ function buildSearchFilters(search) {
   return where;
 }
 
-// Analizar y validar entrada para createProduct y updateProduct
-function parseAndValidateInput(variants, customizations) {
-  let parsedVariants;
-  if (typeof variants === 'string') {
-    parsedVariants = JSON.parse(variants);
-  } else {
-    parsedVariants = variants;
-  }
-  if (!Array.isArray(parsedVariants)) throw new Error('Las variantes deben ser un arreglo');
+// Analizar y validar entrada para createProduct
+function parseAndValidateInput(variants, customizations, standard_delivery_days, urgent_delivery_enabled, urgent_delivery_days, urgent_delivery_cost) {
+  const parsedInput = {};
 
-  for (const variant of parsedVariants) {
-    if (typeof variant.production_cost !== 'number' || variant.production_cost < 0) {
-      throw new Error(`El costo de producción de la variante ${variant.sku} debe ser un número no negativo`);
+  // Parsear valores de FormData o JSON a los tipos correctos
+  parsedInput.standard_delivery_days = parseInt(standard_delivery_days, 10);
+  parsedInput.urgent_delivery_enabled = urgent_delivery_enabled === 'true' || urgent_delivery_enabled === true;
+  parsedInput.urgent_delivery_days = urgent_delivery_enabled && urgent_delivery_days ? parseInt(urgent_delivery_days, 10) : undefined;
+  parsedInput.urgent_delivery_cost = urgent_delivery_enabled && urgent_delivery_cost ? parseFloat(urgent_delivery_cost) : undefined;
+
+  // Validar campos de entrega
+  if (!Number.isInteger(parsedInput.standard_delivery_days) || parsedInput.standard_delivery_days < 1) {
+    throw new Error('Los días de entrega estándar deben ser un número mayor o igual a 1');
+  }
+  if (typeof parsedInput.urgent_delivery_enabled !== 'boolean') {
+    throw new Error('La entrega urgente habilitada debe ser un booleano');
+  }
+  if (parsedInput.urgent_delivery_enabled) {
+    if (!Number.isInteger(parsedInput.urgent_delivery_days) || parsedInput.urgent_delivery_days < 1 || parsedInput.urgent_delivery_days >= parsedInput.standard_delivery_days) {
+      throw new Error('Los días de entrega urgente deben ser un número mayor a 0 y menor que los días estándar');
     }
-    if (typeof variant.profit_margin !== 'number' || variant.profit_margin < 0) {
-      throw new Error(`El margen de ganancia de la variante ${variant.sku} debe ser un número no negativo`);
-    }
-    if (!variant.sku || typeof variant.sku !== 'string') {
-      throw new Error('El SKU de la variante debe ser una cadena no vacía');
+    if (typeof parsedInput.urgent_delivery_cost !== 'number' || parsedInput.urgent_delivery_cost < 0) {
+      throw new Error('El costo de entrega urgente debe ser un número no negativo');
     }
   }
 
-  let parsedCustomizations;
-  if (typeof customizations === 'string') {
-    parsedCustomizations = JSON.parse(customizations);
-  } else {
-    parsedCustomizations = customizations;
+  let parsedVariants = null;
+  if (variants) {
+    try {
+      parsedVariants = typeof variants === 'string' ? JSON.parse(variants) : variants;
+      if (!Array.isArray(parsedVariants)) {
+        throw new Error('Las variantes deben ser un arreglo');
+      }
+      parsedVariants = parsedVariants.map(variant => ({
+        sku: variant.sku,
+        production_cost: parseFloat(variant.production_cost),
+        profit_margin: parseFloat(variant.profit_margin),
+        stock: parseInt(variant.stock, 10),
+        stock_threshold: variant.stock_threshold ? parseInt(variant.stock_threshold, 10) : undefined,
+        attributes: variant.attributes ? variant.attributes.map(attr => ({
+          attribute_id: parseInt(attr.attribute_id, 10),
+          value: attr.value
+        })) : [],
+        customizations: variant.customizations
+      }));
+    } catch (error) {
+      throw new Error(`Error al parsear variants: ${error.message}`);
+    }
+  }
+
+  let parsedCustomizations = null;
+  if (customizations) {
+    try {
+      parsedCustomizations = typeof customizations === 'string' ? JSON.parse(customizations) : customizations;
+      if (!Array.isArray(parsedCustomizations)) {
+        throw new Error('Las personalizaciones deben ser un arreglo');
+      }
+    } catch (error) {
+      throw new Error(`Error al parsear customizations: ${error.message}`);
+    }
   }
 
   return { parsedVariants, parsedCustomizations };
 }
 
 // Crear base del producto
-async function createProductBase(name, description, product_type, category_id, collaborator_id) {
+async function createProductBase(name, description, product_type, category_id, collaborator_id, standard_delivery_days, urgent_delivery_enabled, urgent_delivery_days, urgent_delivery_cost) {
   const categoryIdNum = await validateCategory(category_id);
   const collaboratorIdNum = await validateCollaborator(collaborator_id);
   return Product.create({
@@ -179,7 +214,11 @@ async function createProductBase(name, description, product_type, category_id, c
     product_type,
     category_id: categoryIdNum,
     collaborator_id: collaboratorIdNum,
-    status: 'active'
+    status: 'active',
+    standard_delivery_days,
+    urgent_delivery_enabled,
+    urgent_delivery_days: urgent_delivery_enabled ? urgent_delivery_days : null,
+    urgent_delivery_cost: urgent_delivery_enabled ? urgent_delivery_cost : null
   });
 }
 
@@ -213,13 +252,11 @@ async function processVariantAttributes(variant_id, attributes, categoryIdNum) {
     }
     const attribute = validAttributes.find(a => a.attribute_id === attributeIdNum);
     
-    // Permitir valores vacíos para cualquier tipo de atributo
     if (attr.value === '') {
       attributeRecords.push({ variant_id, attribute_id: attributeIdNum, value: '' });
       continue;
     }
 
-    // Validar valores no vacíos según el tipo de atributo
     if (attribute.data_type === 'lista' && attribute.allowed_values) {
       const allowedValues = attribute.allowed_values.split(',');
       if (!allowedValues.includes(attr.value)) {
@@ -241,7 +278,7 @@ async function processVariantAttributes(variant_id, attributes, categoryIdNum) {
 }
 
 // Analizar entrada para updateProduct
-function parseUpdateInput(variants, customizations) {
+function parseUpdateInput(variants, customizations, standard_delivery_days, urgent_delivery_enabled, urgent_delivery_days, urgent_delivery_cost) {
   let parsedVariants = null;
   if (variants) {
     if (typeof variants === 'string') {
@@ -262,11 +299,35 @@ function parseUpdateInput(variants, customizations) {
     if (!Array.isArray(parsedCustomizations)) throw new Error('Las personalizaciones deben ser un arreglo');
   }
 
+  // Validar campos de entrega
+  if (standard_delivery_days !== undefined) {
+    const parsedStandardDeliveryDays = parseInt(standard_delivery_days, 10);
+    if (!Number.isInteger(parsedStandardDeliveryDays) || parsedStandardDeliveryDays < 1) {
+      throw new Error('Los días de entrega estándar deben ser un número mayor o igual a 1');
+    }
+  }
+  if (urgent_delivery_enabled !== undefined) {
+    const parsedUrgentDeliveryEnabled = urgent_delivery_enabled === 'true' || urgent_delivery_enabled === true;
+    if (typeof parsedUrgentDeliveryEnabled !== 'boolean') {
+      throw new Error('La entrega urgente habilitada debe ser un booleano');
+    }
+    if (parsedUrgentDeliveryEnabled) {
+      const parsedUrgentDeliveryDays = parseInt(urgent_delivery_days, 10);
+      if (!Number.isInteger(parsedUrgentDeliveryDays) || parsedUrgentDeliveryDays < 1 || parsedUrgentDeliveryDays >= (parseInt(standard_delivery_days, 10) || 1)) {
+        throw new Error('Los días de entrega urgente deben ser un número mayor a 0 y menor que los días estándar');
+      }
+      const parsedUrgentDeliveryCost = parseFloat(urgent_delivery_cost);
+      if (typeof parsedUrgentDeliveryCost !== 'number' || parsedUrgentDeliveryCost < 0) {
+        throw new Error('El costo de entrega urgente debe ser un número no negativo');
+      }
+    }
+  }
+
   return { parsedVariants, parsedCustomizations };
 }
 
 // Actualizar detalles básicos del producto
-async function updateProductBase(product, { name, description, product_type, category_id, collaborator_id }) {
+async function updateProductBase(product, { name, description, product_type, category_id, collaborator_id, standard_delivery_days, urgent_delivery_enabled, urgent_delivery_days, urgent_delivery_cost }) {
   const newCategoryId = category_id ? await validateCategory(category_id) : product.category_id;
   
   let newCollaboratorId;
@@ -283,7 +344,11 @@ async function updateProductBase(product, { name, description, product_type, cat
     description: description ?? product.description,
     product_type: product_type ?? product.product_type,
     category_id: newCategoryId,
-    collaborator_id: newCollaboratorId
+    collaborator_id: newCollaboratorId,
+    standard_delivery_days: standard_delivery_days ?? product.standard_delivery_days,
+    urgent_delivery_enabled: urgent_delivery_enabled ?? product.urgent_delivery_enabled,
+    urgent_delivery_days: urgent_delivery_enabled ? urgent_delivery_days : null,
+    urgent_delivery_cost: urgent_delivery_enabled ? urgent_delivery_cost : null
   });
 }
 
@@ -365,7 +430,7 @@ async function updateOrCreateVariant(product_id, variant, existingVariants, file
 }
 
 // Procesar variantes para createProduct
-async function processVariants(product_id, variants, files, categoryIdNum, userId, productName) {
+async function processVariants(product_id, variants, files, categoryIdNum, userId) {
   const variantRecords = [];
   const attributeRecords = [];
   const imageRecords = [];
