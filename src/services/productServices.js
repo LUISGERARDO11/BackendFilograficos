@@ -151,7 +151,16 @@ const getProductById = async (productId, includeCollaborator = false) => {
 
     const product = await Product.findByPk(productId, {
         where: { status: 'active' },
-        attributes: ['product_id', 'name', 'description', 'product_type'],
+        attributes: [
+            'product_id', 
+            'name', 
+            'description', 
+            'product_type',
+            'standard_delivery_days',
+            'urgent_delivery_enabled',
+            'urgent_delivery_days',
+            'urgent_delivery_cost'
+        ],
         include,
     });
 
@@ -162,11 +171,15 @@ const getProductById = async (productId, includeCollaborator = false) => {
         name: product.name,
         description: product.description,
         product_type: product.product_type,
+        standard_delivery_days: product.standard_delivery_days,
+        urgent_delivery_enabled: product.urgent_delivery_enabled,
+        urgent_delivery_days: product.urgent_delivery_days,
+        urgent_delivery_cost: parseFloat(product.urgent_delivery_cost) || 0,
         category: product.Category ? { category_id: product.Category.category_id, name: product.Category.name } : null,
         variants: product.ProductVariants.map(variant => ({
             variant_id: variant.variant_id,
             sku: variant.sku,
-            calculated_price: variant.calculated_price,
+            calculated_price: parseFloat(variant.calculated_price),
             stock: variant.stock,
             attributes: variant.ProductAttributeValues.map(attr => ({
                 attribute_name: attr.ProductAttribute.attribute_name,

@@ -1,4 +1,4 @@
-const { Cart, CartDetail, Product, ProductVariant, ProductImage, CustomizationOption, User, Promotion, Order } = require('../models/Associations');
+const { Cart, CartDetail, Product, ProductVariant, ProductImage, CustomizationOption, User, Promotion } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');
 const PromotionService = require('../services/PromotionService');
@@ -8,7 +8,7 @@ const promotionService = new PromotionService();
 exports.addToCart = async (req, res) => {
   const transaction = await Cart.sequelize.transaction();
   try {
-    const { product_id, variant_id, quantity, option_id } = req.body;
+    const { product_id, variant_id, quantity, option_id, is_urgent } = req.body;
     const user_id = req.user?.user_id;
     if (!user_id) {
       await transaction.rollback();
@@ -24,21 +24,36 @@ exports.addToCart = async (req, res) => {
       return res.status(400).json({ message: 'La cantidad debe ser mayor que 0' });
     }
 
-    const product = await Product.findByPk(product_id, { transaction });
+    const product = await Product.findByPk(product_id, {
+      attributes: ['product_id', 'urgent_delivery_enabled', 'urgent_delivery_cost', 'standard_delivery_days', 'urgent_delivery_days'],
+      include: [{
+        model: ProductVariant,
+        where: { variant_id },
+        attributes: ['variant_id', 'calculated_price', 'stock'],
+      }],
+      transaction
+    });
+
     if (!product) {
       await transaction.rollback();
       return res.status(404).json({ message: 'Producto no encontrado' });
     }
 
-    const variant = await ProductVariant.findByPk(variant_id, { transaction });
-    if (!variant || variant.product_id !== product_id) {
+    if (!product.ProductVariants || product.ProductVariants.length === 0) {
       await transaction.rollback();
       return res.status(404).json({ message: 'Variante no encontrada o no pertenece al producto' });
     }
 
+    const variant = product.ProductVariants[0];
+
     if (variant.stock < quantity) {
       await transaction.rollback();
       return res.status(400).json({ message: 'Stock insuficiente' });
+    }
+
+    if (is_urgent && !product.urgent_delivery_enabled) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'El producto no permite entrega urgente' });
     }
 
     let customization = null;
@@ -57,17 +72,20 @@ exports.addToCart = async (req, res) => {
 
     if (!cart) {
       cart = await Cart.create(
-        { user_id, status: 'active' },
+        { user_id, status: 'active', total: 0 },
         { transaction }
       );
     }
+
+    const unit_price = parseFloat(variant.calculated_price) + (is_urgent ? parseFloat(product.urgent_delivery_cost) : 0);
 
     const existingCartDetail = await CartDetail.findOne({
       where: {
         cart_id: cart.cart_id,
         product_id,
         variant_id,
-        option_id: option_id || null
+        option_id: option_id || null,
+        is_urgent
       },
       transaction
     });
@@ -81,8 +99,8 @@ exports.addToCart = async (req, res) => {
       await existingCartDetail.update(
         {
           quantity: newQuantity,
-          unit_price: variant.calculated_price,
-          subtotal: newQuantity * variant.calculated_price
+          unit_price,
+          subtotal: newQuantity * unit_price
         },
         { transaction }
       );
@@ -94,15 +112,21 @@ exports.addToCart = async (req, res) => {
           variant_id,
           option_id: option_id || null,
           quantity,
-          unit_price: variant.calculated_price,
-          subtotal: quantity * variant.calculated_price
+          unit_price,
+          subtotal: quantity * unit_price,
+          is_urgent
         },
         { transaction }
       );
     }
 
+    // Actualizar el total del carrito
+    const cartDetails = await CartDetail.findAll({ where: { cart_id: cart.cart_id }, transaction });
+    const total = cartDetails.reduce((sum, detail) => sum + parseFloat(detail.subtotal), 0);
+    await cart.update({ total }, { transaction });
+
     await transaction.commit();
-    res.status(200).json({ message: 'Producto añadido al carrito exitosamente' });
+    res.status(200).json({ message: 'Producto añadido al carrito exitosamente', cart_id: cart.cart_id });
   } catch (error) {
     await transaction.rollback();
     loggerUtils.logCriticalError(error);
@@ -123,7 +147,10 @@ exports.getCart = async (req, res) => {
         {
           model: CartDetail,
           include: [
-            { model: Product, attributes: ['product_id', 'name', 'category_id'] },
+            { 
+              model: Product, 
+              attributes: ['product_id', 'name', 'category_id', 'standard_delivery_days', 'urgent_delivery_days', 'urgent_delivery_cost'] 
+            },
             {
               model: ProductVariant,
               attributes: ['variant_id', 'sku', 'calculated_price', 'stock'],
@@ -138,7 +165,6 @@ exports.getCart = async (req, res) => {
     });
 
     if (!cart) {
-      // Obtener promoción de order_count_discount para carrito vacío
       const orderCountPromotions = await Promotion.findAll({
         where: {
           status: 'active',
@@ -160,10 +186,14 @@ exports.getCart = async (req, res) => {
         };
       }));
 
-      return res.status(200).json({ items: [], total: 0, promotions: promotionProgress });
+      return res.status(200).json({ 
+        items: [], 
+        total: 0, 
+        estimated_delivery_days: 0, 
+        promotions: promotionProgress 
+      });
     }
 
-    // Formatear los ítems del carrito
     const items = cart.CartDetails.map(detail => ({
       cart_detail_id: detail.cart_detail_id,
       product_id: detail.product_id,
@@ -176,6 +206,10 @@ exports.getCart = async (req, res) => {
       subtotal: parseFloat(detail.subtotal),
       unit_measure: parseFloat(detail.unit_measure || 0).toFixed(2),
       category_id: detail.Product.category_id,
+      is_urgent: detail.is_urgent,
+      urgent_delivery_cost: detail.is_urgent ? parseFloat(detail.Product.urgent_delivery_cost) : 0,
+      standard_delivery_days: detail.Product.standard_delivery_days,
+      urgent_delivery_days: detail.Product.urgent_delivery_days,
       customization: detail.CustomizationOption
         ? {
             option_id: detail.CustomizationOption.option_id,
@@ -190,7 +224,11 @@ exports.getCart = async (req, res) => {
       applicable_promotions: []
     }));
 
-    // Preparar detalles del carrito para PromotionService
+    // Calcular el tiempo de entrega estimado (máximo de los días de entrega de todos los ítems)
+    const maxDeliveryDays = Math.max(...items.map(item => 
+      item.is_urgent ? item.urgent_delivery_days || item.standard_delivery_days : item.standard_delivery_days
+    ), 0);
+
     const cartDetails = items.map(item => ({
       variant_id: item.variant_id,
       quantity: item.quantity,
@@ -199,10 +237,8 @@ exports.getCart = async (req, res) => {
       category_id: item.category_id
     }));
 
-    // Obtener promociones aplicables
     const applicablePromotions = await promotionService.getApplicablePromotions(cartDetails, user_id);
 
-    // Obtener promociones de tipo order_count_discount
     const orderCountPromotions = await Promotion.findAll({
       where: {
         status: 'active',
@@ -212,7 +248,6 @@ exports.getCart = async (req, res) => {
       }
     });
 
-    // Combinar promociones aplicables con order_count_discount, evitando duplicados
     const allPromotions = [
       ...applicablePromotions,
       ...orderCountPromotions.filter(op => !applicablePromotions.some(ap => ap.promotion_id === op.promotion_id)).map(op => ({
@@ -227,10 +262,8 @@ exports.getCart = async (req, res) => {
       }))
     ];
 
-    // Mapear promociones a ítems y generar mensajes de progreso
     const promotionProgress = [];
     for (const promo of allPromotions) {
-      // Obtener mensaje de progreso y verificar si es aplicable
       const { message, is_eligible } = await promotionService.getPromotionProgress(
         {
           promotion_id: promo.promotion_id,
@@ -245,7 +278,6 @@ exports.getCart = async (req, res) => {
         user_id
       );
 
-      // Asignar promoción a ítems solo si es aplicable
       if (is_eligible) {
         const applicableItems = items.filter(item => 
           promo.applicable_items.some(ap => ap.variant_id === item.variant_id) ||
@@ -272,12 +304,12 @@ exports.getCart = async (req, res) => {
       });
     }
 
-    // Calcular total monetario
-    const total = items.reduce((sum, item) => sum + item.subtotal, 0);
+    const total = parseFloat(cart.total);
 
     res.status(200).json({
       items,
       total,
+      estimated_delivery_days: maxDeliveryDays,
       promotions: promotionProgress
     });
   } catch (error) {
@@ -289,7 +321,7 @@ exports.getCart = async (req, res) => {
 exports.updateCartItem = async (req, res) => {
   const transaction = await Cart.sequelize.transaction();
   try {
-    const { cart_detail_id, quantity } = req.body;
+    const { cart_detail_id, quantity, is_urgent } = req.body;
     const user_id = req.user?.user_id;
 
     if (!user_id) {
@@ -297,7 +329,7 @@ exports.updateCartItem = async (req, res) => {
       return res.status(401).json({ message: 'Usuario no autenticado' });
     }
 
-    if (!cart_detail_id || !quantity) {
+    if (!cart_detail_id || quantity === undefined) {
       await transaction.rollback();
       return res.status(400).json({ message: 'Faltan datos requeridos: cart_detail_id y quantity son obligatorios' });
     }
@@ -310,6 +342,10 @@ exports.updateCartItem = async (req, res) => {
     const cartDetail = await CartDetail.findByPk(cart_detail_id, {
       include: [
         { model: Cart, where: { user_id, status: 'active' } },
+        { 
+          model: Product, 
+          attributes: ['product_id', 'urgent_delivery_enabled', 'urgent_delivery_cost', 'standard_delivery_days', 'urgent_delivery_days'] 
+        },
         { model: ProductVariant }
       ],
       transaction
@@ -320,25 +356,39 @@ exports.updateCartItem = async (req, res) => {
       return res.status(404).json({ message: 'Ítem no encontrado en el carrito' });
     }
 
+    if (is_urgent && !cartDetail.Product.urgent_delivery_enabled) {
+      await transaction.rollback();
+      return res.status(400).json({ message: 'El producto no permite entrega urgente' });
+    }
+
     if (cartDetail.ProductVariant.stock < quantity) {
       await transaction.rollback();
       return res.status(400).json({ message: 'Stock insuficiente' });
     }
 
+    const unit_price = parseFloat(cartDetail.ProductVariant.calculated_price) + (is_urgent ? parseFloat(cartDetail.Product.urgent_delivery_cost) : 0);
+
     await cartDetail.update(
       {
         quantity,
-        subtotal: quantity * cartDetail.unit_price
+        is_urgent,
+        unit_price,
+        subtotal: quantity * unit_price
       },
       { transaction }
     );
 
+    // Actualizar el total del carrito
+    const cartDetails = await CartDetail.findAll({ where: { cart_id: cartDetail.cart_id }, transaction });
+    const total = cartDetails.reduce((sum, detail) => sum + parseFloat(detail.subtotal), 0);
+    await cartDetail.Cart.update({ total }, { transaction });
+
     await transaction.commit();
-    res.status(200).json({ message: 'Cantidad actualizada exitosamente' });
+    res.status(200).json({ message: 'Ítem actualizado exitosamente' });
   } catch (error) {
     await transaction.rollback();
     loggerUtils.logCriticalError(error);
-    res.status(500).json({ message: 'Error al actualizar la cantidad', error: error.message });
+    res.status(500).json({ message: 'Error al actualizar el ítem', error: error.message });
   }
 };
 
@@ -363,7 +413,13 @@ exports.removeCartItem = async (req, res) => {
       return res.status(404).json({ message: 'Ítem no encontrado en el carrito' });
     }
 
+    const cart_id = cartDetail.cart_id;
     await cartDetail.destroy({ transaction });
+
+    // Actualizar el total del carrito
+    const cartDetails = await CartDetail.findAll({ where: { cart_id }, transaction });
+    const total = cartDetails.reduce((sum, detail) => sum + parseFloat(detail.subtotal), 0);
+    await Cart.update({ total }, { where: { cart_id }, transaction });
 
     await transaction.commit();
     res.status(200).json({ message: 'Ítem eliminado del carrito exitosamente' });

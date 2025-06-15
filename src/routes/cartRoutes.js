@@ -8,7 +8,6 @@ const cartController = require('../controllers/cartController');
 const authMiddleware = require('../middlewares/authMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 
-
 // ** GESTIÓN DEL CARRITO **
 // Ruta para añadir un producto al carrito
 router.post('/add', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, cartController.addToCart);
