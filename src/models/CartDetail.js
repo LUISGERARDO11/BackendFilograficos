@@ -64,6 +64,12 @@ const CartDetail = sequelize.define('CartDetail', {
     allowNull: false,
     field: 'unit_price'
   },
+  urgent_delivery_fee: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0.00,
+    field: 'urgent_delivery_fee'
+  },
   subtotal: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
@@ -107,7 +113,7 @@ const CartDetail = sequelize.define('CartDetail', {
   hooks: {
     beforeSave: (cartDetail) => {
       // Calcular el subtotal automáticamente antes de guardar
-      cartDetail.subtotal = cartDetail.quantity * cartDetail.unit_price;
+      cartDetail.subtotal = (cartDetail.quantity * cartDetail.unit_price) + parseFloat(cartDetail.urgent_delivery_fee || 0);
     }
   }
 });
