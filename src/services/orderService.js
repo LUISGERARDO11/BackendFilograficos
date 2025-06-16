@@ -1,5 +1,5 @@
-/* The OrderService class handles the creation of orders from a user's cart, including payment instruction 
-   generation and cart cleanup, using direct model operations for consistency. */
+/* The OrderService class handles order operations, including creation, retrieval, and payment instruction 
+generation, using direct model operations for consistency. */
 require('dotenv').config();
 const loggerUtils = require('../utils/loggerUtils');
 const { Op, Sequelize } = require('sequelize');
@@ -243,11 +243,11 @@ class OrderService {
     }
   }
 
-  /**
+    /**
    * Retrieves the details of a specific order for the authenticated user.
    * @param {number} userId - The ID of the authenticated user.
    * @param {number} orderId - The ID of the order to retrieve.
-   * @returns {Object} - The order details including items, address, payment instructions, and status.
+   * @returns {Object} - Structured order details including order info, items, address, payment, and history.
    * @throws {Error} - If the order is not found or does not belong to the user.
    */
   async getOrderById(userId, orderId) {
@@ -257,10 +257,32 @@ class OrderService {
           order_id: orderId,
           user_id: userId
         },
+        attributes: [
+          'order_id',
+          'user_id',
+          [Sequelize.cast(Sequelize.col('Order.total'), 'FLOAT'), 'total'], // Explicitly reference Order.total
+          'order_status',
+          'payment_method',
+          'created_at',
+          'discount',
+          'shipping_cost',
+          'estimated_delivery_date',
+          'delivery_option'
+        ],
         include: [
           {
             model: OrderDetail,
-            attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure', 'is_urgent', 'additional_cost'],
+            attributes: [
+              'order_detail_id',
+              'quantity',
+              'unit_price',
+              'subtotal',
+              'discount_applied',
+              'unit_measure',
+              'is_urgent',
+              'additional_cost',
+              'variant_id'
+            ],
             include: [
               {
                 model: ProductVariant,
@@ -268,7 +290,19 @@ class OrderService {
                 include: [
                   {
                     model: Product,
-                    attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days']
+                    attributes: [
+                      'product_id',
+                      'name',
+                      'urgent_delivery_enabled',
+                      'urgent_delivery_days',
+                      'standard_delivery_days'
+                    ]
+                  },
+                  {
+                    model: ProductImage,
+                    attributes: ['image_url'],
+                    limit: 1,
+                    required: false
                   }
                 ],
                 required: false
@@ -282,24 +316,47 @@ class OrderService {
           },
           {
             model: Address,
-            attributes: ['address_id', 'street', 'city', 'state', 'postal_code'],
+            attributes: [
+              'address_id',
+              'street',
+              'city',
+              'state',
+              'postal_code',
+            ],
             required: false
           },
           {
             model: Payment,
-            attributes: ['payment_id', 'payment_method', 'amount', 'status'],
+            attributes: [
+              'payment_id',
+              'payment_method',
+              'amount',
+              'status',
+              'created_at',
+              'updated_at'
+            ],
             required: false
+          },
+          {
+            model: OrderHistory,
+            attributes: [
+              'history_id',
+              'order_status',
+              'purchase_date',
+            ],
+            required: false,
+            order: [['purchase_date', 'ASC']]
           }
         ]
       });
 
       if (!order) {
-        throw new Error('Orden no encontrada o acceso denegado');
+        throw new Error('Order not found or access denied');
       }
 
-      // Calcular días de entrega máximos
+      // Calculate maximum delivery days
       let deliveryDays = 0;
-      for (const detail of order.OrderDetails) {
+      for (const detail of order.OrderDetails || []) {
         const product = detail.ProductVariant?.Product;
         const days = detail.is_urgent ? product?.urgent_delivery_days : product?.standard_delivery_days;
         if (days) {
@@ -307,44 +364,37 @@ class OrderService {
         }
       }
 
-      // Calcular costo total de ítems urgentes
-      const total_urgent_cost = order.OrderDetails.reduce((sum, detail) => sum + parseFloat(detail.additional_cost || 0), 0);
+      // Generate payment instructions
+      const paymentInstructions = this.generatePaymentInstructions(
+        order.payment_method,
+        parseFloat(order.total) || 0
+      );
 
-      // Generar instrucciones de pago
-      const paymentInstructions = this.generatePaymentInstructions(order.payment_method, order.total);
-
-      // Formatear la respuesta
+      // Format the response
       const orderDetails = {
-        order_id: order.order_id,
-        user_id: order.user_id,
-        total: order.total,
-        subtotal: order.OrderDetails.reduce((sum, detail) => sum + detail.subtotal, 0),
-        discount: order.discount,
-        shipping_cost: order.shipping_cost,
-        total_urgent_cost,
-        payment_method: order.payment_method,
-        payment_status: Array.isArray(order.Payments) && order.Payments.length > 0 ? order.Payments[0].status : 'pending',
-        order_status: order.order_status,
-        estimated_delivery_date: order.estimated_delivery_date,
-        delivery_days: deliveryDays,
-        created_at: order.created_at,
-        address: order.Address ? {
-          address_id: order.Address.address_id,
-          street: order.Address.street,
-          city: order.Address.city,
-          state: order.Address.state,
-          postal_code: order.Address.postal_code
-        } : null,
+        order: {
+          order_id: order.order_id,
+          status: order.order_status,
+          created_at: order.created_at,
+          estimated_delivery_date: order.estimated_delivery_date,
+          delivery_days: deliveryDays,
+          delivery_option: order.delivery_option || null,
+          total: parseFloat(order.total) || 0,
+          subtotal: order.OrderDetails.reduce((sum, detail) => sum + parseFloat(detail.subtotal || 0), 0),
+          discount: parseFloat(order.discount) || 0,
+          shipping_cost: parseFloat(order.shipping_cost) || 0,
+        },
         items: order.OrderDetails.map(detail => ({
-          order_detail_id: detail.order_detail_id,
-          product_name: detail.ProductVariant?.Product?.name || 'Producto no disponible',
+          detail_id: detail.order_detail_id,
+          product_name: detail.ProductVariant?.Product?.name || 'Product not available',
           quantity: detail.quantity,
-          unit_price: detail.unit_price,
-          subtotal: detail.subtotal,
-          discount_applied: detail.discount_applied,
-          unit_measure: detail.unit_measure,
+          unit_price: parseFloat(detail.unit_price) || 0,
+          subtotal: parseFloat(detail.subtotal) || 0,
+          discount_applied: parseFloat(detail.discount_applied) || 0,
+          unit_measure: parseFloat(detail.unit_measure) || 1.00,
           is_urgent: detail.is_urgent,
-          additional_cost: parseFloat(detail.additional_cost || 0),
+          additional_cost: parseFloat(detail.additional_cost) || 0,
+          product_image: detail.ProductVariant?.ProductImages?.[0]?.image_url || 'https://via.placeholder.com/100?text=No+Image',
           customization: detail.Customization ? {
             customization_id: detail.Customization.customization_id,
             content: detail.Customization.content,
@@ -352,24 +402,44 @@ class OrderService {
             comments: detail.Customization.comments
           } : null
         })),
-        payment_instructions: paymentInstructions
+        address: order.Address ? {
+          address_id: order.Address.address_id,
+          street: order.Address.street,
+          city: order.Address.city,
+          state: order.Address.state,
+          postal_code: order.Address.postal_code,
+        } : null,
+        payment: {
+          method: order.payment_method,
+          status: order.Payments?.[0]?.status || 'pending',
+          amount: order.Payments?.[0] ? parseFloat(order.Payments[0].amount) : parseFloat(order.total) || 0,
+          payment_id: order.Payments?.[0]?.payment_id || null,
+          created_at: order.Payments?.[0]?.created_at || null,
+          updated_at: order.Payments?.[0]?.updated_at || null,
+          instructions: paymentInstructions
+        },
+        history: order.OrderHistories?.map(history => ({
+          history_id: history.history_id,
+          status: history.order_status,
+          date: history.purchase_date
+        })) || []
       };
 
       return orderDetails;
     } catch (error) {
       loggerUtils.logCriticalError(error);
-      throw new Error(`Error al obtener los detalles de la orden: ${error.message}`);
+      throw new Error(`Error retrieving order details: ${error.message}`);
     }
   }
 
   /**
-   * Retrieves a paginated list of all orders for the authenticated user.
+   * Retrieves a paginated list of all orders for the authenticated user with their details.
    * @param {number} userId - The ID of the authenticated user.
    * @param {number} page - The page number (default: 1).
    * @param {number} pageSize - The number of orders per page (default: 10).
    * @param {string} searchTerm - Optional search term to filter products by name.
    * @param {string} dateFilter - Optional year or date range (YYYY or YYYY-MM-DD,YYYY-MM-DD) to filter orders by creation date.
-   * @returns {Object} - The list of orders and pagination metadata.
+   * @returns {Object} - The list of orders with details and pagination metadata.
    * @throws {Error} - If there is an error retrieving the orders.
    */
   async getOrders(userId, page = 1, pageSize = 10, searchTerm = '', dateFilter = '') {
@@ -416,12 +486,12 @@ class OrderService {
       const include = [
         {
           model: OrderDetail,
-          attributes: ['order_detail_id', 'quantity', 'subtotal', 'unit_measure', 'variant_id', 'is_urgent'],
-          required: false,
+          attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure', 'is_urgent', 'additional_cost', 'variant_id'],
+          required: true,
           include: [
             {
               model: ProductVariant,
-              attributes: ['variant_id'],
+              attributes: ['variant_id', 'calculated_price'],
               required: false,
               include: [
                 {
@@ -437,6 +507,11 @@ class OrderService {
                   required: false,
                 },
               ],
+            },
+            {
+              model: Customization,
+              attributes: ['customization_id', 'content', 'file_url', 'comments'],
+              required: false,
             },
           ],
         },
@@ -473,7 +548,8 @@ class OrderService {
           'created_at',
           'discount',
           'shipping_cost',
-          'estimated_delivery_date'
+          'estimated_delivery_date',
+          'delivery_option',
         ],
         include,
         order: [['created_at', 'DESC']],
@@ -503,13 +579,26 @@ class OrderService {
           created_at: order.created_at,
           estimated_delivery_date: order.estimated_delivery_date,
           delivery_days: deliveryDays,
+          delivery_option: order.delivery_option || null,
           total_items: order.OrderDetails?.reduce((sum, detail) => sum + (detail.quantity || 0), 0) || 0,
-          product_names: order.OrderDetails?.map(
-            (detail) => detail.ProductVariant?.Product?.name || 'Producto no disponible'
-          ) || [],
-          first_item_image:
-            order.OrderDetails?.[0]?.ProductVariant?.ProductImages?.[0]?.image_url ||
-            'https://via.placeholder.com/100?text=No+Image'
+          order_details: order.OrderDetails.map(detail => ({
+            order_detail_id: detail.order_detail_id,
+            product_name: detail.ProductVariant?.Product?.name || 'Producto no disponible',
+            quantity: detail.quantity,
+            unit_price: parseFloat(detail.unit_price) || 0,
+            subtotal: parseFloat(detail.subtotal) || 0,
+            discount_applied: parseFloat(detail.discount_applied) || 0,
+            unit_measure: parseFloat(detail.unit_measure) || 1.00,
+            is_urgent: detail.is_urgent,
+            additional_cost: parseFloat(detail.additional_cost || 0),
+            product_image: detail.ProductVariant?.ProductImages?.[0]?.image_url || 'https://via.placeholder.com/100?text=No+Image',
+            customization: detail.Customization ? {
+              customization_id: detail.Customization.customization_id,
+              content: detail.Customization.content,
+              file_url: detail.Customization.file_url,
+              comments: detail.Customization.comments,
+            } : null,
+          })),
         };
       });
 

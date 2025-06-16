@@ -66,11 +66,11 @@ exports.createOrder = [
   }
 ];
 
-// Obtener los detalles de una orden por ID
+// Obtener los detalles de un pedido por ID
 exports.getOrderById = [
   param('id')
     .isInt({ min: 1 })
-    .withMessage('El ID de la orden debe ser un número entero positivo'),
+    .withMessage('El ID del pedido debe ser un número entero positivo'),
 
   async (req, res) => {
     const user_id = req.user.user_id;
@@ -89,16 +89,16 @@ exports.getOrderById = [
       const orderService = new OrderService();
       const orderDetails = await orderService.getOrderById(user_id, orderId);
 
-      loggerUtils.logUserActivity(user_id, 'get_order_details', `Detalles de la orden obtenidos: ID ${orderId}`);
+      loggerUtils.logUserActivity(user_id, 'get_order_details', `Detalles del pedido obtenidos: ID ${orderId}`);
 
       res.status(200).json({
         success: true,
-        message: 'Detalles de la orden obtenidos exitosamente',
+        message: 'Detalles del pedido obtenidos exitosamente',
         data: orderDetails
       });
     } catch (error) {
       loggerUtils.logCriticalError(error);
-      if (error.message === 'Orden no encontrada' || error.message === 'Acceso denegado') {
+      if (error.message === 'Pedido no encontrado o acceso denegado') {
         return res.status(404).json({
           success: false,
           message: error.message
@@ -106,7 +106,7 @@ exports.getOrderById = [
       }
       res.status(500).json({
         success: false,
-        message: 'Error al obtener los detalles de la orden',
+        message: 'Error al obtener los detalles del pedido',
         error: error.message
       });
     }
