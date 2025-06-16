@@ -102,7 +102,7 @@ const OrderDetail = sequelize.define('OrderDetail', {
   hooks: {
     beforeSave: (orderDetail) => {
       // Calcular el subtotal automáticamente antes de guardar
-      orderDetail.subtotal = orderDetail.quantity * orderDetail.unit_price;
+      orderDetail.subtotal = (orderDetail.quantity * orderDetail.unit_price) + parseFloat(orderDetail.additional_cost || 0);
     }
   }
 });

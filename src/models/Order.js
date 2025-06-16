@@ -53,6 +53,11 @@ const Order = sequelize.define('Order', {
   estimated_delivery_date: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  delivery_option: {
+    type: DataTypes.ENUM('home_delivery', 'pickup_point', 'store_pickup'),
+    allowNull: true,
+    defaultValue: null
   }
 }, {
   tableName: 'orders',

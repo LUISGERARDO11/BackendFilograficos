@@ -19,7 +19,7 @@ const {
   ProductVariant, 
   Customization,
   Product,
-  ProductImage // Asumiendo que existe este modelo
+  ProductImage
 } = require('../models/Associations');
 
 class OrderService {
@@ -31,11 +31,12 @@ class OrderService {
    * @throws {Error} - If the cart is empty, address is invalid, or any operation fails.
    */
   async createOrder(userId, { address_id, payment_method, coupon_code }) {
+    const transaction = await Cart.sequelize.transaction();
     try {
       // Verificar dirección si se proporciona
       let address = null;
       if (address_id) {
-        address = await Address.findOne({ where: { address_id, user_id: userId } });
+        address = await Address.findOne({ where: { address_id, user_id: userId }, transaction });
         if (!address) {
           throw new Error('Dirección no válida');
         }
@@ -44,14 +45,15 @@ class OrderService {
       // Obtener carrito del usuario
       const cart = await Cart.findOne({
         where: { user_id: userId },
-        include: [{ model: CouponUsage }]
+        include: [{ model: CouponUsage }],
+        transaction
       });
 
       if (!cart) {
         throw new Error('Carrito no encontrado');
       }
 
-      // Obtener detalles del carrito por separado
+      // Obtener detalles del carrito
       const cartDetails = await CartDetail.findAll({
         where: { cart_id: cart.cart_id },
         include: [
@@ -60,7 +62,7 @@ class OrderService {
             include: [
               {
                 model: Product,
-                attributes: ['product_id', 'urgent_delivery_enabled', 'urgent_delivery_days', 'urgent_delivery_cost']
+                attributes: ['product_id', 'name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'urgent_delivery_cost', 'standard_delivery_days']
               },
               {
                 model: Promotion,
@@ -75,53 +77,48 @@ class OrderService {
             ]
           },
           { model: Customization }
-        ]
+        ],
+        transaction
       });
 
       if (!cartDetails || cartDetails.length === 0) {
         throw new Error('Carrito vacío');
       }
 
-      // Asignar detalles al carrito para mantener la compatibilidad con el resto del código
-      cart.CartDetails = cartDetails;
-
-      // Determinar si la orden es urgente y calcular costo de envío
-      let isUrgent = false;
-      let shippingCost = 20.00; // Costo estándar por defecto
+      // Validar ítems urgentes
       for (const detail of cartDetails) {
-        const product = detail.ProductVariant?.Product;
-        if (product?.urgent_delivery_enabled && product?.urgent_delivery_days) {
-          isUrgent = true;
-          shippingCost = product.urgent_delivery_cost || 50.00; // Usar costo urgente del producto o 50.00
-          break;
+        if (detail.is_urgent && !detail.ProductVariant?.Product?.urgent_delivery_enabled) {
+          throw new Error(`El producto ${detail.ProductVariant?.Product?.name || 'desconocido'} no permite entrega urgente`);
         }
       }
 
-      // Calcular subtotal y descuentos
-      let subtotal = 0;
-      let discount = 0;
+      // Calcular costos y días de entrega
+      let total_urgent_cost = 0;
+      let maxDeliveryDays = 0;
       const orderDetailsData = [];
 
-      for (const detail of cart.CartDetails) {
+      for (const detail of cartDetails) {
+        const product = detail.ProductVariant?.Product;
         const unitPrice = detail.unit_price || detail.ProductVariant?.calculated_price;
         if (!unitPrice) {
-          throw new Error(`Precio no definido para el ítem ${detail.product_name || detail.variant_id}`);
+          throw new Error(`Precio no definido para el ítem ${product?.name || detail.variant_id}`);
         }
-        const itemSubtotal = detail.quantity * unitPrice;
-        let itemDiscount = 0;
 
-        // Calcular descuentos por promociones
+        const urgentCost = detail.is_urgent ? parseFloat(detail.urgent_delivery_fee || 0) : 0;
+        total_urgent_cost += urgentCost * detail.quantity;
+
+        const deliveryDays = detail.is_urgent ? product.urgent_delivery_days : product.standard_delivery_days;
+        maxDeliveryDays = Math.max(maxDeliveryDays, deliveryDays);
+
+        let itemDiscount = 0;
         if (detail.ProductVariant?.Promotions && detail.ProductVariant.Promotions.length > 0) {
           itemDiscount = detail.ProductVariant.Promotions.reduce((sum, promo) => {
             if (promo.promotion_type === 'order_count_discount' && promo.is_applicable) {
-              return sum + itemSubtotal * (promo.discount_value / 100);
+              return sum + (detail.quantity * unitPrice) * (promo.discount_value / 100);
             }
             return sum;
           }, 0);
         }
-
-        subtotal += itemSubtotal;
-        discount += itemDiscount;
 
         orderDetailsData.push({
           variant_id: detail.variant_id,
@@ -129,26 +126,37 @@ class OrderService {
           customization_id: detail.customization_id,
           quantity: detail.quantity,
           unit_price: unitPrice,
-          subtotal: itemSubtotal,
+          subtotal: (detail.quantity * unitPrice) + urgentCost,
           discount_applied: itemDiscount,
-          unit_measure: detail.unit_measure || 1.00
+          unit_measure: detail.unit_measure || 1.00,
+          is_urgent: detail.is_urgent,
+          additional_cost: urgentCost
         });
       }
 
-      // Calcular total
-      const total = Math.max(0, subtotal + shippingCost - discount);
+      // Calcular subtotal, descuento y total
+      const subtotal = orderDetailsData.reduce((sum, detail) => sum + (detail.quantity * detail.unit_price), 0);
+      const discount = orderDetailsData.reduce((sum, detail) => sum + detail.discount_applied, 0);
+      const shipping_cost = 20.00; // Placeholder hasta implementar opciones de envío
+      const total = Math.max(0, subtotal + shipping_cost - discount);
+
+      // Calcular fecha estimada de entrega
+      const estimated_delivery_date = moment().add(maxDeliveryDays, 'days').toDate();
 
       // Crear orden
       const order = await Order.create({
         user_id: userId,
         address_id: address_id || null,
         total,
+        total_urgent_cost,
         discount,
-        shipping_cost: shippingCost,
+        shipping_cost,
         payment_status: 'pending',
         payment_method,
-        order_status: 'pending'
-      });
+        order_status: 'pending',
+        estimated_delivery_date,
+        delivery_option: null // Placeholder para opciones de envío
+      }, { transaction });
 
       // Crear detalles del pedido
       try {
@@ -156,11 +164,9 @@ class OrderService {
           await OrderDetail.create({
             ...detailData,
             order_id: order.order_id
-          });
+          }, { transaction });
         }
       } catch (error) {
-        // Revertir orden si falla
-        await Order.destroy({ where: { order_id: order.order_id } });
         throw new Error(`Error al crear detalles del pedido: ${error.message}`);
       }
 
@@ -172,11 +178,8 @@ class OrderService {
           purchase_date: new Date(),
           order_status: 'pending',
           total
-        });
+        }, { transaction });
       } catch (error) {
-        // Revertir orden y detalles
-        await OrderDetail.destroy({ where: { order_id: order.order_id } });
-        await Order.destroy({ where: { order_id: order.order_id } });
         throw new Error(`Error al crear historial de la orden: ${error.message}`);
       }
 
@@ -189,12 +192,8 @@ class OrderService {
           amount: total,
           status: 'pending',
           attempts: 0
-        });
+        }, { transaction });
       } catch (error) {
-        // Revertir historial, detalles y orden
-        await OrderHistory.destroy({ where: { order_id: order.order_id } });
-        await OrderDetail.destroy({ where: { order_id: order.order_id } });
-        await Order.destroy({ where: { order_id: order.order_id } });
         throw new Error(`Error al añadir registro de pago: ${error.message}`);
       }
 
@@ -202,7 +201,8 @@ class OrderService {
       if (coupon_code && cart.promotion_id) {
         try {
           const coupon = await CouponUsage.findOne({
-            where: { user_id: userId, cart_id: cart.cart_id, promotion_id: cart.promotion_id }
+            where: { user_id: userId, cart_id: cart.cart_id, promotion_id: cart.promotion_id },
+            transaction
           });
           if (coupon) {
             await CouponUsage.create({
@@ -210,34 +210,25 @@ class OrderService {
               order_id: order.order_id,
               promotion_id: cart.promotion_id,
               usage_date: new Date()
-            });
+            }, { transaction });
           } else {
             throw new Error('Cupón no válido');
           }
         } catch (error) {
-          // Revertir pago, historial, detalles y orden
-          await Payment.destroy({ where: { order_id: order.order_id } });
-          await OrderHistory.destroy({ where: { order_id: order.order_id } });
-          await OrderDetail.destroy({ where: { order_id: order.order_id } });
-          await Order.destroy({ where: { order_id: order.order_id } });
           throw new Error(`Error al procesar el cupón: ${error.message}`);
         }
       }
 
       // Limpiar carrito
       try {
-        await CartDetail.destroy({ where: { cart_id: cart.cart_id } });
-        await CouponUsage.destroy({ where: { cart_id: cart.cart_id } });
-        await Cart.destroy({ where: { cart_id: cart.cart_id } });
+        await CartDetail.destroy({ where: { cart_id: cart.cart_id }, transaction });
+        await CouponUsage.destroy({ where: { cart_id: cart.cart_id }, transaction });
+        await Cart.destroy({ where: { cart_id: cart.cart_id }, transaction });
       } catch (error) {
-        // Revertir todo
-        await CouponUsage.destroy({ where: { order_id: order.order_id } });
-        await Payment.destroy({ where: { order_id: order.order_id } });
-        await OrderHistory.destroy({ where: { order_id: order.order_id } });
-        await OrderDetail.destroy({ where: { order_id: order.order_id } });
-        await Order.destroy({ where: { order_id: order.order_id } });
         throw new Error(`Error al limpiar el carrito: ${error.message}`);
       }
+
+      await transaction.commit();
 
       // Generar instrucciones de pago
       const paymentInstructions = this.generatePaymentInstructions(payment_method, total);
@@ -246,6 +237,7 @@ class OrderService {
 
       return { order, payment, paymentInstructions };
     } catch (error) {
+      await transaction.rollback();
       loggerUtils.logCriticalError(error);
       throw new Error(`Error al crear la orden: ${error.message}`);
     }
@@ -268,7 +260,7 @@ class OrderService {
         include: [
           {
             model: OrderDetail,
-            attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure'],
+            attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure', 'is_urgent', 'additional_cost'],
             include: [
               {
                 model: ProductVariant,
@@ -305,19 +297,18 @@ class OrderService {
         throw new Error('Orden no encontrada o acceso denegado');
       }
 
-      // Determinar si la orden es urgente
-      let isUrgent = false;
-      let deliveryDays = null;
+      // Calcular días de entrega máximos
+      let deliveryDays = 0;
       for (const detail of order.OrderDetails) {
         const product = detail.ProductVariant?.Product;
-        if (product?.urgent_delivery_enabled && product?.urgent_delivery_days) {
-          isUrgent = true;
-          deliveryDays = product.urgent_delivery_days;
-          break;
-        } else if (product?.standard_delivery_days) {
-          deliveryDays = deliveryDays ? Math.max(deliveryDays, product.standard_delivery_days) : product.standard_delivery_days;
+        const days = detail.is_urgent ? product?.urgent_delivery_days : product?.standard_delivery_days;
+        if (days) {
+          deliveryDays = Math.max(deliveryDays, days);
         }
       }
+
+      // Calcular costo total de ítems urgentes
+      const total_urgent_cost = order.OrderDetails.reduce((sum, detail) => sum + parseFloat(detail.additional_cost || 0), 0);
 
       // Generar instrucciones de pago
       const paymentInstructions = this.generatePaymentInstructions(order.payment_method, order.total);
@@ -330,10 +321,11 @@ class OrderService {
         subtotal: order.OrderDetails.reduce((sum, detail) => sum + detail.subtotal, 0),
         discount: order.discount,
         shipping_cost: order.shipping_cost,
+        total_urgent_cost,
         payment_method: order.payment_method,
         payment_status: Array.isArray(order.Payments) && order.Payments.length > 0 ? order.Payments[0].status : 'pending',
         order_status: order.order_status,
-        is_urgent: isUrgent,
+        estimated_delivery_date: order.estimated_delivery_date,
         delivery_days: deliveryDays,
         created_at: order.created_at,
         address: order.Address ? {
@@ -351,6 +343,8 @@ class OrderService {
           subtotal: detail.subtotal,
           discount_applied: detail.discount_applied,
           unit_measure: detail.unit_measure,
+          is_urgent: detail.is_urgent,
+          additional_cost: parseFloat(detail.additional_cost || 0),
           customization: detail.Customization ? {
             customization_id: detail.Customization.customization_id,
             content: detail.Customization.content,
@@ -388,7 +382,6 @@ class OrderService {
       if (dateFilter) {
         const parts = dateFilter.split(',');
         if (parts.length === 1) {
-          // Caso de un año de 4 dígitos
           const year = parseInt(dateFilter);
           if (!isNaN(year)) {
             dateCondition = {
@@ -401,7 +394,6 @@ class OrderService {
             };
           }
         } else if (parts.length === 2) {
-          // Caso de rango de fechas (YYYY-MM-DD,YYYY-MM-DD)
           const [startDate, endDate] = parts;
           dateCondition = {
             created_at: {
@@ -424,7 +416,7 @@ class OrderService {
       const include = [
         {
           model: OrderDetail,
-          attributes: ['order_detail_id', 'quantity', 'subtotal', 'unit_measure', 'variant_id'],
+          attributes: ['order_detail_id', 'quantity', 'subtotal', 'unit_measure', 'variant_id', 'is_urgent'],
           required: false,
           include: [
             {
@@ -461,7 +453,6 @@ class OrderService {
         ...dateCondition,
       };
 
-      // Add search condition to ensure orders have matching products
       if (searchTerm) {
         where[Op.or] = [
           {
@@ -482,6 +473,7 @@ class OrderService {
           'created_at',
           'discount',
           'shipping_cost',
+          'estimated_delivery_date'
         ],
         include,
         order: [['created_at', 'DESC']],
@@ -491,21 +483,15 @@ class OrderService {
         subQuery: false,
       });
 
-      // Debug log
       console.log(`Usuario ${userId}: ${count} órdenes contadas, ${rows.length} órdenes retornadas`);
 
       const orders = rows.map((order) => {
-        // Determinar si la orden es urgente
-        let isUrgent = false;
-        let deliveryDays = null;
+        let deliveryDays = 0;
         for (const detail of order.OrderDetails || []) {
           const product = detail.ProductVariant?.Product;
-          if (product?.urgent_delivery_enabled && product?.urgent_delivery_days) {
-            isUrgent = true;
-            deliveryDays = product.urgent_delivery_days;
-            break;
-          } else if (product?.standard_delivery_days) {
-            deliveryDays = deliveryDays ? Math.max(deliveryDays, product.standard_delivery_days) : product.standard_delivery_days;
+          const days = detail.is_urgent ? product?.urgent_delivery_days : product?.standard_delivery_days;
+          if (days) {
+            deliveryDays = Math.max(deliveryDays, days);
           }
         }
 
@@ -515,15 +501,15 @@ class OrderService {
           order_status: order.order_status,
           payment_status: order.Payments?.[0]?.status || 'pending',
           created_at: order.created_at,
+          estimated_delivery_date: order.estimated_delivery_date,
+          delivery_days: deliveryDays,
           total_items: order.OrderDetails?.reduce((sum, detail) => sum + (detail.quantity || 0), 0) || 0,
           product_names: order.OrderDetails?.map(
             (detail) => detail.ProductVariant?.Product?.name || 'Producto no disponible'
           ) || [],
           first_item_image:
             order.OrderDetails?.[0]?.ProductVariant?.ProductImages?.[0]?.image_url ||
-            'https://via.placeholder.com/100?text=No+Image',
-          is_urgent: isUrgent,
-          delivery_days: deliveryDays
+            'https://via.placeholder.com/100?text=No+Image'
         };
       });
 

@@ -49,6 +49,8 @@ exports.createOrder = [
         data: {
           order_id: order.order_id,
           total: order.total,
+          total_urgent_cost: order.total_urgent_cost || 0.00,
+          estimated_delivery_date: order.estimated_delivery_date,
           payment_instructions: paymentInstructions,
           status: order.order_status
         }
@@ -175,7 +177,7 @@ exports.getOrders = [
       const page = parseInt(req.query.page) || 1;
       const pageSize = parseInt(req.query.pageSize) || 10;
       const searchTerm = req.query.searchTerm || '';
-      const dateFilter = req.query.dateFilter || ''; // Puede ser año o rango
+      const dateFilter = req.query.dateFilter || '';
 
       const orderService = new OrderService();
       const orders = await orderService.getOrders(user_id, page, pageSize, searchTerm, dateFilter);
