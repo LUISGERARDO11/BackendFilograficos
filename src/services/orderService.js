@@ -1,9 +1,8 @@
-/* The OrderService class handles order operations, including creation, retrieval, and payment instruction 
-generation, using direct model operations for consistency. */
 require('dotenv').config();
 const loggerUtils = require('../utils/loggerUtils');
 const { Op, Sequelize } = require('sequelize');
 const moment = require('moment');
+const orderUtils = require('../utils/orderUtils');
 
 // Importar todos los modelos necesarios al inicio del archivo
 const { 
@@ -19,16 +18,17 @@ const {
   ProductVariant, 
   Customization,
   Product,
-  ProductImage
+  ProductImage,
+  User
 } = require('../models/Associations');
 
 class OrderService {
   /**
-   * Creates an order from the user's cart, generates related records, and clears the cart.
-   * @param {number} userId - The ID of the authenticated user.
-   * @param {Object} orderData - The order data including address_id, payment_method, and coupon_code.
-   * @returns {Object} - The created order, payment, and payment instructions.
-   * @throws {Error} - If the cart is empty, address is invalid, or any operation fails.
+   * Crea una orden a partir del carrito del usuario, genera registros relacionados, actualiza el stock y limpia el carrito.
+   * @param {number} userId - El ID del usuario autenticado.
+   * @param {Object} orderData - Los datos de la orden incluyendo address_id, payment_method y coupon_code.
+   * @returns {Object} - La orden creada, el pago y las instrucciones de pago.
+   * @throws {Error} - Si el carrito está vacío, la dirección es inválida, el stock es insuficiente o falla alguna operación.
    */
   async createOrder(userId, { address_id, payment_method, coupon_code }) {
     const transaction = await Cart.sequelize.transaction();
@@ -85,10 +85,18 @@ class OrderService {
         throw new Error('Carrito vacío');
       }
 
-      // Validar ítems urgentes
+      // Validar ítems urgentes y disponibilidad de stock
       for (const detail of cartDetails) {
-        if (detail.is_urgent && !detail.ProductVariant?.Product?.urgent_delivery_enabled) {
-          throw new Error(`El producto ${detail.ProductVariant?.Product?.name || 'desconocido'} no permite entrega urgente`);
+        const variant = detail.ProductVariant;
+        const product = variant?.Product;
+        if (!variant || !product) {
+          throw new Error(`Variante o producto no encontrado para el ítem ${detail.variant_id}`);
+        }
+        if (detail.is_urgent && !product.urgent_delivery_enabled) {
+          throw new Error(`El producto ${product.name || 'desconocido'} no permite entrega urgente`);
+        }
+        if (variant.stock < detail.quantity) {
+          throw new Error(`Stock insuficiente para el producto ${product.name || 'desconocido'} (SKU: ${variant.sku}). Disponible: ${variant.stock}, Requerido: ${detail.quantity}`);
         }
       }
 
@@ -98,10 +106,10 @@ class OrderService {
       const orderDetailsData = [];
 
       for (const detail of cartDetails) {
-        const product = detail.ProductVariant?.Product;
-        const unitPrice = detail.unit_price || detail.ProductVariant?.calculated_price;
+        const product = detail.ProductVariant.Product;
+        const unitPrice = detail.unit_price || detail.ProductVariant.calculated_price;
         if (!unitPrice) {
-          throw new Error(`Precio no definido para el ítem ${product?.name || detail.variant_id}`);
+          throw new Error(`Precio no definido para el ítem ${product.name || detail.variant_id}`);
         }
 
         const urgentCost = detail.is_urgent ? parseFloat(detail.urgent_delivery_fee || 0) : 0;
@@ -111,7 +119,7 @@ class OrderService {
         maxDeliveryDays = Math.max(maxDeliveryDays, deliveryDays);
 
         let itemDiscount = 0;
-        if (detail.ProductVariant?.Promotions && detail.ProductVariant.Promotions.length > 0) {
+        if (detail.ProductVariant.Promotions && detail.ProductVariant.Promotions.length > 0) {
           itemDiscount = detail.ProductVariant.Promotions.reduce((sum, promo) => {
             if (promo.promotion_type === 'order_count_discount' && promo.is_applicable) {
               return sum + (detail.quantity * unitPrice) * (promo.discount_value / 100);
@@ -159,74 +167,69 @@ class OrderService {
       }, { transaction });
 
       // Crear detalles del pedido
-      try {
-        for (const detailData of orderDetailsData) {
-          await OrderDetail.create({
-            ...detailData,
-            order_id: order.order_id
+      for (const detailData of orderDetailsData) {
+        await OrderDetail.create({
+          ...detailData,
+          order_id: order.order_id
+        }, { transaction });
+      }
+
+      // Actualizar stock de las variantes
+      for (const detail of cartDetails) {
+        const variant = await ProductVariant.findOne({
+          where: { variant_id: detail.variant_id },
+          transaction
+        });
+        if (variant) {
+          await variant.update({
+            stock: variant.stock - detail.quantity,
+            updated_at: new Date()
           }, { transaction });
+        } else {
+          throw new Error(`Variante no encontrada: ${detail.variant_id}`);
         }
-      } catch (error) {
-        throw new Error(`Error al crear detalles del pedido: ${error.message}`);
       }
 
       // Crear historial de la orden
-      try {
-        await OrderHistory.create({
-          user_id: userId,
-          order_id: order.order_id,
-          purchase_date: new Date(),
-          order_status: 'pending',
-          total
-        }, { transaction });
-      } catch (error) {
-        throw new Error(`Error al crear historial de la orden: ${error.message}`);
-      }
+      await OrderHistory.create({
+        user_id: userId,
+        order_id: order.order_id,
+        purchase_date: new Date(),
+        order_status: 'pending',
+        total
+      }, { transaction });
 
       // Crear registro de pago
-      let payment;
-      try {
-        payment = await Payment.create({
-          order_id: order.order_id,
-          payment_method,
-          amount: total,
-          status: 'pending',
-          attempts: 0
-        }, { transaction });
-      } catch (error) {
-        throw new Error(`Error al añadir registro de pago: ${error.message}`);
-      }
+      const payment = await Payment.create({
+        order_id: order.order_id,
+        payment_method,
+        amount: total,
+        status: 'pending',
+        attempts: 0
+      }, { transaction });
 
       // Manejar cupones
       if (coupon_code && cart.promotion_id) {
-        try {
-          const coupon = await CouponUsage.findOne({
-            where: { user_id: userId, cart_id: cart.cart_id, promotion_id: cart.promotion_id },
-            transaction
-          });
-          if (coupon) {
-            await CouponUsage.create({
-              user_id: userId,
-              order_id: order.order_id,
-              promotion_id: cart.promotion_id,
-              usage_date: new Date()
-            }, { transaction });
-          } else {
-            throw new Error('Cupón no válido');
-          }
-        } catch (error) {
-          throw new Error(`Error al procesar el cupón: ${error.message}`);
+        const coupon = await CouponUsage.findOne({
+          where: { user_id: userId, cart_id: cart.cart_id, promotion_id: cart.promotion_id },
+          transaction
+        });
+        if (coupon) {
+          await CouponUsage.create({
+            user_id: userId,
+            order_id: order.order_id,
+            promotion_id: cart.promotion_id,
+            usage_date: new Date()
+          }, { transaction });
+        } else {
+          throw new Error('Cupón no válido');
         }
       }
 
       // Limpiar carrito
-      try {
-        await CartDetail.destroy({ where: { cart_id: cart.cart_id }, transaction });
-        await CouponUsage.destroy({ where: { cart_id: cart.cart_id }, transaction });
-        await Cart.destroy({ where: { cart_id: cart.cart_id }, transaction });
-      } catch (error) {
-        throw new Error(`Error al limpiar el carrito: ${error.message}`);
-      }
+      await CartDetail.destroy({ where: { cart_id: cart.cart_id }, transaction });
+      await CouponUsage.destroy({ where: { cart_id: cart.cart_id }, transaction });
+      await Cart.destroy({ where: { cart_id: cart.cart_id }, transaction });
 
       await transaction.commit();
 
@@ -243,12 +246,12 @@ class OrderService {
     }
   }
 
-    /**
-   * Retrieves the details of a specific order for the authenticated user.
-   * @param {number} userId - The ID of the authenticated user.
-   * @param {number} orderId - The ID of the order to retrieve.
-   * @returns {Object} - Structured order details including order info, items, address, payment, and history.
-   * @throws {Error} - If the order is not found or does not belong to the user.
+  /**
+   * Obtiene los detalles de una orden específica para el usuario autenticado.
+   * @param {number} userId - El ID del usuario autenticado.
+   * @param {number} orderId - El ID de la orden a obtener.
+   * @returns {Object} - Detalles estructurados de la orden incluyendo información, ítems, dirección, pago e historial.
+   * @throws {Error} - Si la orden no se encuentra o no pertenece al usuario.
    */
   async getOrderById(userId, orderId) {
     try {
@@ -260,7 +263,7 @@ class OrderService {
         attributes: [
           'order_id',
           'user_id',
-          [Sequelize.cast(Sequelize.col('Order.total'), 'FLOAT'), 'total'], // Explicitly reference Order.total
+          [Sequelize.cast(Sequelize.col('Order.total'), 'FLOAT'), 'total'],
           'order_status',
           'payment_method',
           'created_at',
@@ -351,10 +354,10 @@ class OrderService {
       });
 
       if (!order) {
-        throw new Error('Order not found or access denied');
+        throw new Error('Orden no encontrada o acceso denegado');
       }
 
-      // Calculate maximum delivery days
+      // Calcular máximo de días de entrega
       let deliveryDays = 0;
       for (const detail of order.OrderDetails || []) {
         const product = detail.ProductVariant?.Product;
@@ -364,13 +367,13 @@ class OrderService {
         }
       }
 
-      // Generate payment instructions
+      // Generar instrucciones de pago
       const paymentInstructions = this.generatePaymentInstructions(
         order.payment_method,
         parseFloat(order.total) || 0
       );
 
-      // Format the response
+      // Formatear la respuesta
       const orderDetails = {
         order: {
           order_id: order.order_id,
@@ -386,7 +389,7 @@ class OrderService {
         },
         items: order.OrderDetails.map(detail => ({
           detail_id: detail.order_detail_id,
-          product_name: detail.ProductVariant?.Product?.name || 'Product not available',
+          product_name: detail.ProductVariant?.Product?.name || 'Producto no disponible',
           quantity: detail.quantity,
           unit_price: parseFloat(detail.unit_price) || 0,
           subtotal: parseFloat(detail.subtotal) || 0,
@@ -428,61 +431,35 @@ class OrderService {
       return orderDetails;
     } catch (error) {
       loggerUtils.logCriticalError(error);
-      throw new Error(`Error retrieving order details: ${error.message}`);
+      throw new Error(`Error al obtener los detalles de la orden: ${error.message}`);
     }
   }
 
   /**
-   * Retrieves a paginated list of all orders for the authenticated user with their details.
-   * @param {number} userId - The ID of the authenticated user.
-   * @param {number} page - The page number (default: 1).
-   * @param {number} pageSize - The number of orders per page (default: 10).
-   * @param {string} searchTerm - Optional search term to filter products by name.
-   * @param {string} dateFilter - Optional year or date range (YYYY or YYYY-MM-DD,YYYY-MM-DD) to filter orders by creation date.
-   * @returns {Object} - The list of orders with details and pagination metadata.
-   * @throws {Error} - If there is an error retrieving the orders.
+   * Obtiene una lista paginada de todas las órdenes para el usuario autenticado con sus detalles.
+   * @param {number} userId - El ID del usuario autenticado.
+   * @param {number} page - El número de página (por defecto: 1).
+   * @param {number} pageSize - El número de órdenes por página (por defecto: 10).
+   * @param {string} searchTerm - Término de búsqueda opcional para filtrar productos por nombre.
+   * @param {string} dateFilter - Año, fecha única o rango de fechas (YYYY, YYYY-MM-DD, o YYYY-MM-DD,YYYY-MM-DD).
+   * @returns {Object} - La lista de órdenes con detalles y metadatos de paginación.
+   * @throws {Error} - Si hay un error al obtener las órdenes.
    */
   async getOrders(userId, page = 1, pageSize = 10, searchTerm = '', dateFilter = '') {
     try {
       const offset = (page - 1) * pageSize;
       const validStatuses = ['pending', 'delivered', 'processing', 'shipped'];
 
-      // Build date condition
-      let dateCondition = {};
-      if (dateFilter) {
-        const parts = dateFilter.split(',');
-        if (parts.length === 1) {
-          const year = parseInt(dateFilter);
-          if (!isNaN(year)) {
-            dateCondition = {
-              created_at: {
-                [Op.between]: [
-                  moment.tz(`${year}-01-01`, 'UTC').startOf('year').toDate(),
-                  moment.tz(`${year}-12-31`, 'UTC').endOf('year').toDate(),
-                ],
-              },
-            };
-          }
-        } else if (parts.length === 2) {
-          const [startDate, endDate] = parts;
-          dateCondition = {
-            created_at: {
-              [Op.between]: [
-                moment.tz(startDate, 'UTC').toDate(),
-                moment.tz(endDate, 'UTC').toDate(),
-              ],
-            },
-          };
-        }
-      }
+      // Construir condición de fecha
+      const dateCondition = orderUtils.buildDateCondition(dateFilter, 'created_at');
 
-      // Configure search condition for products
+      // Configurar condición de búsqueda para productos
       let productCondition = {};
       if (searchTerm) {
         productCondition = { name: { [Op.like]: `%${searchTerm}%` } };
       }
 
-      // Configure the query
+      // Configurar la consulta
       const include = [
         {
           model: OrderDetail,
@@ -498,7 +475,7 @@ class OrderService {
                   model: Product,
                   attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'],
                   where: productCondition,
-                  required: true,
+                  required: false,
                 },
                 {
                   model: ProductImage,
@@ -618,10 +595,360 @@ class OrderService {
   }
 
   /**
-   * Generates payment instructions based on the payment method.
-   * @param {string} paymentMethod - The payment method chosen by the user.
-   * @param {number} amount - The total amount of the order.
-   * @returns {Object} - The payment instructions including method, reference, and details.
+   * Obtiene una lista paginada de órdenes para el panel de administración con filtros y estadísticas.
+   * @param {number} page - El número de página (por defecto: 1).
+   * @param {number} pageSize - El número de órdenes por página (por defecto: 10).
+   * @param {string} searchTerm - Término de búsqueda opcional para cliente o ID de orden.
+   * @param {string} statusFilter - Filtro de estado ('all', 'pending', 'processing', 'shipped', 'delivered').
+   * @param {string} dateFilter - Filtro de fecha (YYYY, YYYY-MM-DD, o YYYY-MM-DD,YYYY-MM-DD).
+   * @param {string} dateField - Campo de fecha a filtrar ('delivery' o 'creation').
+   * @returns {Object} - Lista de órdenes, paginación y resumen estadístico.
+   * @throws {Error} - Si hay un error al obtener las órdenes.
+   */
+  async getOrdersForAdmin(page = 1, pageSize = 10, searchTerm = '', statusFilter = 'all', dateFilter = '', dateField = 'delivery') {
+    try {
+      const offset = (page - 1) * pageSize;
+      const validStatuses = ['pending', 'processing', 'shipped', 'delivered'];
+
+      // Construir condiciones de consulta
+      const field = dateField === 'delivery' ? 'estimated_delivery_date' : 'created_at';
+      const dateCondition = orderUtils.buildDateCondition(dateFilter, field);
+
+      let where = {};
+      if (statusFilter !== 'all' && orderUtils.isValidOrderStatus(statusFilter)) {
+        where.order_status = statusFilter;
+      } else {
+        where.order_status = { [Op.in]: validStatuses };
+      }
+      where = { ...where, ...dateCondition };
+
+      if (searchTerm) {
+        where[Op.or] = [
+          { order_id: { [Op.like]: `%${searchTerm}%` } },
+          { '$User.name$': { [Op.like]: `%${searchTerm}%` } },
+        ];
+      }
+
+      const include = [
+        {
+          model: OrderDetail,
+          attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure', 'is_urgent', 'additional_cost', 'variant_id'],
+          required: true,
+          include: [
+            {
+              model: ProductVariant,
+              attributes: ['variant_id', 'calculated_price'],
+              required: false,
+              include: [
+                {
+                  model: Product,
+                  attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'],
+                  required: false,
+                },
+              ],
+            },
+          ],
+        },
+        {
+          model: User,
+          attributes: ['name'],
+          required: true,
+        },
+        {
+          model: Payment,
+          attributes: ['status', 'payment_method', 'amount'],
+          required: false,
+        },
+        {
+          model: Address,
+          attributes: ['address_id', 'street', 'city', 'state', 'postal_code'],
+          required: false,
+        },
+      ];
+
+      const { count, rows } = await Order.findAndCountAll({
+        where,
+        attributes: [
+          'order_id',
+          'user_id',
+          [Sequelize.cast(Sequelize.col('total'), 'FLOAT'), 'total'],
+          'order_status',
+          'payment_method',
+          'created_at',
+          'discount',
+          'shipping_cost',
+          'estimated_delivery_date',
+          'delivery_option',
+        ],
+        include,
+        order: [[field, 'DESC']],
+        limit: pageSize,
+        offset,
+        distinct: true,
+        subQuery: false,
+      });
+
+      console.log(`Admin: ${count} órdenes contadas, ${rows.length} órdenes retornadas`);
+
+      const orders = rows.map(order => orderUtils.formatOrderDetails(order));
+      const summary = orderUtils.calculateOrderSummary(orders);
+
+      return {
+        orders,
+        pagination: {
+          totalOrders: count,
+          currentPage: page,
+          pageSize,
+          totalPages: Math.ceil(count / pageSize),
+        },
+        summary,
+      };
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al obtener las órdenes para admin: ${error.message}`);
+    }
+  }
+
+  /**
+   * Obtiene los detalles de una orden específica para el panel de administración.
+   * @param {number} orderId - El ID de la orden a obtener.
+   * @returns {Object} - Detalles estructurados de la orden.
+   * @throws {Error} - Si la orden no se encuentra.
+   */
+  async getOrderDetailsByIdForAdmin(orderId) {
+    try {
+      const order = await Order.findOne({
+        where: { order_id: orderId },
+        attributes: [
+          'order_id',
+          'user_id',
+          [Sequelize.cast(Sequelize.col('total'), 'FLOAT'), 'total'],
+          'order_status',
+          'payment_method',
+          'created_at',
+          'discount',
+          'shipping_cost',
+          'estimated_delivery_date',
+          'delivery_option',
+        ],
+        include: [
+          {
+            model: OrderDetail,
+            attributes: [
+              'order_detail_id',
+              'quantity',
+              'unit_price',
+              'subtotal',
+              'discount_applied',
+              'unit_measure',
+              'is_urgent',
+              'additional_cost',
+              'variant_id',
+            ],
+            include: [
+              {
+                model: ProductVariant,
+                attributes: ['variant_id', 'calculated_price'],
+                include: [
+                  {
+                    model: Product,
+                    attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'],
+                    required: false,
+                  },
+                ],
+                required: false,
+              },
+            ],
+          },
+          {
+            model: User,
+            attributes: ['name'],
+            required: true,
+          },
+          {
+            model: Address,
+            attributes: ['address_id', 'street', 'city', 'state', 'postal_code'],
+            required: false,
+          },
+          {
+            model: Payment,
+            attributes: ['payment_id', 'payment_method', 'amount', 'status', 'created_at', 'updated_at'],
+            required: false,
+          },
+          {
+            model: OrderHistory,
+            attributes: ['history_id', 'order_status', 'purchase_date'],
+            required: false,
+            order: [['purchase_date', 'ASC']],
+          },
+        ],
+      });
+
+      if (!order) {
+        throw new Error('Orden no encontrada');
+      }
+
+      return orderUtils.formatOrderDetails(order);
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al obtener los detalles de la orden: ${error.message}`);
+    }
+  }
+
+  /**
+   * Actualiza el estado de una orden y registra el cambio en el historial.
+   * @param {number} orderId - El ID de la orden a actualizar.
+   * @param {string} newStatus - El nuevo estado ('pending', 'processing', 'shipped', 'delivered').
+   * @param {number} adminId - El ID del administrador que realiza el cambio.
+   * @returns {Object} - La orden actualizada.
+   * @throws {Error} - Si el estado es inválido o la orden no se encuentra.
+   */
+  async updateOrderStatus(orderId, newStatus, adminId) {
+    const transaction = await Order.sequelize.transaction();
+    try {
+      if (!orderUtils.isValidOrderStatus(newStatus)) {
+        throw new Error('Estado de orden inválido');
+      }
+
+      const order = await Order.findOne({
+        where: { order_id: orderId },
+        include: [
+          {
+            model: OrderDetail,
+            attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure', 'is_urgent', 'additional_cost', 'variant_id'],
+            include: [
+              {
+                model: ProductVariant,
+                attributes: ['variant_id', 'calculated_price'],
+                include: [
+                  {
+                    model: Product,
+                    attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'],
+                    required: false,
+                  },
+                ],
+                required: false,
+              },
+            ],
+          },
+          {
+            model: User,
+            attributes: ['name'],
+            required: true,
+          },
+          {
+            model: Address,
+            attributes: ['address_id', 'street', 'city', 'state', 'postal_code'],
+            required: false,
+          },
+          {
+            model: Payment,
+            attributes: ['payment_id', 'payment_method', 'amount', 'status', 'created_at', 'updated_at'],
+            required: false,
+          },
+          {
+            model: OrderHistory,
+            attributes: ['history_id', 'order_status', 'purchase_date'],
+            required: false,
+          },
+        ],
+        transaction,
+      });
+
+      if (!order) {
+        throw new Error('Orden no encontrada');
+      }
+
+      await order.update({ order_status: newStatus }, { transaction });
+
+      if (newStatus === 'delivered') {
+        const payment = await Payment.findOne({ where: { order_id: orderId }, transaction });
+        if (payment && payment.status !== 'validated') {
+          await payment.update({ status: 'validated' }, { transaction });
+        }
+      }
+
+      await OrderHistory.create({
+        user_id: order.user_id,
+        order_id: order.order_id,
+        purchase_date: new Date(),
+        order_status: newStatus,
+        total: parseFloat(order.total) || 0,
+        updated_by: adminId,
+      }, { transaction });
+
+      await transaction.commit();
+
+      const updatedOrder = await Order.findOne({
+        where: { order_id: orderId },
+        attributes: [
+          'order_id',
+          'user_id',
+          [Sequelize.cast(Sequelize.col('total'), 'FLOAT'), 'total'],
+          'order_status',
+          'payment_method',
+          'created_at',
+          'discount',
+          'shipping_cost',
+          'estimated_delivery_date',
+          'delivery_option',
+        ],
+        include: [
+          {
+            model: OrderDetail,
+            attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure', 'is_urgent', 'additional_cost', 'variant_id'],
+            include: [
+              {
+                model: ProductVariant,
+                attributes: ['variant_id', 'calculated_price'],
+                include: [
+                  {
+                    model: Product,
+                    attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'],
+                    required: false,
+                  },
+                ],
+                required: false,
+              },
+            ],
+          },
+          {
+            model: User,
+            attributes: ['name'],
+            required: true,
+          },
+          {
+            model: Address,
+            attributes: ['address_id', 'street', 'city', 'state', 'postal_code'],
+            required: false,
+          },
+          {
+            model: Payment,
+            attributes: ['payment_id', 'payment_method', 'amount', 'status', 'created_at', 'updated_at'],
+            required: false,
+          },
+          {
+            model: OrderHistory,
+            attributes: ['history_id', 'order_status', 'purchase_date'],
+            required: false,
+            order: [['purchase_date', 'ASC']],
+          },
+        ],
+      });
+
+      return orderUtils.formatOrderDetails(updatedOrder);
+    } catch (error) {
+      await transaction.rollback();
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al actualizar el estado de la orden: ${error.message}`);
+    }
+  }
+
+  /**
+   * Genera instrucciones de pago basadas en el método de pago.
+   * @param {string} paymentMethod - El método de pago elegido por el usuario.
+   * @param {number} amount - El monto total de la orden.
+   * @returns {Object} - Las instrucciones de pago incluyendo método, referencia y detalles.
    */
   generatePaymentInstructions(paymentMethod, amount) {
     switch (paymentMethod) {
@@ -644,7 +971,7 @@ class OrderService {
         return {
           method: 'Bank Transfer',
           amount,
-          instructions: `Contacta al soporte para obtener instrucciones de pago. Monto: $${amount.toFixed(2)}.`
+          instructions: `Contacta al soporte para obtener instrucciones de pago. Monto: ${orderUtils.formatCurrency(amount)}.`
         };
       default:
         return {
