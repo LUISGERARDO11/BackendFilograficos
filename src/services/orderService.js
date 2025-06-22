@@ -633,7 +633,7 @@ class OrderService {
         {
           model: OrderDetail,
           attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure', 'is_urgent', 'additional_cost', 'variant_id'],
-          required: true,
+          required: false,
           include: [
             {
               model: ProductVariant,
@@ -684,13 +684,13 @@ class OrderService {
         order: [[field, 'DESC']],
         limit: pageSize,
         offset,
-        distinct: true,
-        subQuery: false,
+        distinct: false,
       });
 
       console.log(`Admin: ${count} órdenes contadas, ${rows.length} órdenes retornadas`);
+      console.log(`Order IDs retornados: ${rows.map(order => order.order_id).join(', ')}`);
 
-      const orders = rows.map(order => orderUtils.formatOrderDetails(order));
+      const orders = rows.map(order => orderUtils.formatOrderDetails(order)).filter(order => order !== null);
       const summary = orderUtils.calculateOrderSummary(orders);
 
       return {

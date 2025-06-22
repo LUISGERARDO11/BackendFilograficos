@@ -288,7 +288,7 @@ exports.getOrdersForAdmin = [
       }
 
       const page = parseInt(req.query.page) || 1;
-      const pageSize = parseInt(req.query.pageSize) || 10;
+      const pageSize = parseInt(req.query.pageSize) || 20;
       const searchTerm = req.query.searchTerm || '';
       const statusFilter = req.query.statusFilter || 'all';
       const dateFilter = req.query.dateFilter || '';
