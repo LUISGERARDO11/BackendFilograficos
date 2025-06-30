@@ -5,22 +5,7 @@ const moment = require('moment');
 const orderUtils = require('../utils/orderUtils');
 
 // Importar todos los modelos necesarios al inicio del archivo
-const { 
-  Cart, 
-  CartDetail, 
-  Order, 
-  OrderDetail, 
-  OrderHistory, 
-  Payment, 
-  Address, 
-  CouponUsage, 
-  Promotion, 
-  ProductVariant, 
-  Customization,
-  Product,
-  ProductImage,
-  User
-} = require('../models/Associations');
+const { Cart, CartDetail, Order, OrderDetail, OrderHistory, Payment, Address, CouponUsage, Promotion, ProductVariant, Customization, Product,ProductImage, User} = require('../models/Associations');
 
 class OrderService {
   /**
@@ -595,6 +580,146 @@ class OrderService {
   }
 
   /**
+   * Obtiene un resumen global de estadísticas de órdenes para administradores.
+   * @returns {Object} - Estadísticas de resumen (totales por estado).
+   * @throws {Error} - Si hay un error al obtener las estadísticas.
+   */
+  async getOrderSummary() {
+    try {
+      const result = await Order.findAll({
+        attributes: [
+          [Sequelize.fn('COUNT', Sequelize.col('order_id')), 'total'],
+          [Sequelize.fn('COUNT', Sequelize.literal("CASE WHEN order_status = 'pending' THEN 1 END")), 'pending'],
+          [Sequelize.fn('COUNT', Sequelize.literal("CASE WHEN order_status = 'processing' THEN 1 END")), 'processing'],
+          [Sequelize.fn('COUNT', Sequelize.literal("CASE WHEN order_status = 'shipped' THEN 1 END")), 'shipped'],
+          [Sequelize.fn('COUNT', Sequelize.literal("CASE WHEN order_status = 'delivered' THEN 1 END")), 'delivered']
+        ],
+        raw: true
+      });
+
+      return {
+        total: parseInt(result[0].total) || 0,
+        pending: parseInt(result[0].pending) || 0,
+        processing: parseInt(result[0].processing) || 0,
+        shipped: parseInt(result[0].shipped) || 0,
+        delivered: parseInt(result[0].delivered) || 0
+      };
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al obtener el resumen de órdenes: ${error.message}`);
+    }
+  }
+
+   /**
+   * Obtiene órdenes para una fecha específica para el panel de administración.
+   * @param {string} date - Fecha en formato YYYY-MM-DD.
+   * @param {string} dateField - Campo de fecha a filtrar ('delivery' o 'creation').
+   * @param {number} adminId - ID del administrador.
+   * @returns {Array} - Lista de órdenes formateadas para la fecha especificada.
+   * @throws {Error} - Si la fecha es inválida o hay un error en la consulta.
+   */
+  async getOrdersByDateForAdmin(date, dateField, adminId) {
+    try {
+      // Validar que adminId pertenece a un administrador
+      const admin = await User.findOne({ where: { user_id: adminId, user_type: 'administrador' } });
+      if (!admin) {
+        throw new Error('Usuario administrador no válido');
+      }
+
+      // Validar formato de fecha
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(date)) {
+        throw new Error('Formato de fecha inválido: debe ser YYYY-MM-DD');
+      }
+      const targetDate = moment.tz(date, 'UTC');
+      if (!targetDate.isValid()) {
+        throw new Error('Fecha inválida');
+      }
+
+      const field = dateField === 'delivery' ? 'estimated_delivery_date' : 'created_at';
+      const dateCondition = {
+        [field]: {
+          [Op.between]: [
+            targetDate.startOf('day').toDate(),
+            targetDate.endOf('day').toDate(),
+          ],
+        },
+      };
+
+      const validStatuses = ['pending', 'processing', 'shipped', 'delivered'];
+      const where = {
+        order_status: { [Op.in]: validStatuses },
+        ...dateCondition,
+      };
+
+      const orders = await Order.findAll({
+        where,
+        attributes: [
+          'order_id',
+          'user_id',
+          [Sequelize.cast(Sequelize.col('Order.total'), 'FLOAT'), 'total'],
+          'order_status',
+          'payment_method',
+          'created_at',
+          'discount',
+          'shipping_cost',
+          'estimated_delivery_date',
+          'delivery_option',
+        ],
+        include: [
+          {
+            model: OrderDetail,
+            attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure', 'is_urgent', 'additional_cost', 'variant_id'],
+            include: [
+              {
+                model: ProductVariant,
+                attributes: ['variant_id', 'calculated_price'],
+                include: [
+                  {
+                    model: Product,
+                    attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'],
+                    required: false,
+                  },
+                ],
+                required: false,
+              },
+            ],
+          },
+          {
+            model: User,
+            attributes: ['name'],
+            required: true,
+          },
+          {
+            model: Address,
+            attributes: ['address_id', 'street', 'city', 'state', 'postal_code'],
+            required: false,
+          },
+          {
+            model: Payment,
+            attributes: ['payment_id', 'payment_method', 'amount', 'status', 'created_at', 'updated_at'],
+            required: false,
+          },
+          {
+            model: OrderHistory,
+            attributes: ['history_id', 'order_status', 'purchase_date'],
+            required: false,
+            order: [['purchase_date', 'ASC']],
+          },
+        ],
+        order: [[field, 'DESC']],
+      });
+
+      loggerUtils.logUserActivity(adminId, 'get_orders_by_date_admin', `Órdenes obtenidas para la fecha ${date}, campo: ${dateField}`);
+
+      return orders.map(order => orderUtils.formatOrderDetails(order));
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al obtener órdenes por fecha: ${error.message}`);
+    }
+  }
+
+  /**
    * Obtiene una lista paginada de órdenes para el panel de administración con filtros y estadísticas.
    * @param {number} page - El número de página (por defecto: 1).
    * @param {number} pageSize - El número de órdenes por página (por defecto: 10).
@@ -605,7 +730,7 @@ class OrderService {
    * @returns {Object} - Lista de órdenes, paginación y resumen estadístico.
    * @throws {Error} - Si hay un error al obtener las órdenes.
    */
-  async getOrdersForAdmin(page = 1, pageSize = 10, searchTerm = '', statusFilter = 'all', dateFilter = '', dateField = 'delivery') {
+    async getOrdersForAdmin(page = 1, pageSize = 10, searchTerm = '', statusFilter = 'all', dateFilter = '', dateField = 'delivery', paymentMethod = '', deliveryOption = '', minTotal = null, maxTotal = null, isUrgent = null) {
     try {
       const offset = (page - 1) * pageSize;
       const validStatuses = ['pending', 'processing', 'shipped', 'delivered'];
@@ -622,10 +747,25 @@ class OrderService {
       }
       where = { ...where, ...dateCondition };
 
+      // Filtros adicionales
+      if (paymentMethod) {
+        where.payment_method = paymentMethod;
+      }
+      if (deliveryOption) {
+        where.delivery_option = deliveryOption;
+      }
+      if (minTotal !== null) {
+        where.total = { ...where.total, [Op.gte]: parseFloat(minTotal) };
+      }
+      if (maxTotal !== null) {
+        where.total = { ...where.total, [Op.lte]: parseFloat(maxTotal) };
+      }
+
       if (searchTerm) {
         where[Op.or] = [
-          { order_id: { [Op.like]: `%${searchTerm}%` } },
+          { order_id: isNaN(parseInt(searchTerm)) ? -1 : parseInt(searchTerm) },
           { '$User.name$': { [Op.like]: `%${searchTerm}%` } },
+          { '$OrderDetails.ProductVariant.Product.name$': { [Op.like]: `%${searchTerm}%` } },
         ];
       }
 
@@ -633,17 +773,18 @@ class OrderService {
         {
           model: OrderDetail,
           attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure', 'is_urgent', 'additional_cost', 'variant_id'],
-          required: false,
+          where: isUrgent !== null ? { is_urgent: isUrgent } : {},
+          required: searchTerm || isUrgent !== null,
           include: [
             {
               model: ProductVariant,
               attributes: ['variant_id', 'calculated_price'],
-              required: false,
+              required: searchTerm ? true : false,
               include: [
                 {
                   model: Product,
                   attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'],
-                  required: false,
+                  required: searchTerm ? true : false,
                 },
               ],
             },
@@ -664,14 +805,21 @@ class OrderService {
           attributes: ['address_id', 'street', 'city', 'state', 'postal_code'],
           required: false,
         },
+        {
+          model: OrderHistory,
+          attributes: ['history_id', 'order_status', 'purchase_date'],
+          required: false,
+          order: [['purchase_date', 'ASC']],
+        },
       ];
 
+      const startTime = Date.now();
       const { count, rows } = await Order.findAndCountAll({
         where,
         attributes: [
           'order_id',
           'user_id',
-          [Sequelize.cast(Sequelize.col('total'), 'FLOAT'), 'total'],
+          [Sequelize.cast(Sequelize.col('Order.total'), 'FLOAT'), 'total'],
           'order_status',
           'payment_method',
           'created_at',
@@ -679,22 +827,44 @@ class OrderService {
           'shipping_cost',
           'estimated_delivery_date',
           'delivery_option',
+          [Sequelize.fn('DATE', Sequelize.col(`Order.${field}`)), 'order_date'],
         ],
         include,
         order: [[field, 'DESC']],
         limit: pageSize,
         offset,
-        distinct: false,
+        distinct: true,
+        subQuery: false,
+      });
+      console.log(`Query took ${Date.now() - startTime}ms`);
+
+      if (count === 0) {
+        return {
+          orders: [],
+          ordersByDay: {},
+          pagination: { totalOrders: 0, currentPage: page, pageSize, totalPages: 0 },
+          summary: { totalOrders: 0, pendingCount: 0, processingCount: 0, shippedCount: 0, deliveredCount: 0 },
+        };
+      }
+
+      const ordersByDay = {};
+      rows.forEach(order => {
+        const dateKey = moment.utc(order[field]).format('YYYY-MM-DD');
+        if (!ordersByDay[dateKey]) {
+          ordersByDay[dateKey] = [];
+        }
+        ordersByDay[dateKey].push(orderUtils.formatOrderDetails(order));
       });
 
       console.log(`Admin: ${count} órdenes contadas, ${rows.length} órdenes retornadas`);
       console.log(`Order IDs retornados: ${rows.map(order => order.order_id).join(', ')}`);
 
-      const orders = rows.map(order => orderUtils.formatOrderDetails(order)).filter(order => order !== null);
-      const summary = orderUtils.calculateOrderSummary(orders);
+      const ordersFormatted = rows.map(order => orderUtils.formatOrderDetails(order));
+      const summary = orderUtils.calculateOrderSummary(ordersFormatted);
 
       return {
-        orders,
+        orders: ordersFormatted,
+        ordersByDay,
         pagination: {
           totalOrders: count,
           currentPage: page,
@@ -722,12 +892,12 @@ class OrderService {
         attributes: [
           'order_id',
           'user_id',
-          [Sequelize.cast(Sequelize.col('total'), 'FLOAT'), 'total'],
+          [Sequelize.cast(Sequelize.col('Order.total'), 'FLOAT'), 'total'],
           'order_status',
           'payment_method',
           'created_at',
-          'discount',
-          'shipping_cost',
+          [Sequelize.cast(Sequelize.col('Order.discount'), 'FLOAT'), 'discount'],
+          [Sequelize.cast(Sequelize.col('Order.shipping_cost'), 'FLOAT'), 'shipping_cost'],
           'estimated_delivery_date',
           'delivery_option',
         ],
@@ -810,81 +980,22 @@ class OrderService {
         throw new Error('Estado de orden inválido');
       }
 
-      const order = await Order.findOne({
-        where: { order_id: orderId },
-        include: [
-          {
-            model: OrderDetail,
-            attributes: ['order_detail_id', 'quantity', 'unit_price', 'subtotal', 'discount_applied', 'unit_measure', 'is_urgent', 'additional_cost', 'variant_id'],
-            include: [
-              {
-                model: ProductVariant,
-                attributes: ['variant_id', 'calculated_price'],
-                include: [
-                  {
-                    model: Product,
-                    attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'],
-                    required: false,
-                  },
-                ],
-                required: false,
-              },
-            ],
-          },
-          {
-            model: User,
-            attributes: ['name'],
-            required: true,
-          },
-          {
-            model: Address,
-            attributes: ['address_id', 'street', 'city', 'state', 'postal_code'],
-            required: false,
-          },
-          {
-            model: Payment,
-            attributes: ['payment_id', 'payment_method', 'amount', 'status', 'created_at', 'updated_at'],
-            required: false,
-          },
-          {
-            model: OrderHistory,
-            attributes: ['history_id', 'order_status', 'purchase_date'],
-            required: false,
-          },
-        ],
+      // Validar que adminId pertenece a un administrador
+      const admin = await User.findOne({
+        where: { user_id: adminId, user_type: 'administrador' },
         transaction,
       });
-
-      if (!order) {
-        throw new Error('Orden no encontrada');
+      if (!admin) {
+        throw new Error('Usuario administrador no válido');
       }
 
-      await order.update({ order_status: newStatus }, { transaction });
-
-      if (newStatus === 'delivered') {
-        const payment = await Payment.findOne({ where: { order_id: orderId }, transaction });
-        if (payment && payment.status !== 'validated') {
-          await payment.update({ status: 'validated' }, { transaction });
-        }
-      }
-
-      await OrderHistory.create({
-        user_id: order.user_id,
-        order_id: order.order_id,
-        purchase_date: new Date(),
-        order_status: newStatus,
-        total: parseFloat(order.total) || 0,
-        updated_by: adminId,
-      }, { transaction });
-
-      await transaction.commit();
-
-      const updatedOrder = await Order.findOne({
+      // Obtener la orden con todas las relaciones necesarias
+      const order = await Order.findOne({
         where: { order_id: orderId },
         attributes: [
           'order_id',
           'user_id',
-          [Sequelize.cast(Sequelize.col('total'), 'FLOAT'), 'total'],
+          [Sequelize.cast(Sequelize.col('Order.total'), 'FLOAT'), 'total'], // Especificar tabla Order
           'order_status',
           'payment_method',
           'created_at',
@@ -934,11 +1045,50 @@ class OrderService {
             order: [['purchase_date', 'ASC']],
           },
         ],
+        transaction,
       });
 
-      return orderUtils.formatOrderDetails(updatedOrder);
+      if (!order) {
+        throw new Error('Orden no encontrada');
+      }
+
+      // Actualizar el estado de la orden
+      await order.update({ order_status: newStatus }, { transaction });
+
+      // Actualizar el estado del pago si la orden está en 'delivered'
+      if (newStatus === 'delivered') {
+        const payment = await Payment.findOne({ where: { order_id: orderId }, transaction });
+        if (payment && payment.status !== 'validated') {
+          await payment.update({ status: 'validated' }, { transaction });
+        }
+      }
+
+      // Registrar el cambio en el historial
+      await OrderHistory.create({
+        user_id: order.user_id,
+        order_id: order.order_id,
+        purchase_date: new Date(),
+        order_status: newStatus,
+        total: parseFloat(order.total) || 0,
+        updated_by: adminId,
+      }, { transaction });
+
+      // Actualizar el objeto order con el nuevo estado para devolverlo
+      order.order_status = newStatus;
+
+      // Confirmar la transacción
+      await transaction.commit();
+
+      // Registrar la actividad
+      loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado: ID ${orderId}, nuevo estado: ${newStatus}`);
+
+      // Devolver la orden formateada
+      return orderUtils.formatOrderDetails(order);
     } catch (error) {
-      await transaction.rollback();
+      // Solo intentar revertir si la transacción no se ha confirmado
+      if (!transaction.finished) {
+        await transaction.rollback();
+      }
       loggerUtils.logCriticalError(error);
       throw new Error(`Error al actualizar el estado de la orden: ${error.message}`);
     }

@@ -207,70 +207,43 @@ exports.getOrders = [
   }
 ];
 
-// Obtener todas las órdenes para administradores
-exports.getOrdersForAdmin = [
-  // Validar page
-  query('page')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('La página debe ser un número entero positivo'),
+// Obtener un resumen de las ordenes para el administrador
+exports.getOrderSummary = [
+  async (req, res) => {
+    const adminId = req.user.user_id;
 
-  // Validar pageSize
-  query('pageSize')
-    .optional()
-    .isInt({ min: 1, max: 100 })
-    .withMessage('El tamaño de página debe ser un número entero entre 1 y 100'),
+    try {
+      const orderService = new OrderService();
+      const summary = await orderService.getOrderSummary();
 
-  // Validar searchTerm
-  query('searchTerm')
-    .optional()
-    .isString()
-    .trim()
-    .isLength({ min: 1, max: 100 })
-    .withMessage('El término de búsqueda debe ser una cadena entre 1 y 100 caracteres'),
+      loggerUtils.logUserActivity(adminId, 'get_order_summary', 'Resumen de órdenes obtenido por admin');
 
-  // Validar statusFilter
-  query('statusFilter')
-    .optional()
-    .isIn(['all', 'pending', 'processing', 'shipped', 'delivered'])
-    .withMessage('El filtro de estado debe ser uno de: all, pending, processing, shipped, delivered'),
+      res.status(200).json({
+        success: true,
+        message: 'Resumen de órdenes obtenido exitosamente',
+        data: summary
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al obtener el resumen de órdenes',
+        error: error.message
+      });
+    }
+  }
+];
 
-  // Validar dateFilter (aceptar año, fecha única o rango de fechas)
-  query('dateFilter')
-    .optional()
-    .custom((value) => {
-      if (!value) return true; // Permitir valor vacío
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      const parts = value.split(',');
-      if (parts.length === 1) {
-        // Validar como año de 4 dígitos o fecha única en formato YYYY-MM-DD
-        if (/^\d{4}$/.test(value)) {
-          const year = parseInt(value);
-          return year >= 1000 && year <= 9999;
-        } else if (dateRegex.test(value)) {
-          const date = new Date(value);
-          return !isNaN(date.getTime());
-        }
-        throw new Error('El filtro de fecha debe ser un año válido (número de 4 dígitos) o una fecha en formato YYYY-MM-DD');
-      } else if (parts.length === 2) {
-        // Validar como rango de fechas (YYYY-MM-DD,YYYY-MM-DD)
-        const [startDate, endDate] = parts;
-        if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
-          throw new Error('El rango de fechas debe estar en formato YYYY-MM-DD,YYYY-MM-DD');
-        }
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
-          throw new Error('El rango de fechas no es válido');
-        }
-        return true;
-      }
-      throw new Error('El filtro de fecha debe ser un año válido (número de 4 dígitos), una fecha en formato YYYY-MM-DD o un rango en formato YYYY-MM-DD,YYYY-MM-DD');
-    }),
 
-  // Validar dateField
+exports.getOrdersByDateForAdmin = [
+  query('date')
+    .notEmpty()
+    .withMessage('La fecha es obligatoria')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('La fecha debe estar en formato YYYY-MM-DD'),
   query('dateField')
-    .optional()
+    .notEmpty()
+    .withMessage('El campo de fecha es obligatorio')
     .isIn(['delivery', 'creation'])
     .withMessage('El campo de fecha debe ser uno de: delivery, creation'),
 
@@ -283,7 +256,82 @@ exports.getOrdersForAdmin = [
         return res.status(400).json({
           success: false,
           message: 'Errores de validación',
-          errors: errors.array()
+          errors: errors.array(),
+        });
+      }
+
+      const { date, dateField } = req.query;
+      const orderService = new OrderService();
+      const orders = await orderService.getOrdersByDateForAdmin(date, dateField, adminId);
+
+      loggerUtils.logUserActivity(adminId, 'get_orders_by_date_admin', `Órdenes obtenidas para la fecha ${date}, campo: ${dateField}`);
+
+      res.status(200).json({
+        success: true,
+        message: 'Órdenes obtenidas exitosamente',
+        data: orders,
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al obtener órdenes por fecha',
+        error: error.message,
+      });
+    }
+  }
+];
+
+// Obtener todas las órdenes para administradores
+exports.getOrdersForAdmin = [
+  query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser un número entero positivo'),
+  query('pageSize').optional().isInt({ min: 1, max: 100 }).withMessage('El tamaño de página debe ser un número entero entre 1 y 100'),
+  query('searchTerm').optional().isString().trim().withMessage('El término de búsqueda debe ser una cadena'),
+  query('statusFilter').optional().isIn(['all', 'pending', 'processing', 'shipped', 'delivered']).withMessage('El filtro de estado debe ser uno de: all, pending, processing, shipped, delivered'),
+  query('dateFilter').optional().custom((value) => {
+    if (!value) return true;
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    const parts = value.split(',');
+    if (parts.length === 1) {
+      if (/^\d{4}$/.test(value)) {
+        const year = parseInt(value);
+        return year >= 1000 && year <= 9999;
+      } else if (dateRegex.test(value)) {
+        const date = new Date(value);
+        return !isNaN(date.getTime());
+      }
+      throw new Error('El filtro de fecha debe ser un año válido (número de 4 dígitos) o una fecha en formato YYYY-MM-DD');
+    } else if (parts.length === 2) {
+      const [startDate, endDate] = parts;
+      if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
+        throw new Error('El rango de fechas debe estar en formato YYYY-MM-DD,YYYY-MM-DD');
+      }
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+        throw new Error('El rango de fechas no es válido');
+      }
+      return true;
+    }
+    throw new Error('El filtro de fecha debe ser un año válido (número de 4 dígitos), una fecha en formato YYYY-MM-DD o un rango en formato YYYY-MM-DD,YYYY-MM-DD');
+  }),
+  query('dateField').optional().isIn(['delivery', 'creation']).withMessage('El campo de fecha debe ser uno de: delivery, creation'),
+  query('paymentMethod').optional().isIn(['bank_transfer_oxxo', 'bank_transfer_bbva', 'bank_transfer']).withMessage('El método de pago debe ser válido'),
+  query('deliveryOption').optional().isIn(['home_delivery', 'pickup_point', 'store_pickup']).withMessage('La opción de entrega debe ser válida'),
+  query('minTotal').optional().isFloat({ min: 0 }).withMessage('El total mínimo debe ser un número positivo'),
+  query('maxTotal').optional().isFloat({ min: 0 }).withMessage('El total máximo debe ser un número positivo'),
+  query('isUrgent').optional().isBoolean().withMessage('El filtro de urgencia debe ser un booleano'),
+
+  async (req, res) => {
+    const adminId = req.user.user_id;
+    const errors = validationResult(req);
+
+    try {
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array(),
         });
       }
 
@@ -293,26 +341,50 @@ exports.getOrdersForAdmin = [
       const statusFilter = req.query.statusFilter || 'all';
       const dateFilter = req.query.dateFilter || '';
       const dateField = req.query.dateField || 'delivery';
+      const paymentMethod = req.query.paymentMethod || '';
+      const deliveryOption = req.query.deliveryOption || '';
+      const minTotal = req.query.minTotal ? parseFloat(req.query.minTotal) : null;
+      const maxTotal = req.query.maxTotal ? parseFloat(req.query.maxTotal) : null;
+      const isUrgent = req.query.isUrgent ? req.query.isUrgent === 'true' : null;
 
       const orderService = new OrderService();
-      const result = await orderService.getOrdersForAdmin(page, pageSize, searchTerm, statusFilter, dateFilter, dateField);
+      const result = await orderService.getOrdersForAdmin(
+        page,
+        pageSize,
+        searchTerm,
+        statusFilter,
+        dateFilter,
+        dateField,
+        paymentMethod,
+        deliveryOption,
+        minTotal,
+        maxTotal,
+        isUrgent
+      );
 
-      loggerUtils.logUserActivity(adminId, 'get_orders_admin', `Lista de órdenes obtenida por admin: página ${page}, búsqueda: ${searchTerm}, estado: ${statusFilter}, fecha: ${dateFilter || 'ninguno'}, campo: ${dateField}`);
+      if (result.pagination.totalOrders > 1000) {
+        return res.status(400).json({
+          success: false,
+          message: 'Demasiadas órdenes en el rango seleccionado. Por favor, aplica filtros más específicos o reduce el rango de fechas.',
+        });
+      }
+
+      loggerUtils.logUserActivity(adminId, 'get_orders_admin', `Lista de órdenes obtenida por admin: página ${page}, búsqueda: ${searchTerm}, estado: ${statusFilter}, fecha: ${dateFilter || 'ninguno'}, campo: ${dateField}, método de pago: ${paymentMethod || 'ninguno'}, opción de entrega: ${deliveryOption || 'ninguna'}, total mínimo: ${minTotal || 'ninguno'}, total máximo: ${maxTotal || 'ninguno'}, urgente: ${isUrgent !== null ? isUrgent : 'ninguno'}`);
 
       res.status(200).json({
         success: true,
         message: 'Órdenes obtenidas exitosamente',
-        data: result
+        data: result,
       });
     } catch (error) {
       loggerUtils.logCriticalError(error);
       res.status(500).json({
         success: false,
         message: 'Error al obtener las órdenes para administradores',
-        error: error.message
+        error: error.message,
       });
     }
-  }
+  },
 ];
 
 // Obtener detalles de una orden por ID para administradores
@@ -346,7 +418,7 @@ exports.getOrderDetailsByIdForAdmin = [
         data: orderDetails
       });
     } catch (error) {
-      loggerUtils.logError(error);
+      loggerUtils.logCriticalError(error);
       if (error.message === 'Orden no encontrada') {
         return res.status(404).json({
           success: false,
@@ -391,7 +463,7 @@ exports.updateOrderStatus = [
       const orderService = new OrderService();
       const updatedOrder = await orderService.updateOrderStatus(orderId, newStatus, adminId);
 
-      loggerUtils.logUserActivity(adminId, 'update_order_status', `Estadoacicent de la orden actualizado por admin: ID ${orderId}, nuevo estado: ${newStatus}`);
+      loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado por admin: ID ${orderId}, nuevo estado: ${newStatus}`);
 
       res.status(200).json({
         success: true,
@@ -400,7 +472,7 @@ exports.updateOrderStatus = [
       });
     } catch (error) {
       loggerUtils.logCriticalError(error);
-      if (error.message === 'Orden no encontrada' || error.message === 'Estado de orden inválido') {
+      if (error.message === 'Orden no encontrada' || error.message === 'Estado de orden inválido' || error.message === 'Usuario administrador no válido') {
         return res.status(400).json({
           success: false,
           message: error.message
