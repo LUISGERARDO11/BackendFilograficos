@@ -113,11 +113,20 @@ class NotificationService {
         );
 
         try {
+          // Verificar si el token es válido antes de enviar
+          await admin.messaging().send({ token, notification: { title: 'Test', body: 'Test' } }, true);
+          
           const response = await admin.messaging().send({ ...payload, token });
           loggerUtils.logUserActivity(userId, 'push_sent', `Notificación enviada exitosamente: ${response}`);
         } catch (sendError) {
           loggerUtils.logCriticalError(sendError, `Fallo al enviar push al token: ${token}`);
-          throw sendError;
+          if (sendError.code === 'messaging/registration-token-not-registered' || sendError.code === 'messaging/invalid-registration-token') {
+            // Eliminar token inválido de la base de datos
+            await PushSubscription.destroy({ where: { subscription_id: subscription.subscription_id } });
+            loggerUtils.logUserActivity(userId, 'push_token_invalid', `Token inválido eliminado: ${token}`);
+          } else {
+            throw sendError;
+          }
         }
       }
 

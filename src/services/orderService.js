@@ -131,7 +131,7 @@ class OrderService {
       // Calcular subtotal, descuento y total
       const subtotal = orderDetailsData.reduce((sum, detail) => sum + (detail.quantity * detail.unit_price), 0);
       const discount = orderDetailsData.reduce((sum, detail) => sum + detail.discount_applied, 0);
-      const shipping_cost = 20.00; // Placeholder hasta implementar opciones de envío
+      const shipping_cost = 20.00;
       const total = Math.max(0, subtotal + shipping_cost - discount);
 
       // Calcular fecha estimada de entrega
@@ -149,7 +149,7 @@ class OrderService {
         payment_method,
         order_status: 'pending',
         estimated_delivery_date,
-        delivery_option: null // Placeholder para opciones de envío
+        delivery_option: null
       }, { transaction });
 
       // Crear detalles del pedido
@@ -219,13 +219,14 @@ class OrderService {
 
       await transaction.commit();
 
-      // Obtener detalles de la orden con relaciones necesarias
+      // Ajuste: Eliminar 'sku' de Product y moverlo a ProductVariant
       const orderDetails = await OrderDetail.findAll({
         where: { order_id: order.order_id },
         include: [
           {
             model: ProductVariant,
-            include: [{ model: Product, attributes: ['name', 'sku'] }]
+            attributes: ['variant_id', 'sku', 'calculated_price'], // Incluir 'sku' desde ProductVariant
+            include: [{ model: Product, attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'] }]
           }
         ]
       });
@@ -236,23 +237,28 @@ class OrderService {
         attributes: ['user_id', 'name', 'email']
       });
 
-      // Enviar notificación a administradores
-      const notificationManager = new NotificationManager();
-      await notificationManager.notifyNewOrder(order, user, orderDetails, payment);
-
-      // Generar instrucciones de pago
       const paymentInstructions = this.generatePaymentInstructions(payment_method, total);
 
       loggerUtils.logUserActivity(userId, 'create_order', `Orden creada exitosamente: order_id ${order.order_id}`);
 
+      this.notifyOrderCreation(order, user, orderDetails, payment).catch(err => {
+        loggerUtils.logCriticalError(err, 'Error al enviar notificación asíncrona');
+      });
+
       return { order, payment, paymentInstructions };
     } catch (error) {
-      await transaction.rollback();
+      if (transaction && !transaction.finished) {
+        await transaction.rollback();
+      }
       loggerUtils.logCriticalError(error);
       throw new Error(`Error al crear la orden: ${error.message}`);
     }
   }
 
+  async notifyOrderCreation(order, user, orderDetails, payment) {
+    const notificationManager = new NotificationManager();
+    await notificationManager.notifyNewOrder(order, user, orderDetails, payment);
+  }
   /**
    * Obtiene los detalles de una orden específica para el usuario autenticado.
    * @param {number} userId - El ID del usuario autenticado.

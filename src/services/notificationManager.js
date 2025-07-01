@@ -27,7 +27,7 @@ class NotificationManager {
         user_name: user.name || 'Usuario desconocido',
         user_id: order.user_id,
         total: orderUtils.formatCurrency(order.total),
-        is_urgent: orderDetails.some(detail => detail.is_urgent) ? 'Sí' : 'No',
+        is_urgent: orderDetails.some(detail => detail.is_urgent), // Boolean value
         estimated_delivery_date: moment(order.estimated_delivery_date).format('YYYY-MM-DD'),
         delivery_option: order.delivery_option ? order.delivery_option.replace('_', ' ').toUpperCase() : 'No especificada',
         discount: orderUtils.formatCurrency(order.discount || 0),
@@ -43,13 +43,13 @@ class NotificationManager {
           subtotal: orderUtils.formatCurrency(detail.subtotal),
           discount_applied: orderUtils.formatCurrency(detail.discount_applied || 0),
           additional_cost: orderUtils.formatCurrency(detail.additional_cost || 0),
-          is_urgent: detail.is_urgent ? 'Sí' : 'No'
+          is_urgent: detail.is_urgent // Ensure this is passed as boolean
         }))
       };
 
       const htmlContent = ejs.render(template.html_content, data);
       const textContent = ejs.render(template.text_content, data);
-      const subject = ejs.render(template.subject, data); // Renderizar el subject dinámicamente
+      const subject = ejs.render(template.subject, data);
 
       await this.notifyAdmins('new_order_admin', subject, htmlContent, textContent, data);
       loggerUtils.logUserActivity(null, 'notify_new_order', `Notificación enviada: Nueva orden ${order.order_id}`);
