@@ -3,9 +3,10 @@ const loggerUtils = require('../utils/loggerUtils');
 const { Op, Sequelize } = require('sequelize');
 const moment = require('moment');
 const orderUtils = require('../utils/orderUtils');
+const NotificationManager = require('./notificationManager');
 
 // Importar todos los modelos necesarios al inicio del archivo
-const { Cart, CartDetail, Order, OrderDetail, OrderHistory, Payment, Address, CouponUsage, Promotion, ProductVariant, Customization, Product,ProductImage, User} = require('../models/Associations');
+const { Cart, CartDetail, Order, OrderDetail, OrderHistory, Payment, Address, CouponUsage, Promotion, ProductVariant, Customization, Product, ProductImage, User } = require('../models/Associations');
 
 class OrderService {
   /**
@@ -217,6 +218,27 @@ class OrderService {
       await Cart.destroy({ where: { cart_id: cart.cart_id }, transaction });
 
       await transaction.commit();
+
+      // Obtener detalles de la orden con relaciones necesarias
+      const orderDetails = await OrderDetail.findAll({
+        where: { order_id: order.order_id },
+        include: [
+          {
+            model: ProductVariant,
+            include: [{ model: Product, attributes: ['name', 'sku'] }]
+          }
+        ]
+      });
+
+      // Obtener datos del usuario
+      const user = await User.findOne({
+        where: { user_id: userId },
+        attributes: ['user_id', 'name', 'email']
+      });
+
+      // Enviar notificación a administradores
+      const notificationManager = new NotificationManager();
+      await notificationManager.notifyNewOrder(order, user, orderDetails, payment);
 
       // Generar instrucciones de pago
       const paymentInstructions = this.generatePaymentInstructions(payment_method, total);
@@ -511,7 +533,7 @@ class OrderService {
           'discount',
           'shipping_cost',
           'estimated_delivery_date',
-          'delivery_option',
+          'delivery_option'
         ],
         include,
         order: [['created_at', 'DESC']],
@@ -995,7 +1017,7 @@ class OrderService {
         attributes: [
           'order_id',
           'user_id',
-          [Sequelize.cast(Sequelize.col('Order.total'), 'FLOAT'), 'total'], // Especificar tabla Order
+          [Sequelize.cast(Sequelize.col('Order.total'), 'FLOAT'), 'total'],
           'order_status',
           'payment_method',
           'created_at',
@@ -1078,6 +1100,30 @@ class OrderService {
 
       // Confirmar la transacción
       await transaction.commit();
+
+      // Obtener detalles de la orden para la notificación
+      const orderDetails = await OrderDetail.findAll({
+        where: { order_id: order.order_id },
+        include: [
+          {
+            model: ProductVariant,
+            include: [{ model: Product, attributes: ['name'] }]
+          }
+        ]
+      });
+
+      // Obtener datos del usuario
+      const user = await User.findOne({
+        where: { user_id: order.user_id },
+        attributes: ['user_id', 'name', 'email']
+      });
+
+      // Obtener datos del pago
+      const payment = await Payment.findOne({ where: { order_id: order.order_id } });
+
+      // Enviar notificación al cliente
+      const notificationManager = new NotificationManager();
+      await notificationManager.notifyOrderStatusChange(order, user, orderDetails, payment);
 
       // Registrar la actividad
       loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado: ID ${orderId}, nuevo estado: ${newStatus}`);

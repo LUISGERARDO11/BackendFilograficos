@@ -187,6 +187,12 @@ class NotificationService {
       throw new Error(`Error al notificar stock por push: ${error.message}`);
     }
   }
+
+  async notifyOrder(user_id, title, message) {
+    // Implementar lógica para enviar notificación push
+    // Ejemplo: enviar a un servicio como Firebase Cloud Messaging
+    loggerUtils.logUserActivity(user_id, 'notify_order', `Notificación push enviada: ${title}`);
+  }
 }
 
 module.exports = NotificationService;

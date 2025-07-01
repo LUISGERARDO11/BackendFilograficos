@@ -1,5 +1,4 @@
-/* The EmailService class handles sending various types of emails using templates and logging the email
-activities. */
+/* The EmailService class handles sending various types of emails using templates and logging the email activities. */
 require('dotenv').config();
 const ejs = require('ejs');
 const transporter = require('../config/transporter');
@@ -32,13 +31,13 @@ class EmailService {
       const info = await transporter.sendMail(mailOptions);
 
       await NotificationLog.create({
-        user_id: null, // No tenemos user_id directo aquí, depende del contexto
+        user_id: null,
         type: 'email',
         title: subject,
         message: text || html,
         status: 'sent',
         sent_at: new Date(),
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000), // Expira en 24 horas
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
         seen: false
       });
 
@@ -108,18 +107,9 @@ class EmailService {
   }
 
   async notifyStockEmail(to, title, message) {
-    const { User, CommunicationPreference } = require('../models/Associations');
-    const user = await User.findOne({ where: { email: to }, include: [{ model: CommunicationPreference }] });
-
-    // Usar encadenamiento opcional para verificar las preferencias
-    if (!user?.CommunicationPreference?.methods?.includes('email') || !user?.CommunicationPreference?.categories?.stock_alerts) {
-      loggerUtils.logUserActivity(user?.user_id ?? null, 'skip_email', `Notificación de stock omitida por preferencias para ${to}`);
-      return { success: false, message: 'Notificación omitida por preferencias' };
-    }
-
     const htmlContent = `<h1>${title}</h1><p>${message}</p>`;
     return this.sendGenericEmail(to, title, htmlContent, message);
   }
 }
 
-module.exports = EmailService; // Exportar la clase sin instanciarla
+module.exports = EmailService;
