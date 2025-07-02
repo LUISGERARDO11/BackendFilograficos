@@ -211,6 +211,8 @@ exports.login = [
           message: 'MFA requerido. Se ha enviado un código de autenticación.',
           mfaRequired: true,
           userId: user.user_id,
+          name: user.name, // Añadir el campo name
+          tipo: user.user_type
         });
       }
 
@@ -225,7 +227,12 @@ exports.login = [
       });
 
       loggerUtils.logUserActivity(user.user_id, 'login', 'Inicio de sesión exitoso');
-      res.status(200).json({ userId: user.user_id, tipo: user.user_type, message: 'Inicio de sesión exitoso' });
+      res.status(200).json({
+        userId: user.user_id,
+        name: user.name, // Añadir el campo name
+        tipo: user.user_type,
+        message: 'Inicio de sesión exitoso'
+      });
     } catch (error) {
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error en el inicio de sesión', error: error.message });
@@ -384,17 +391,18 @@ exports.verifyOTPMFA = async (req, res) => {
 
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // True en producción, false en desarrollo local
-      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", // Lax para desarrollo local
-      maxAge: config.session_lifetime * 1000 // 15 min en milisegundos
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+      maxAge: config.session_lifetime * 1000
     });
 
     loggerUtils.logUserActivity(user.user_id, 'mfa_login', 'Inicio de sesión con MFA exitoso');
     res.status(200).json({
       success: true,
       userId: user.user_id,
+      name: user.name, // Añadir el campo name
       tipo: user.user_type,
-      message: 'OTP verificado correctamente. Inicio de sesión exitoso.',
+      message: 'OTP verificado correctamente. Inicio de sesión exitoso.'
     });
   } catch (error) {
     loggerUtils.logCriticalError(error);
