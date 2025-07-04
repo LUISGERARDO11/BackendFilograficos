@@ -1,7 +1,7 @@
 require('dotenv').config();
 const loggerUtils = require('../utils/loggerUtils');
 const { Op, Sequelize } = require('sequelize');
-const moment = require('moment');
+const moment = require('moment-timezone');
 const orderUtils = require('../utils/orderUtils');
 const NotificationManager = require('./notificationManager');
 
@@ -225,7 +225,7 @@ class OrderService {
         include: [
           {
             model: ProductVariant,
-            attributes: ['variant_id', 'sku', 'calculated_price'], // Incluir 'sku' desde ProductVariant
+            attributes: ['variant_id', 'sku', 'calculated_price'],
             include: [{ model: Product, attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'] }]
           }
         ]
@@ -259,6 +259,7 @@ class OrderService {
     const notificationManager = new NotificationManager();
     await notificationManager.notifyNewOrder(order, user, orderDetails, payment);
   }
+
   /**
    * Obtiene los detalles de una orden específica para el usuario autenticado.
    * @param {number} userId - El ID del usuario autenticado.
@@ -391,8 +392,8 @@ class OrderService {
         order: {
           order_id: order.order_id,
           status: order.order_status,
-          created_at: order.created_at,
-          estimated_delivery_date: order.estimated_delivery_date,
+          created_at: moment(order.created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+          estimated_delivery_date: moment(order.estimated_delivery_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
           delivery_days: deliveryDays,
           delivery_option: order.delivery_option || null,
           total: parseFloat(order.total) || 0,
@@ -430,14 +431,18 @@ class OrderService {
           status: order.Payments?.[0]?.status || 'pending',
           amount: order.Payments?.[0] ? parseFloat(order.Payments[0].amount) : parseFloat(order.total) || 0,
           payment_id: order.Payments?.[0]?.payment_id || null,
-          created_at: order.Payments?.[0]?.created_at || null,
-          updated_at: order.Payments?.[0]?.updated_at || null,
+          created_at: order.Payments?.[0]?.created_at
+            ? moment(order.Payments[0].created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+            : null,
+          updated_at: order.Payments?.[0]?.updated_at
+            ? moment(order.Payments[0].updated_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+            : null,
           instructions: paymentInstructions
         },
         history: order.OrderHistories?.map(history => ({
           history_id: history.history_id,
           status: history.order_status,
-          date: history.purchase_date
+          date: moment(history.purchase_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
         })) || []
       };
 
@@ -566,8 +571,8 @@ class OrderService {
           total: parseFloat(order.total) || 0,
           order_status: order.order_status,
           payment_status: order.Payments?.[0]?.status || 'pending',
-          created_at: order.created_at,
-          estimated_delivery_date: order.estimated_delivery_date,
+          created_at: moment(order.created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+          estimated_delivery_date: moment(order.estimated_delivery_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
           delivery_days: deliveryDays,
           delivery_option: order.delivery_option || null,
           total_items: order.OrderDetails?.reduce((sum, detail) => sum + (detail.quantity || 0), 0) || 0,
@@ -659,7 +664,7 @@ class OrderService {
       if (!dateRegex.test(date)) {
         throw new Error('Formato de fecha inválido: debe ser YYYY-MM-DD');
       }
-      const targetDate = moment.tz(date, 'UTC');
+      const targetDate = moment.tz(date, 'America/Mexico_City').tz('UTC');
       if (!targetDate.isValid()) {
         throw new Error('Fecha inválida');
       }
@@ -740,7 +745,20 @@ class OrderService {
 
       loggerUtils.logUserActivity(adminId, 'get_orders_by_date_admin', `Órdenes obtenidas para la fecha ${date}, campo: ${dateField}`);
 
-      return orders.map(order => orderUtils.formatOrderDetails(order));
+      return orders.map(order => ({
+        ...orderUtils.formatOrderDetails(order),
+        created_at: moment(order.created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+        estimated_delivery_date: moment(order.estimated_delivery_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+        payment: order.Payments?.[0] ? {
+          ...order.Payments[0].dataValues,
+          created_at: moment(order.Payments[0].created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+          updated_at: moment(order.Payments[0].updated_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+        } : null,
+        history: order.OrderHistories?.map(history => ({
+          ...history.dataValues,
+          purchase_date: moment(history.purchase_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+        })) || []
+      }));
     } catch (error) {
       loggerUtils.logCriticalError(error);
       throw new Error(`Error al obtener órdenes por fecha: ${error.message}`);
@@ -758,7 +776,7 @@ class OrderService {
    * @returns {Object} - Lista de órdenes, paginación y resumen estadístico.
    * @throws {Error} - Si hay un error al obtener las órdenes.
    */
-    async getOrdersForAdmin(page = 1, pageSize = 10, searchTerm = '', statusFilter = 'all', dateFilter = '', dateField = 'delivery', paymentMethod = '', deliveryOption = '', minTotal = null, maxTotal = null, isUrgent = null) {
+  async getOrdersForAdmin(page = 1, pageSize = 10, searchTerm = '', statusFilter = 'all', dateFilter = '', dateField = 'delivery', paymentMethod = '', deliveryOption = '', minTotal = null, maxTotal = null, isUrgent = null) {
     try {
       const offset = (page - 1) * pageSize;
       const validStatuses = ['pending', 'processing', 'shipped', 'delivered'];
@@ -825,7 +843,7 @@ class OrderService {
         },
         {
           model: Payment,
-          attributes: ['status', 'payment_method', 'amount'],
+          attributes: ['status', 'payment_method', 'amount', 'created_at', 'updated_at'],
           required: false,
         },
         {
@@ -887,7 +905,20 @@ class OrderService {
       console.log(`Admin: ${count} órdenes contadas, ${rows.length} órdenes retornadas`);
       console.log(`Order IDs retornados: ${rows.map(order => order.order_id).join(', ')}`);
 
-      const ordersFormatted = rows.map(order => orderUtils.formatOrderDetails(order));
+      const ordersFormatted = rows.map(order => ({
+        ...orderUtils.formatOrderDetails(order),
+        created_at: moment(order.created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+        estimated_delivery_date: moment(order.estimated_delivery_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+        payment: order.Payments?.[0] ? {
+          ...order.Payments[0].dataValues,
+          created_at: moment(order.Payments[0].created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+          updated_at: moment(order.Payments[0].updated_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+        } : null,
+        history: order.OrderHistories?.map(history => ({
+          ...history.dataValues,
+          purchase_date: moment(history.purchase_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+        })) || []
+      }));
       const summary = orderUtils.calculateOrderSummary(ordersFormatted);
 
       return {
@@ -986,7 +1017,20 @@ class OrderService {
         throw new Error('Orden no encontrada');
       }
 
-      return orderUtils.formatOrderDetails(order);
+      return {
+        ...orderUtils.formatOrderDetails(order),
+        created_at: moment(order.created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+        estimated_delivery_date: moment(order.estimated_delivery_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+        payment: order.Payments?.[0] ? {
+          ...order.Payments[0].dataValues,
+          created_at: moment(order.Payments[0].created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+          updated_at: moment(order.Payments[0].updated_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+        } : null,
+        history: order.OrderHistories?.map(history => ({
+          ...history.dataValues,
+          purchase_date: moment(history.purchase_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+        })) || []
+      };
     } catch (error) {
       loggerUtils.logCriticalError(error);
       throw new Error(`Error al obtener los detalles de la orden: ${error.message}`);
@@ -1134,8 +1178,20 @@ class OrderService {
       // Registrar la actividad
       loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado: ID ${orderId}, nuevo estado: ${newStatus}`);
 
-      // Devolver la orden formateada
-      return orderUtils.formatOrderDetails(order);
+      return {
+        ...orderUtils.formatOrderDetails(order),
+        created_at: moment(order.created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+        estimated_delivery_date: moment(order.estimated_delivery_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+        payment: order.Payments?.[0] ? {
+          ...order.Payments[0].dataValues,
+          created_at: moment(order.Payments[0].created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
+          updated_at: moment(order.Payments[0].updated_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+        } : null,
+        history: order.OrderHistories?.map(history => ({
+          ...history.dataValues,
+          purchase_date: moment(history.purchase_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+        })) || []
+      };
     } catch (error) {
       // Solo intentar revertir si la transacción no se ha confirmado
       if (!transaction.finished) {

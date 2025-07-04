@@ -3,7 +3,7 @@ const NotificationService = require('./notificationService');
 const EmailService = require('./emailService');
 const loggerUtils = require('../utils/loggerUtils');
 const ejs = require('ejs');
-const moment = require('moment');
+const moment = require('moment-timezone'); // Asegúrate de incluir moment-timezone
 const orderUtils = require('../utils/orderUtils');
 
 class NotificationManager {
@@ -27,8 +27,8 @@ class NotificationManager {
         user_name: user.name || 'Usuario desconocido',
         user_id: order.user_id,
         total: orderUtils.formatCurrency(order.total),
-        is_urgent: orderDetails.some(detail => detail.is_urgent), // Boolean value
-        estimated_delivery_date: moment(order.estimated_delivery_date).format('YYYY-MM-DD'),
+        is_urgent: orderDetails.some(detail => detail.is_urgent),
+        estimated_delivery_date: moment(order.estimated_delivery_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
         delivery_option: order.delivery_option ? order.delivery_option.replace('_', ' ').toUpperCase() : 'No especificada',
         discount: orderUtils.formatCurrency(order.discount || 0),
         shipping_cost: orderUtils.formatCurrency(order.shipping_cost || 0),
@@ -43,7 +43,7 @@ class NotificationManager {
           subtotal: orderUtils.formatCurrency(detail.subtotal),
           discount_applied: orderUtils.formatCurrency(detail.discount_applied || 0),
           additional_cost: orderUtils.formatCurrency(detail.additional_cost || 0),
-          is_urgent: detail.is_urgent // Ensure this is passed as boolean
+          is_urgent: detail.is_urgent
         }))
       };
 
@@ -81,8 +81,8 @@ class NotificationManager {
       const data = {
         order_id: order.order_id,
         user_name: user.name || 'Usuario desconocido',
-        new_status: translatedStatus, // Usar el estado traducido
-        estimated_delivery_date: moment(order.estimated_delivery_date).format('YYYY-MM-DD'),
+        new_status: translatedStatus,
+        estimated_delivery_date: moment(order.estimated_delivery_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
         delivery_option: order.delivery_option ? order.delivery_option.replace('_', ' ').toUpperCase() : 'No especificada',
         total: orderUtils.formatCurrency(order.total),
         discount: orderUtils.formatCurrency(order.discount || 0),
@@ -102,7 +102,7 @@ class NotificationManager {
 
       const htmlContent = ejs.render(template.html_content, data);
       const textContent = ejs.render(template.text_content, data);
-      const subject = ejs.render(template.subject, data); // Renderizar el subject dinámicamente
+      const subject = ejs.render(template.subject, data);
 
       await this.emailService.sendGenericEmail(user.email, subject, htmlContent, textContent);
       loggerUtils.logUserActivity(user.user_id, 'notify_order_status_change', `Notificación enviada: Cambio de estado para orden ${order.order_id}`);

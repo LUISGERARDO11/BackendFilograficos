@@ -1,9 +1,7 @@
-/* This JavaScript code snippet is a module that provides various functions to query and filter support
-inquiries stored in a database using Sequelize, which is an ORM for Node.js. Here's a breakdown of
-what the code is doing: */
+/* This JavaScript code snippet is a module that provides various functions to query and filter support inquiries stored in a database using Sequelize, which is an ORM for Node.js. */
 const { Op } = require("sequelize");
 const SupportInquiry = require("../models/Supportinquiry");
-
+const moment = require('moment-timezone');
 
 //filtros 
 /**
@@ -47,10 +45,12 @@ exports.getInquiriesByResponseChannel = async (channel, page = 1, pageSize = 10)
  */
 exports.getInquiriesByDateRange = async (startDate, endDate, page = 1, pageSize = 10) => {
   const offset = (page - 1) * pageSize;
+  const startDateUTC = moment.tz(startDate, 'America/Mexico_City').tz('UTC').toDate();
+  const endDateUTC = moment.tz(endDate, 'America/Mexico_City').tz('UTC').toDate();
   return await SupportInquiry.findAndCountAll({
     where: {
       created_at: {
-        [Op.between]: [startDate, endDate],
+        [Op.between]: [startDateUTC, endDateUTC],
       },
     },
     limit: pageSize,
@@ -87,11 +87,12 @@ exports.getInquiriesWithUser = async (page = 1, pageSize = 10) => {
  */
 exports.getInquiriesByUpdatedDate = async (startDate, endDate, page = 1, pageSize = 10) => {
   const offset = (page - 1) * pageSize;
-
+  const startDateUTC = moment.tz(startDate, 'America/Mexico_City').tz('UTC').toDate();
+  const endDateUTC = moment.tz(endDate, 'America/Mexico_City').tz('UTC').toDate();
   return await SupportInquiry.findAndCountAll({
     where: {
       updated_at: {
-        [Op.between]: [startDate, endDate],
+        [Op.between]: [startDateUTC, endDateUTC],
       },
     },
     limit: pageSize,
@@ -104,12 +105,12 @@ exports.getInquiriesByUpdatedDate = async (startDate, endDate, page = 1, pageSiz
  */
 exports.searchInquiries = async (searchTerm, page = 1, pageSize = 10) => {
   const offset = (page - 1) * pageSize;
-  const searchPattern = `%${searchTerm}%`; // Para coincidencias parciales
+  const searchPattern = `%${searchTerm}%`;
 
   return await SupportInquiry.findAndCountAll({
     where: {
       [Op.or]: [
-        { inquiry_id: searchTerm }, // Búsqueda exacta por ID (numérico o string)
+        { inquiry_id: searchTerm },
         { user_name: { [Op.like]: searchPattern } },
         { user_email: { [Op.like]: searchPattern } },
         { subject: { [Op.like]: searchPattern } },
@@ -142,8 +143,10 @@ exports.getFilteredInquiries = async (filters, page = 1, pageSize = 10, searchTe
   }
 
   if (filters.startDate && filters.endDate) {
+    const startDateUTC = moment.tz(filters.startDate, 'America/Mexico_City').tz('UTC').toDate();
+    const endDateUTC = moment.tz(filters.endDate, 'America/Mexico_City').tz('UTC').toDate();
     whereClause.created_at = {
-      [Op.between]: [filters.startDate, filters.endDate],
+      [Op.between]: [startDateUTC, endDateUTC],
     };
   }
 

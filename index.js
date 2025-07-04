@@ -2,6 +2,7 @@
  * The function starts a server by connecting to a database and listening on a specified port.
  */
 require('dotenv').config();
+process.env.TZ = 'UTC'; // Forzar UTC en el proceso de Node.js
 const app = require("./src/app"); // Importar la configuración de la app
 const sequelize = require('./src/config/dataBase');
 const logger = require('./src/config/logger'); // Usar logger en lugar de console.log

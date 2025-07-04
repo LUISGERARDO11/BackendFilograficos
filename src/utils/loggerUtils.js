@@ -1,25 +1,26 @@
 /* This JavaScript code defines a module that exports three functions for logging different types of
 activities using a logger object. Here's a breakdown of what each function does: */
 const logger = require('../config/logger');
+const moment = require('moment-timezone');
 
 // Función para registrar actividad del usuario
 exports.logUserActivity = (userId, action, message) => {
     logger.info({
         userId,
-        action, // Ejemplo: login, failed login, password change
+        action,
         message,
-        timestamp: new Date().toISOString()
+        timestamp: moment().tz('UTC').toISOString() // Almacenar en UTC
     });
 };
 
-// Función para registrar eventos de seguridad (ejemplo: acceso a recursos sensibles)
+// Función para registrar eventos de seguridad
 exports.logSecurityEvent = (userId, resource, action, message) => {
     logger.info({
         userId,
-        resource, // Ejemplo: ruta del recurso al que se accede
-        action, // Ejemplo: acceso autorizado/no autorizado
+        resource,
+        action,
         message,
-        timestamp: new Date().toISOString()
+        timestamp: moment().tz('UTC').toISOString() // Almacenar en UTC
     });
 };
 
@@ -28,6 +29,6 @@ exports.logCriticalError = (error) => {
     logger.error({
         message: error.message,
         stack: error.stack,
-        timestamp: new Date().toISOString()
+        timestamp: moment().tz('UTC').toISOString() // Almacenar en UTC
     });
 };

@@ -1,3 +1,5 @@
+const moment = require('moment-timezone');
+
 /**
  * The provided JavaScript code includes functions for validating pagination parameters, parsing query
  * parameters, and formatting variant, price history, and batch updated variant data.
@@ -34,7 +36,7 @@ const formatVariant = (variant) => {
         category: variant.Product.Category ? variant.Product.Category.name : null,
         product_type: variant.Product.product_type,
         updated_at: lastPriceChange
-            ? lastPriceChange.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })
+            ? moment(lastPriceChange).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
             : 'Sin cambios de precio',
     };
 };
@@ -56,13 +58,7 @@ const formatPriceHistory = (priceHistory) => {
         },
         change_type: entry.change_type,
         change_description: entry.change_description || 'Sin descripción',
-        change_date: entry.change_date.toLocaleDateString('es-MX', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-        }),
+        change_date: moment(entry.change_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
         changed_by: {
             user_id: entry.User.user_id,
             name: entry.User.name,
@@ -81,7 +77,7 @@ const formatBatchUpdatedVariant = (variant) => ({
     profit_margin: parseFloat(variant.profit_margin).toFixed(2),
     calculated_price: parseFloat(variant.calculated_price).toFixed(2),
     category: variant.Product.Category?.name || null,
-    updated_at: variant.updated_at.toISOString(),
+    updated_at: moment(variant.updated_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
     product_type: variant.Product.product_type,
 });
 

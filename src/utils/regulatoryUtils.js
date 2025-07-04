@@ -2,10 +2,11 @@ const axios = require('axios');
 const mammoth = require('mammoth');
 const sanitizeHtml = require('sanitize-html');
 const he = require('he');
-const crypto = require('crypto'); // Módulo criptográfico seguro
+const crypto = require('crypto');
 const cloudinaryService = require('../services/cloudinaryService');
 const { RegulatoryDocument, DocumentVersion } = require('../models/Associations');
 const loggerUtils = require('./loggerUtils');
+const moment = require('moment-timezone');
 
 // Configuración de límites para protección contra DoS
 const REGEX_TIMEOUT_MS = 500; // Tiempo máximo para ejecución de regex
@@ -105,7 +106,7 @@ async function processUploadedFile(fileBuffer) {
       allowedTags: [], 
       allowedAttributes: {},
       textFilter: text => he.decode(text),
-      allowedIframeHostnames: [] // No permitir iframes
+      allowedIframeHostnames: []
     });
 
     return content.trim();
@@ -119,7 +120,7 @@ async function processUploadedFile(fileBuffer) {
   }
 }
 
-// Resto de las funciones permanecen igual pero con mejor manejo de errores
+// Obtener la siguiente versión
 async function getNextVersion(document_id) {
   try {
     const lastVersion = await DocumentVersion.findOne({
@@ -152,7 +153,10 @@ async function updateActiveVersion(document_id, newVersion, content, effective_d
     }, { transaction });
     
     await RegulatoryDocument.update(
-      { current_version: newVersion, effective_date: effective_date || new Date() },
+      { 
+        current_version: newVersion, 
+        effective_date: effective_date ? moment(effective_date).tz('UTC').toDate() : moment().tz('UTC').toDate() // Almacenar en UTC
+      },
       { where: { document_id }, transaction }
     );
     
@@ -171,8 +175,7 @@ async function updateActiveVersion(document_id, newVersion, content, effective_d
 
 // Manejar errores
 function handleError(res, error, message = 'Error procesando solicitud') {
-  // Reemplazamos Math.random() con un generador criptográficamente seguro
-  const errorId = crypto.randomBytes(4).toString('hex'); // 8 caracteres hexadecimales
+  const errorId = crypto.randomBytes(4).toString('hex');
   
   loggerUtils.logCriticalError(error, { errorId });
   
@@ -180,7 +183,7 @@ function handleError(res, error, message = 'Error procesando solicitud') {
     message, 
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : error.message,
     errorId,
-    timestamp: new Date().toISOString()
+    timestamp: moment().tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss') // Presentar en America/Mexico_City
   });
 }
 

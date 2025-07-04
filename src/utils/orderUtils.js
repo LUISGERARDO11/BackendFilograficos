@@ -116,9 +116,13 @@ const orderUtils = {
       payment_status: order.Payments?.[0]?.status || 'pending',
       payment_method: order.payment_method,
       order_status: order.order_status,
-      estimated_delivery_date: order.estimated_delivery_date,
+      estimated_delivery_date: order.estimated_delivery_date
+        ? moment(order.estimated_delivery_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+        : null,
       delivery_option: order.delivery_option || null,
-      created_at: order.created_at,
+      created_at: order.created_at
+        ? moment(order.created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+        : null,
       order_details: order.OrderDetails?.map(detail => ({
         order_detail_id: detail.order_detail_id,
         product_name: detail.ProductVariant?.Product?.name || 'Producto no disponible',
@@ -140,7 +144,9 @@ const orderUtils = {
       history: order.OrderHistories?.map(history => ({
         history_id: history.history_id,
         status: history.order_status,
-        date: history.purchase_date,
+        date: history.purchase_date
+          ? moment(history.purchase_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
+          : null,
       })) || [],
     };
   },

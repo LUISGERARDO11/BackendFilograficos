@@ -1,8 +1,8 @@
-/* This code snippet is a module written in JavaScript that provides several functions related to
-password management and security. Here is a breakdown of what each part of the code does: */
+/* This code snippet provides functions for password management and security, with date handling in UTC. */
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const moment = require('moment-timezone');
 
 let passwordList = new Set();
 let isPasswordListLoaded = false;
@@ -13,19 +13,19 @@ exports.checkPasswordRotation = (fechaUltimoCambio) => {
     throw new Error("fechaUltimoCambio debe ser una instancia de Date");
   }
 
-  const seisMesesAntes = new Date();
-  seisMesesAntes.setMonth(seisMesesAntes.getMonth() - 6); // Restar 6 meses (180 días)
-  const warningPeriod = new Date();
-  warningPeriod.setDate(warningPeriod.getDate() - 5); // Aviso si quedan 5 días o menos
+  // Convertir fechaUltimoCambio a UTC para cálculos consistentes
+  const fechaUltimoCambioUTC = moment(fechaUltimoCambio).tz('UTC');
+  const seisMesesAntes = moment().tz('UTC').subtract(6, 'months'); // Restar 6 meses en UTC
+  const warningPeriod = moment().tz('UTC').subtract(5, 'days'); // Aviso si quedan 5 días o menos
 
-  if (fechaUltimoCambio < seisMesesAntes) {
+  if (fechaUltimoCambioUTC.isBefore(seisMesesAntes)) {
     return {
       requiereCambio: true,
       message: "Debes cambiar tu contraseña. Han pasado más de 6 meses.",
     };
   }
 
-  if (fechaUltimoCambio < warningPeriod) {
+  if (fechaUltimoCambioUTC.isBefore(warningPeriod)) {
     return {
       requiereCambio: false,
       warning: true,

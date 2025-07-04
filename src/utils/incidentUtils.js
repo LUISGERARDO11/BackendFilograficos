@@ -2,33 +2,35 @@
 about failed login attempts based on a specified period (day, week, or month). Here is a breakdown
 of what the code does: */
 const { Op } = require('sequelize');
-const { User, FailedAttempt } = require('../models/Associations')
+const { User, FailedAttempt } = require('../models/Associations');
+const moment = require('moment-timezone');
 
 // Función para obtener datos de intentos fallidos en un periodo determinado
 exports.getFailedAttemptsData = async (periodo) => {
   try {
-    let fechaInicio = new Date(); // Obtenemos la fecha y hora actual
+    // Usar UTC para cálculos de períodos
+    let fechaInicio = moment().tz('UTC'); // Fecha actual en UTC
 
     // Determinar la fecha de inicio basada en el periodo solicitado
     switch (periodo) {
       case 'dia':
-        fechaInicio.setDate(fechaInicio.getDate() - 1); // Restar 1 día a la fecha actual
+        fechaInicio = fechaInicio.subtract(1, 'days'); // Restar 1 día
         break;
       case 'semana':
-        fechaInicio.setDate(fechaInicio.getDate() - 7); // Restar 7 días a la fecha actual
+        fechaInicio = fechaInicio.subtract(7, 'days'); // Restar 7 días
         break;
       case 'mes':
-        fechaInicio.setMonth(fechaInicio.getMonth() - 1); // Restar 1 mes a la fecha actual
+        fechaInicio = fechaInicio.subtract(1, 'months'); // Restar 1 mes
         break;
       default:
-        throw new Error('Periodo no válido. Use "dia", "semana" o "mes".'); // Si el periodo no es válido, lanzamos un error
+        throw new Error('Periodo no válido. Use "dia", "semana" o "mes".');
     }
 
     // Consultamos los intentos fallidos desde la fecha de inicio hasta la actualidad
     const result = await FailedAttempt.findAll({
       where: {
         attempt_date: {
-          [Op.gte]: fechaInicio // Filtrar intentos fallidos que ocurran después de la fecha de inicio
+          [Op.gte]: fechaInicio.toDate() // Filtrar en UTC
         }
       },
       include: [{
@@ -51,25 +53,25 @@ exports.getFailedAttemptsData = async (periodo) => {
 
     // Procesamos los resultados para estructurarlos en un formato más amigable
     const processed = result.map(item => ({
-      user_id: item['User.user_id'] || item.user_id, // ID del usuario
-      nombre: item['User.name'], // Nombre del usuario
-      email: item['User.email'], // Correo electrónico del usuario
-      estado: item['User.status'], // Estado del usuario (activo, inactivo, etc.)
-      tipo_usuario: item['User.user_type'], // Tipo de usuario (cliente, administrador, etc.)
-      numero_intentos: item.total_attempts, // Número total de intentos fallidos
-      is_resolved: item.is_resolved, // Si el problema fue resuelto
-      fecha: item.last_attempt_date // Última fecha en la que se registró un intento fallido
+      user_id: item['User.user_id'] || item.user_id,
+      nombre: item['User.name'],
+      email: item['User.email'],
+      estado: item['User.status'],
+      tipo_usuario: item['User.user_type'],
+      numero_intentos: item.total_attempts,
+      is_resolved: item.is_resolved,
+      fecha: moment(item.last_attempt_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss') // Presentar en America/Mexico_City
     }));
 
     // Filtramos los usuarios según su tipo
-    const clientes = processed.filter(user => user.tipo_usuario === 'cliente'); // Usuarios tipo "cliente"
-    const administradores = processed.filter(user => user.tipo_usuario === 'administrador'); // Usuarios tipo "administrador"
+    const clientes = processed.filter(user => user.tipo_usuario === 'cliente');
+    const administradores = processed.filter(user => user.tipo_usuario === 'administrador');
 
     // Retornamos los datos de intentos fallidos organizados por tipo de usuario
     return { clientes, administradores };
 
   } catch (error) {
-    console.error('Error en getFailedAttemptsData:', error); // Mostramos el error en la consola para depuración
-    throw new Error('Error al obtener intentos fallidos'); // Lanzamos un error genérico para evitar exponer detalles sensibles
+    console.error('Error en getFailedAttemptsData:', error);
+    throw new Error('Error al obtener intentos fallidos');
   }
 };

@@ -3,6 +3,7 @@ const express = require('express');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const cron = require('node-cron');
+const moment = require('moment-timezone');
 
 // Importar configuraciones
 const logger = require('./config/logger');
@@ -62,6 +63,13 @@ app.set('trust proxy', 1);
 // Middleware para el manejo de JSON
 app.use(express.json());
 
+// Middleware para detectar la zona horaria del cliente
+app.use((req, res, next) => {
+  const clientTimezone = req.headers['x-timezone'] || 'America/Mexico_City'; // Por defecto America/Mexico_City
+  req.timezone = clientTimezone; // Almacenar en el objeto req para uso en controladores
+  next();
+});
+
 // Aplicar configuración de CORS
 app.use(corsConfig);
 
@@ -101,7 +109,7 @@ routes.forEach(({ path, router }) => {
 });
 
 // Programar respaldos automáticos
-// Full backup: Cada domingo a las 00:00
+// Full backup: Cada domingo a las 00:00 (America/Mexico_City)
 cron.schedule('0 0 * * 0', async () => {
   try {
     const config = await BackupConfig.findOne({ where: { storage_type: 'google_drive', backup_type: 'full' } });
@@ -110,14 +118,16 @@ cron.schedule('0 0 * * 0', async () => {
       return;
     }
     const { data_types, created_by } = config;
-    await backupService.generateBackup(created_by, JSON.parse(data_types), 'full');
-    logger.info('Respaldo completo ejecutado exitosamente');
+    await backupService.generateBackup(created_by, JSON.parse(data_types), 'full', moment().tz('UTC').format());
+    logger.info(`Respaldo completo ejecutado exitosamente en ${moment().tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')}`);
   } catch (error) {
     logger.error('Error en cron job de respaldo completo:', error);
   }
+}, {
+  timezone: 'America/Mexico_City' // Ejecutar según la zona horaria de México
 });
 
-// Diferencial backup: Cada noche a las 00:00, excepto domingos
+// Diferencial backup: Cada noche a las 00:00, excepto domingos (America/Mexico_City)
 cron.schedule('0 0 * * 1-6', async () => {
   try {
     const config = await BackupConfig.findOne({ where: { storage_type: 'google_drive', backup_type: 'differential' } });
@@ -126,12 +136,13 @@ cron.schedule('0 0 * * 1-6', async () => {
       return;
     }
     const { data_types, created_by } = config;
-    console.log('data_types type:', typeof data_types, 'value:', data_types); // Debug log
-    await backupService.generateBackup(created_by, JSON.parse(data_types), 'differential');
-    logger.info('Respaldo diferencial ejecutado exitosamente');
+    await backupService.generateBackup(created_by, JSON.parse(data_types), 'differential', moment().tz('UTC').format());
+    logger.info(`Respaldo diferencial ejecutado exitosamente en ${moment().tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')}`);
   } catch (error) {
     logger.error('Error en cron job de respaldo diferencial:', error);
   }
+}, {
+  timezone: 'America/Mexico_City' // Ejecutar según la zona horaria de México
 });
 
 /* Transaccional backup: Cada hora
@@ -143,12 +154,13 @@ cron.schedule('0 * * * *', async () => {
       return;
     }
     const { data_types, created_by } = config;
-    console.log('data_types type:', typeof data_types, 'value:', data_types); // Debug log
-    await backupService.generateBackup(created_by, JSON.parse(data_types), 'transactional');
-    logger.info('Respaldo transaccional ejecutado exitosamente');
+    await backupService.generateBackup(created_by, JSON.parse(data_types), 'transactional', moment().tz('UTC').format());
+    logger.info(`Respaldo transaccional ejecutado exitosamente en ${moment().tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')}`);
   } catch (error) {
     logger.error('Error en cron job de respaldo transaccional:', error);
   }
+}, {
+  timezone: 'America/Mexico_City' // Ejecutar según la zona horaria de México
 });*/
 
 // Middleware para manejar errores

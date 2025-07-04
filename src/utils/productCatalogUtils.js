@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { Product, ProductVariant, ProductImage, Category, Collaborator, PriceHistory, ProductAttribute, ProductAttributeValue, CustomizationOption } = require('../models/Associations');
 const { uploadProductImagesToCloudinary, deleteFromCloudinary } = require('../services/cloudinaryService');
 const loggerUtils = require('./loggerUtils');
+const moment = require('moment-timezone');
 
 // Validar categoría
 async function validateCategory(category_id) {
@@ -59,7 +60,7 @@ function createPriceHistoryRecord(variant_id, oldData, newData, change_type, use
     new_calculated_price: newCalculatedPrice,
     change_type,
     changed_by: userId,
-    change_date: new Date(),
+    change_date: moment().tz('UTC').toDate(), // Almacenar en UTC
     change_description: change_type === 'initial' ? 'Precio inicial establecido al crear la variante' : null
   };
 }
@@ -111,7 +112,8 @@ function formatProductResponse(product) {
         image_url: img.image_url,
         public_id: img.public_id,
         order: img.order
-      })) || []
+      })) || [],
+      updated_at: moment(variant.updated_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss') // Presentar en America/Mexico_City
     })) || [],
     customizations: product.CustomizationOptions?.map(cust => ({
       type: cust.option_type,
