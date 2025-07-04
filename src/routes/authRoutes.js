@@ -9,6 +9,7 @@ const authController = require('../controllers/authController');
 // Importar middlewares
 const authMiddleware = require('../middlewares/authMiddleware');
 const { authLimiter } = require('../middlewares/expressRateLimit');
+const roleMiddleware = require('../middlewares/roleMiddleware');
 
 // Registro de un nuevo usuario
 router.post('/register', authLimiter, authController.register);
@@ -27,5 +28,11 @@ router.post('/mfa/verify-otp', authController.verifyOTPMFA);
 
 // Cierre de sesión
 router.post('/logout', authMiddleware, authController.logout);
+
+// Nueva ruta para autenticación de Alexa
+router.post('/alexa-login', authController.alexaLogin);
+
+// Nueva ruta para revocar tokens (protegida para administradores)
+router.post('/revoke-token', authMiddleware, roleMiddleware(['administrador']), authController.revokeToken);
 
 module.exports = router;

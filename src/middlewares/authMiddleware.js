@@ -1,12 +1,20 @@
 require("dotenv").config();
 const authService = require("../services/authService");
+const { RevokedToken } = require('../models/Associations');
 
-// Middleware para verificar la autenticación del token JWT desde cookies
+// Middleware para verificar la autenticación del token JWT
 const authMiddleware = async (req, res, next) => {
-  const token = req.cookies["token"];
+  // Soporta tokens desde cookies (web) o header Authorization (Alexa)
+  const token = req.headers.authorization?.split(' ')[1] || req.cookies["token"];
   
   if (!token) {
     return res.status(401).json({ message: "No autorizado. Por favor, inicia sesión." });
+  }
+
+  // Verificar si el token está revocado
+  const isRevoked = await RevokedToken.findOne({ where: { token } });
+  if (isRevoked) {
+    return res.status(401).json({ message: "Token revocado." });
   }
 
   try {
@@ -25,13 +33,15 @@ const authMiddleware = async (req, res, next) => {
     } else {
       console.log(`Token sin cambios: ${token}`);
     }
-    // Siempre establecer la cookie, incluso si el token no cambia, para asegurar sincronización
-    res.cookie("token", newToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // True en producción, false en desarrollo local
-      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", // Lax para desarrollo local
-      maxAge: config.session_lifetime * 1000 // 15 min en milisegundos
-    });
+    // Establecer la cookie solo para sesiones web
+    if (req.cookies['token']) {
+      res.cookie("token", newToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+        maxAge: config.session_lifetime * 1000
+      });
+    }
 
     req.user = data;
     next();

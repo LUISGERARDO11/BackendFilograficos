@@ -51,6 +51,7 @@ const CommunicationPreference = require('./CommunicationPreference');
 const SystemConfig = require('./Systemconfig');
 const BackupConfig = require('./BackupConfig');
 const BackupFiles = require('./BackupFiles');
+const RevokedToken = require('./RevokedToken');
 
 // Relaciones de Usuarios
 User.hasOne(Account, { foreignKey: 'user_id' });
@@ -86,6 +87,9 @@ PriceHistory.belongsTo(User, { foreignKey: 'changed_by' });
 User.hasMany(BackupConfig, { foreignKey: 'created_by' });
 BackupConfig.belongsTo(User, { foreignKey: 'created_by' });
 
+User.hasMany(RevokedToken, { foreignKey: 'user_id' });
+RevokedToken.belongsTo(User, { foreignKey: 'user_id' });
+
 // Relaciones de Cuentas
 Account.hasMany(TwoFactorConfig, { foreignKey: 'account_id' });
 TwoFactorConfig.belongsTo(Account, { foreignKey: 'account_id' });
@@ -119,10 +123,10 @@ Faq.belongsTo(FaqCategory, { foreignKey: 'category_id', as: 'category' });
 Order.hasOne(Payment, { foreignKey: 'order_id' });
 Payment.belongsTo(Order, { foreignKey: 'order_id' });
 
-Order.hasMany(OrderHistory, { foreignKey: 'order_id' }); // Cambiado de hasOne a hasMany
+Order.hasMany(OrderHistory, { foreignKey: 'order_id' });
 OrderHistory.belongsTo(Order, { foreignKey: 'order_id' });
 
-Order.belongsTo(Address, { foreignKey: 'address_id' }); // Nueva relación
+Order.belongsTo(Address, { foreignKey: 'address_id' });
 Address.hasMany(Order, { foreignKey: 'address_id' });
 
 // Relaciones de Respaldo y Restauración
@@ -335,5 +339,6 @@ module.exports = {
   Company,
   SocialMedia,
   BackupConfig,
-  BackupFiles
+  BackupFiles,
+  RevokedToken
 };

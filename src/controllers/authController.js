@@ -3,7 +3,7 @@ logout, and two-factor authentication (2FA) using OTP (One-Time Password). Here 
 main functionalities: */
 const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
-const { User, Account, Session, TwoFactorConfig, PasswordStatus, CommunicationPreference } = require('../models/Associations');
+const { User, Account, Session, TwoFactorConfig, PasswordStatus, CommunicationPreference, RevokedToken } = require('../models/Associations');
 const authService = require('../services/authService');
 const EmailService = require('../services/emailService');
 const loggerUtils = require('../utils/loggerUtils');
@@ -128,7 +128,7 @@ exports.verifyEmail = async (req, res) => {
 
     const baseUrls = {
       development: ['http://localhost:3000', 'http://localhost:4200', 'http://127.0.0.1:4200', 'http://127.0.0.1:3000'],
-      production: ['https://web-filograficos.vercel.app'],
+      production: ['https://ecommerce-filograficos.vercel.app/'],
     };
 
     const currentEnv = baseUrls[process.env.NODE_ENV] ? process.env.NODE_ENV : 'development';
@@ -200,9 +200,9 @@ exports.login = [
         loggerUtils.logUserActivity(user.user_id, 'login_failed', 'Límite de sesiones activas alcanzado');
         return res.status(403).json({ message: 'Límite de sesiones activas alcanzado (5 sesiones permitidas).' });
       }
-      if (user.user_type === 'administrador' && activeSessionsCount >= 2) {
+      if (user.user_type === 'administrador' && activeSessionsCount >= 3) {
         loggerUtils.logUserActivity(user.user_id, 'login_failed', 'Límite de sesiones activas alcanzado');
-        return res.status(403).json({ message: 'Límite de sesiones activas alcanzado (2 sesiones permitidas para administradores).' });
+        return res.status(403).json({ message: 'Límite de sesiones activas alcanzado (3 sesiones permitidas para administradores).' });
       }
 
       const mfaConfig = await TwoFactorConfig.findOne({ where: { account_id: account.account_id } });
@@ -211,7 +211,7 @@ exports.login = [
           message: 'MFA requerido. Se ha enviado un código de autenticación.',
           mfaRequired: true,
           userId: user.user_id,
-          name: user.name, // Añadir el campo name
+          name: user.name,
           tipo: user.user_type
         });
       }
@@ -229,7 +229,7 @@ exports.login = [
       loggerUtils.logUserActivity(user.user_id, 'login', 'Inicio de sesión exitoso');
       res.status(200).json({
         userId: user.user_id,
-        name: user.name, // Añadir el campo name
+        name: user.name,
         tipo: user.user_type,
         message: 'Inicio de sesión exitoso'
       });
@@ -271,6 +271,143 @@ exports.logout = async (req, res) => {
     res.status(500).json({ message: 'Error al cerrar sesión', error: error.message });
   }
 };
+
+// Nueva función para autenticación de Alexa
+exports.alexaLogin = [
+  body('email').isEmail().normalizeEmail().withMessage('Correo electrónico inválido'),
+  body('password').not().isEmpty().trim().escape().withMessage('La contraseña es requerida'),
+  body('client_id').equals('alexa-skill-filograficos').withMessage('client_id inválido'),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, password, client_id } = req.body;
+
+    try {
+      // Buscar usuario por email
+      const user = await User.findOne({ where: { email } });
+      if (!user) {
+        loggerUtils.logUserActivity(null, 'alexa_login_failed', `Intento de inicio de sesión fallido para email no encontrado: ${email}`);
+        return res.status(400).json({ message: 'Usuario no encontrado' });
+      }
+
+      // Verificar que el usuario sea administrador y esté activo
+      if (user.user_type !== 'administrador' || user.status !== 'activo') {
+        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', 'Intento de inicio de sesión fallido: usuario no es administrador o no está activo');
+        return res.status(403).json({ message: 'Acceso no autorizado. Solo administradores activos pueden usar la Skill de Alexa.' });
+      }
+
+      // Buscar cuenta asociada
+      const account = await Account.findOne({ where: { user_id: user.user_id } });
+      if (!account) {
+        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', 'Intento de inicio de sesión fallido: cuenta no encontrada');
+        return res.status(400).json({ message: 'Cuenta no encontrada' });
+      }
+
+      // Verificar si el usuario está bloqueado
+      const bloqueado = await authService.isUserBlocked(user.user_id);
+      if (bloqueado.blocked) {
+        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', `Cuenta bloqueada: ${bloqueado.message}`);
+        return res.status(403).json({ message: bloqueado.message });
+      }
+
+      // Verificar contraseña
+      const isMatch = await authService.verifyPassword(password, account.password_hash);
+      if (!isMatch) {
+        const result = await authService.handleFailedAttempt(user.user_id, req.ip);
+        if (result.locked) {
+          loggerUtils.logUserActivity(user.user_id, 'account_locked', 'Cuenta bloqueada por intentos fallidos');
+          return res.status(403).json({ locked: true, message: 'Tu cuenta ha sido bloqueada debido a múltiples intentos fallidos.' });
+        }
+        return res.status(400).json({ message: 'Credenciales incorrectas', ...result });
+      }
+
+      // Limpiar intentos fallidos
+      await authService.clearFailedAttempts(user.user_id);
+
+      // Verificar límite de sesiones para Alexa
+      const alexaSessionsCount = await Session.count({
+        where: { user_id: user.user_id, browser: 'Alexa-Skill', revoked: false }
+      });
+      if (alexaSessionsCount >= 1) {
+        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', 'Límite de sesiones de Alexa alcanzado');
+        return res.status(403).json({ message: 'Límite de sesiones de Alexa alcanzado (1 sesión permitida).' });
+      }
+
+      // Verificar límite total de sesiones (3 para administradores: 1 Alexa + 2 web/móvil)
+      const totalSessionsCount = await Session.count({
+        where: { user_id: user.user_id, revoked: false }
+      });
+      if (totalSessionsCount >= 3) {
+        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', 'Límite total de sesiones alcanzado');
+        return res.status(403).json({ message: 'Límite total de sesiones alcanzado (3 sesiones permitidas para administradores).' });
+      }
+
+      // Crear sesión para Alexa
+      const { token, session } = await authService.createSession(user, req.ip, 'Alexa-Skill');
+
+      loggerUtils.logUserActivity(user.user_id, 'alexa_login', 'Inicio de sesión de Alexa exitoso');
+      res.status(200).json({
+        access_token: token,
+        token_type: 'Bearer',
+        expires_in: 30 * 24 * 60 * 60, // 30 días en segundos
+        userId: user.user_id,
+        name: user.name,
+        tipo: user.user_type
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error en el inicio de sesión de Alexa', error: error.message });
+    }
+  }
+];
+
+// Nueva función para revocar tokens
+exports.revokeToken = [
+  body('token').not().isEmpty().trim().withMessage('El token es requerido'),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { token } = req.body;
+    const userId = req.user ? req.user.user_id : null;
+
+    try {
+      // Verificar que el usuario tenga permisos de administrador
+      if (!userId || req.user.user_type !== 'administrador') {
+        return res.status(403).json({ message: 'Acceso no autorizado. Solo administradores pueden revocar tokens.' });
+      }
+
+      // Verificar si el token está en la tabla Session
+      const session = await Session.findOne({ where: { token, revoked: false } });
+      if (!session) {
+        return res.status(400).json({ message: 'Token no encontrado o ya revocado.' });
+      }
+
+      // Revocar la sesión
+      await authService.revokeSession(token);
+
+      // Agregar el token a la tabla RevokedToken
+      await RevokedToken.create({
+        token,
+        user_id: session.user_id,
+        revokedAt: new Date()
+      });
+
+      loggerUtils.logUserActivity(userId, 'token_revoked', `Token revocado para user_id: ${session.user_id}`);
+      res.status(200).json({ message: 'Token revocado exitosamente.' });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al revocar el token', error: error.message });
+    }
+  }
+];
 
 // ** SEGURIDAD Y AUTENTICACIÓN MULTIFACTOR **
 exports.sendOtpMfa = async (req, res) => {
@@ -400,7 +537,7 @@ exports.verifyOTPMFA = async (req, res) => {
     res.status(200).json({
       success: true,
       userId: user.user_id,
-      name: user.name, // Añadir el campo name
+      name: user.name,
       tipo: user.user_type,
       message: 'OTP verificado correctamente. Inicio de sesión exitoso.'
     });

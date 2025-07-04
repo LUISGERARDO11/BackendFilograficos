@@ -50,6 +50,19 @@ exports.generateJWT = async (user) => {
   );
 };
 
+// Nueva función para generar JWT para Alexa (30 días)
+exports.generateAlexaJWT = (user) => {
+  return jwt.sign(
+    {
+      user_id: user.user_id,
+      user_type: user.user_type,
+      client: 'alexa-skill-filograficos' // Identificador para sesiones de Alexa
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '30d' } // Duración de 30 días
+  );
+};
+
 // Verificar JWT y sesión asociada
 exports.verifyJWT = async (token) => {
   const secret = process.env.JWT_SECRET;
@@ -77,8 +90,8 @@ exports.verifyJWT = async (token) => {
 // Crear una nueva sesión
 exports.createSession = async (user, ip, browser) => {
   const config = await exports.getConfig();
-  const token = await exports.generateJWT(user);
-  const expiration = new Date(Date.now() + config.session_lifetime * 1000);
+  const token = browser === 'Alexa-Skill' ? exports.generateAlexaJWT(user) : await exports.generateJWT(user);
+  const expiration = new Date(Date.now() + (browser === 'Alexa-Skill' ? 30 * 24 * 60 * 60 * 1000 : config.session_lifetime * 1000));
 
   const session = await Session.create({
     user_id: user.user_id,
@@ -101,8 +114,8 @@ exports.extendSession = async (session) => {
 
   if (timeToExpiration < config.session_extension_threshold) {
     const user = await User.findByPk(session.user_id);
-    const newToken = await exports.generateJWT(user);
-    const newExpiration = new Date(now + config.session_lifetime * 1000);
+    const newToken = session.browser === 'Alexa-Skill' ? exports.generateAlexaJWT(user) : await exports.generateJWT(user);
+    const newExpiration = new Date(now + (session.browser === 'Alexa-Skill' ? 30 * 24 * 60 * 60 * 1000 : config.session_lifetime * 1000));
   
     await session.update({
       token: newToken,
