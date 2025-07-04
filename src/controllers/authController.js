@@ -274,9 +274,17 @@ exports.logout = async (req, res) => {
 
 // Nueva función para autenticación de Alexa
 exports.alexaLogin = [
+  // Validaciones
   body('email').isEmail().normalizeEmail().withMessage('Correo electrónico inválido'),
   body('password').not().isEmpty().trim().escape().withMessage('La contraseña es requerida'),
-  body('client_id').equals('alexa-skill-filograficos').withMessage('client_id inválido'),
+  body('client_id')
+    .not().isEmpty().withMessage('El client_id es requerido')
+    .custom((value) => {
+      if (value !== process.env.ALEXA_CLIENT_ID) {
+        throw new Error('client_id inválido');
+      }
+      return true;
+    }),
 
   async (req, res) => {
     const errors = validationResult(req);
