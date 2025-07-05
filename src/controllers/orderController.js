@@ -323,7 +323,7 @@ exports.getOrdersForAdmin = [
   query('isUrgent').optional().isBoolean().withMessage('El filtro de urgencia debe ser un booleano'),
 
   async (req, res) => {
-    const adminId = req.user.user_id;
+    //const adminId = req.user.user_id;
     const errors = validationResult(req);
 
     try {
@@ -369,7 +369,7 @@ exports.getOrdersForAdmin = [
         });
       }
 
-      loggerUtils.logUserActivity(adminId, 'get_orders_admin', `Lista de órdenes obtenida por admin: página ${page}, búsqueda: ${searchTerm}, estado: ${statusFilter}, fecha: ${dateFilter || 'ninguno'}, campo: ${dateField}, método de pago: ${paymentMethod || 'ninguno'}, opción de entrega: ${deliveryOption || 'ninguna'}, total mínimo: ${minTotal || 'ninguno'}, total máximo: ${maxTotal || 'ninguno'}, urgente: ${isUrgent !== null ? isUrgent : 'ninguno'}`);
+      //loggerUtils.logUserActivity(adminId, 'get_orders_admin', `Lista de órdenes obtenida por admin: página ${page}, búsqueda: ${searchTerm}, estado: ${statusFilter}, fecha: ${dateFilter || 'ninguno'}, campo: ${dateField}, método de pago: ${paymentMethod || 'ninguno'}, opción de entrega: ${deliveryOption || 'ninguna'}, total mínimo: ${minTotal || 'ninguno'}, total máximo: ${maxTotal || 'ninguno'}, urgente: ${isUrgent !== null ? isUrgent : 'ninguno'}`);
 
       res.status(200).json({
         success: true,
@@ -394,7 +394,7 @@ exports.getOrderDetailsByIdForAdmin = [
     .withMessage('El ID de la orden debe ser un número entero positivo'),
 
   async (req, res) => {
-    const adminId = req.user.user_id;
+    //const adminId = req.user.user_id;
     const errors = validationResult(req);
 
     try {
@@ -410,7 +410,7 @@ exports.getOrderDetailsByIdForAdmin = [
       const orderService = new OrderService();
       const orderDetails = await orderService.getOrderDetailsByIdForAdmin(orderId);
 
-      loggerUtils.logUserActivity(adminId, 'get_order_details_admin', `Detalles de la orden obtenidos por admin: ID ${orderId}`);
+      //loggerUtils.logUserActivity(adminId, 'get_order_details_admin', `Detalles de la orden obtenidos por admin: ID ${orderId}`);
 
       res.status(200).json({
         success: true,
@@ -446,7 +446,7 @@ exports.updateOrderStatus = [
     .withMessage('El nuevo estado debe ser uno de: pending, processing, shipped, delivered'),
 
   async (req, res) => {
-    const adminId = req.user.user_id;
+    //const adminId = req.user.user_id;
     const errors = validationResult(req);
 
     try {
@@ -463,7 +463,7 @@ exports.updateOrderStatus = [
       const orderService = new OrderService();
       const updatedOrder = await orderService.updateOrderStatus(orderId, newStatus, adminId);
 
-      loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado por admin: ID ${orderId}, nuevo estado: ${newStatus}`);
+      //loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado por admin: ID ${orderId}, nuevo estado: ${newStatus}`);
 
       res.status(200).json({
         success: true,
