@@ -1,5 +1,3 @@
-/* This JavaScript code snippet is defining a Sequelize model for an "Account" entity. Here's a
-breakdown of what each part of the code is doing: */
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
 
@@ -26,6 +24,16 @@ const Account = sequelize.define('Account', {
   max_failed_login_attempts: {
     type: DataTypes.INTEGER,
     defaultValue: 5
+  },
+  profile_picture_url: {
+    type: DataTypes.STRING(255),
+    allowNull: true, // La foto de perfil es opcional
+    defaultValue: null
+  },
+  profile_picture_public_id: {
+    type: DataTypes.STRING(255),
+    allowNull: true, // El public_id es opcional
+    defaultValue: null
   }
 }, {
   tableName: 'accounts',

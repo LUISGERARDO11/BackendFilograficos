@@ -121,6 +121,36 @@ const uploadCategoryImageToCloudinary = (fileBuffer, fileName = '') => {
   });
 };
 
+// Nueva función para subir fotos de perfil a la carpeta ProfilePictures
+const uploadProfilePictureToCloudinary = (fileBuffer, userId) => {
+  return new Promise((resolve, reject) => {
+    const options = {
+      folder: 'ProfilePictures', // Carpeta específica para fotos de perfil
+      resource_type: 'image', // Especifica que es una imagen
+      public_id: `user_${userId}_${Date.now()}`, // ID único basado en userId y timestamp
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'], // Formatos permitidos
+      transformation: [
+        { width: 200, height: 200, crop: 'thumb', gravity: 'face' }, // Optimizado para foto de perfil
+        { quality: 'auto', format: 'webp' } // Optimización automática
+      ]
+    };
+
+    cloudinary.uploader
+      .upload_stream(options, (error, result) => {
+        if (error) {
+          const errorMessage = error.message || 'Unknown error occurred during profile picture upload';
+          reject(new Error(`Error uploading profile picture to Cloudinary: ${errorMessage}`));
+        } else {
+          resolve({
+            secure_url: result.secure_url, // URL segura de la imagen
+            public_id: result.public_id // Identificador único en Cloudinary
+          });
+        }
+      })
+      .end(fileBuffer);
+  });
+};
+
 // Función para eliminar archivos de Cloudinary
 const deleteFromCloudinary = (publicId) => {
   return new Promise((resolve, reject) => {
@@ -141,5 +171,6 @@ module.exports = {
   uploadProductImagesToCloudinary,
   uploadBannerToCloudinary,
   uploadCategoryImageToCloudinary,
+  uploadProfilePictureToCloudinary,
   deleteFromCloudinary
 };
