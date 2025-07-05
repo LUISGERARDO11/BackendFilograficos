@@ -651,13 +651,14 @@ class OrderService {
    * @returns {Array} - Lista de órdenes formateadas para la fecha especificada.
    * @throws {Error} - Si la fecha es inválida o hay un error en la consulta.
    */
-  async getOrdersByDateForAdmin(date, dateField, adminId) {
+  //async getOrdersByDateForAdmin(date, dateField, adminId) {
+  async getOrdersByDateForAdmin(date, dateField) {
     try {
       // Validar que adminId pertenece a un administrador
-      const admin = await User.findOne({ where: { user_id: adminId, user_type: 'administrador' } });
-      if (!admin) {
-        throw new Error('Usuario administrador no válido');
-      }
+      //const admin = await User.findOne({ where: { user_id: adminId, user_type: 'administrador' } });
+      //if (!admin) {
+      //  throw new Error('Usuario administrador no válido');
+      //}
 
       // Validar formato de fecha
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -743,7 +744,7 @@ class OrderService {
         order: [[field, 'DESC']],
       });
 
-      loggerUtils.logUserActivity(adminId, 'get_orders_by_date_admin', `Órdenes obtenidas para la fecha ${date}, campo: ${dateField}`);
+      //loggerUtils.logUserActivity(adminId, 'get_orders_by_date_admin', `Órdenes obtenidas para la fecha ${date}, campo: ${dateField}`);
 
       return orders.map(order => ({
         ...orderUtils.formatOrderDetails(order),

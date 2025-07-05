@@ -210,13 +210,13 @@ exports.getOrders = [
 // Obtener un resumen de las ordenes para el administrador
 exports.getOrderSummary = [
   async (req, res) => {
-    const adminId = req.user.user_id;
+    //const adminId = req.user.user_id;
 
     try {
       const orderService = new OrderService();
       const summary = await orderService.getOrderSummary();
 
-      loggerUtils.logUserActivity(adminId, 'get_order_summary', 'Resumen de órdenes obtenido por admin');
+      //loggerUtils.logUserActivity(adminId, 'get_order_summary', 'Resumen de órdenes obtenido por admin');
 
       res.status(200).json({
         success: true,
@@ -248,7 +248,7 @@ exports.getOrdersByDateForAdmin = [
     .withMessage('El campo de fecha debe ser uno de: delivery, creation'),
 
   async (req, res) => {
-    const adminId = req.user.user_id;
+    //const adminId = req.user.user_id;
     const errors = validationResult(req);
 
     try {
@@ -262,9 +262,10 @@ exports.getOrdersByDateForAdmin = [
 
       const { date, dateField } = req.query;
       const orderService = new OrderService();
-      const orders = await orderService.getOrdersByDateForAdmin(date, dateField, adminId);
+      //const orders = await orderService.getOrdersByDateForAdmin(date, dateField, adminId);
+      const orders = await orderService.getOrdersByDateForAdmin(date, dateField);
 
-      loggerUtils.logUserActivity(adminId, 'get_orders_by_date_admin', `Órdenes obtenidas para la fecha ${date}, campo: ${dateField}`);
+      //loggerUtils.logUserActivity(adminId, 'get_orders_by_date_admin', `Órdenes obtenidas para la fecha ${date}, campo: ${dateField}`);
 
       res.status(200).json({
         success: true,
