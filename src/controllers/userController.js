@@ -82,7 +82,10 @@ exports.getProfile = async (req, res) => {
   try {
     const user = await User.findByPk(userId, {
       attributes: ['user_id', 'name', 'email', 'phone', 'status', 'user_type'],
-      include: [{ model: Address, where: { is_primary: true }, required: false }]
+      include: [
+        { model: Address, where: { is_primary: true }, required: false },
+        { model: Account, attributes: ['profile_picture_url'] }
+      ]
     });
     if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
     res.status(200).json(user);
@@ -98,7 +101,7 @@ exports.uploadProfilePicture = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No se proporcionó ninguna imagen' });
     }
 
-    const account = await Account.findByPk(req.user.account_id);
+    const account = await Account.findByPk(userId);
     if (!account) {
       return res.status(404).json({ success: false, message: 'Cuenta no encontrada' });
     }
@@ -137,7 +140,7 @@ exports.uploadProfilePicture = async (req, res) => {
 exports.deleteProfilePicture = async (req, res) => {
   const userId = req.user.user_id;
   try {
-    const account = await Account.findByPk(req.user.account_id);
+    const account = await Account.findByPk(userId);
     if (!account) {
       return res.status(404).json({ success: false, message: 'Cuenta no encontrada' });
     }
