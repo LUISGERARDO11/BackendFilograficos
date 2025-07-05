@@ -462,7 +462,8 @@ exports.updateOrderStatus = [
       const orderId = parseInt(req.params.id);
       const { newStatus } = req.body;
       const orderService = new OrderService();
-      const updatedOrder = await orderService.updateOrderStatus(orderId, newStatus, adminId);
+      //const updatedOrder = await orderService.updateOrderStatus(orderId, newStatus, adminId);
+      const updatedOrder = await orderService.updateOrderStatus(orderId, newStatus);
 
       //loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado por admin: ID ${orderId}, nuevo estado: ${newStatus}`);
 

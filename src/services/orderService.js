@@ -1046,7 +1046,8 @@ class OrderService {
    * @returns {Object} - La orden actualizada.
    * @throws {Error} - Si el estado es inválido o la orden no se encuentra.
    */
-  async updateOrderStatus(orderId, newStatus, adminId) {
+  //async updateOrderStatus(orderId, newStatus, adminId) {
+  async updateOrderStatus(orderId, newStatus) {
     const transaction = await Order.sequelize.transaction();
     try {
       if (!orderUtils.isValidOrderStatus(newStatus)) {
@@ -1054,13 +1055,13 @@ class OrderService {
       }
 
       // Validar que adminId pertenece a un administrador
-      const admin = await User.findOne({
-        where: { user_id: adminId, user_type: 'administrador' },
-        transaction,
-      });
-      if (!admin) {
-        throw new Error('Usuario administrador no válido');
-      }
+      //const admin = await User.findOne({
+      //  where: { user_id: adminId, user_type: 'administrador' },
+      //  transaction,
+      //});
+      //if (!admin) {
+      //  throw new Error('Usuario administrador no válido');
+      //}
 
       // Obtener la orden con todas las relaciones necesarias
       const order = await Order.findOne({
@@ -1143,7 +1144,7 @@ class OrderService {
         purchase_date: new Date(),
         order_status: newStatus,
         total: parseFloat(order.total) || 0,
-        updated_by: adminId,
+        //updated_by: adminId,
       }, { transaction });
 
       // Actualizar el objeto order con el nuevo estado para devolverlo
@@ -1177,7 +1178,7 @@ class OrderService {
       await notificationManager.notifyOrderStatusChange(order, user, orderDetails, payment);
 
       // Registrar la actividad
-      loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado: ID ${orderId}, nuevo estado: ${newStatus}`);
+      //loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado: ID ${orderId}, nuevo estado: ${newStatus}`);
 
       return {
         ...orderUtils.formatOrderDetails(order),
