@@ -2,10 +2,11 @@
 administration in a Node.js application using Express and Sequelize ORM. Here is a summary of the
 functionalities: */
 const { body, validationResult } = require('express-validator');
-const { User, Address } = require('../models/Associations');
+const { User, Account, Address, Session } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const sequelize = require('../config/dataBase');
 const userServices = require('../services/userServices');
+const { uploadProfilePictureToCloudinary, deleteFromCloudinary } = require('../services/cloudinaryService');
 require('dotenv').config();
 
 //** GESTION DE PERFIL DE USUARIOS **
@@ -87,6 +88,86 @@ exports.getProfile = async (req, res) => {
     res.status(200).json(user);
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener el perfil', error: error.message });
+  }
+};
+
+exports.uploadProfilePicture = async (req, res) => {
+  const userId = req.user.user_id;
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No se proporcionó ninguna imagen' });
+    }
+
+    const account = await Account.findByPk(req.user.account_id);
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Cuenta no encontrada' });
+    }
+
+    // Si existe una foto de perfil previa, eliminarla de Cloudinary
+    if (account.profile_picture_public_id) {
+      try {
+        await deleteFromCloudinary(account.profile_picture_public_id);
+      } catch (error) {
+        loggerUtils.logCriticalError(error);
+        return res.status(500).json({ success: false, message: 'Error al eliminar la foto de perfil anterior', error: error.message });
+      }
+    }
+
+    // Subir la nueva foto de perfil a Cloudinary
+    const result = await uploadProfilePictureToCloudinary(req.file.buffer, userId);
+
+    // Actualizar la cuenta con la nueva URL y public_id
+    await account.update({
+      profile_picture_url: result.secure_url,
+      profile_picture_public_id: result.public_id
+    });
+
+    loggerUtils.logUserActivity(userId, 'profile_picture_upload', 'Foto de perfil subida exitosamente');
+    res.status(200).json({
+      success: true,
+      message: 'Foto de perfil subida exitosamente',
+      profile_picture_url: result.secure_url
+    });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ success: false, message: 'Error al subir la foto de perfil', error: error.message });
+  }
+};
+
+exports.deleteProfilePicture = async (req, res) => {
+  const userId = req.user.user_id;
+  try {
+    const account = await Account.findByPk(req.user.account_id);
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Cuenta no encontrada' });
+    }
+
+    if (!account.profile_picture_public_id) {
+      return res.status(400).json({ success: false, message: 'No hay foto de perfil para eliminar' });
+    }
+
+    // Eliminar la foto de Cloudinary
+    try {
+      await deleteFromCloudinary(account.profile_picture_public_id);
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      return res.status(500).json({ success: false, message: 'Error al eliminar la foto de perfil de Cloudinary', error: error.message });
+    }
+
+    // Actualizar la cuenta para eliminar la URL y el public_id
+    await account.update({
+      profile_picture_url: null,
+      profile_picture_public_id: null
+    });
+
+    loggerUtils.logUserActivity(userId, 'profile_picture_delete', 'Foto de perfil eliminada exitosamente');
+    res.status(200).json({
+      success: true,
+      message: 'Foto de perfil eliminada exitosamente'
+    });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ success: false, message: 'Error al eliminar la foto de perfil', error: error.message });
   }
 };
 

@@ -8,6 +8,9 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 
+// Importar middleware de Multer para fotos de perfil
+const uploadProfilePicture = require('../config/multerUploadProfilePicture');
+
 // Importar controladores
 const userController = require('../controllers/userController');
 
@@ -23,6 +26,12 @@ router.post('/add-address', authMiddleware, tokenExpirationMiddleware.verifyToke
 
 // Ruta para actualizar solo la dirección del usuario
 router.put('/change-address', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, userController.updateUserProfile);
+
+// Ruta para subir la foto de perfil del usuario
+router.post('/upload-profile-picture', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, uploadProfilePicture, userController.uploadProfilePicture);
+
+// Ruta para eliminar la foto de perfil del usuario
+router.delete('/profile-picture', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, userController.deleteProfilePicture);
 
 // ** ELIMINACIÓN DE CUENTAS **
 // Ruta para que el cliente autenticado elimine su cuenta
