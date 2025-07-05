@@ -24,6 +24,11 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message });
     }
 
+    // Validar scope para sesiones de Alexa
+    if (session.browser === 'Alexa-Skill' && data.scope !== 'filograficos:admin') {
+      return res.status(401).json({ message: "Scope inválido para la skill de Alexa." });
+    }
+
     // Extender sesión si está cerca de expirar
     const config = await authService.getConfig();
     const newToken = await authService.extendSession(session);
@@ -33,6 +38,7 @@ const authMiddleware = async (req, res, next) => {
     } else {
       console.log(`Token sin cambios: ${token}`);
     }
+
     // Establecer la cookie solo para sesiones web
     if (req.cookies['token']) {
       res.cookie("token", newToken, {

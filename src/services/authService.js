@@ -56,10 +56,11 @@ exports.generateAlexaJWT = (user) => {
     {
       user_id: user.user_id,
       user_type: user.user_type,
-      client: process.env.ALEXA_CLIENT_ID // Identificador para sesiones de Alexa
+      client: process.env.ALEXA_CLIENT_ID,
+      scope: 'filograficos:admin' // Agregar scope
     },
     process.env.JWT_SECRET,
-    { expiresIn: '30d' } // Duración de 30 días
+    { expiresIn: '30d' }
   );
 };
 
