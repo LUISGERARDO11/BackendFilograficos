@@ -30,7 +30,7 @@ const OrderHistory = sequelize.define('OrderHistory', {
     allowNull: false
   },
   order_status: {
-    type: DataTypes.ENUM('pending', 'processing', 'shipped', 'delivered', 'canceled', 'payment_confirmed'), // Estado del pedido
+    type: DataTypes.ENUM('pending', 'processing', 'shipped', 'delivered', 'canceled'), // Estado del pedido
     defaultValue: 'pending'
   },
   total: {
