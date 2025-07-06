@@ -29,7 +29,24 @@ exports.updateProfile = [
       if (req.body.address) await userServices.updateOrCreateAddress(userId, req.body.address);
 
       await user.save();
-      res.status(200).json({ message: 'Perfil actualizado exitosamente', user });
+
+      // Obtener la cuenta para incluir la URL de la imagen
+      const account = await Account.findByPk(userId, {
+        attributes: ['profile_picture_url']
+      });
+
+      res.status(200).json({
+        message: 'Perfil actualizado exitosamente',
+        user: {
+          user_id: user.user_id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          status: user.status,
+          user_type: user.user_type,
+          profile_picture_url: account?.profile_picture_url || null // Incluir URL
+        }
+      });
     } catch (error) {
       res.status(500).json({ message: 'Error al actualizar el perfil', error: error.message });
     }
@@ -88,7 +105,18 @@ exports.getProfile = async (req, res) => {
       ]
     });
     if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
-    res.status(200).json(user);
+
+    // Formatear la respuesta para incluir la URL de la imagen
+    res.status(200).json({
+      user_id: user.user_id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      status: user.status,
+      user_type: user.user_type,
+      address: user.Address || null,
+      profile_picture_url: user.Account?.profile_picture_url || null // Incluir URL
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener el perfil', error: error.message });
   }
@@ -166,7 +194,8 @@ exports.deleteProfilePicture = async (req, res) => {
     loggerUtils.logUserActivity(userId, 'profile_picture_delete', 'Foto de perfil eliminada exitosamente');
     res.status(200).json({
       success: true,
-      message: 'Foto de perfil eliminada exitosamente'
+      message: 'Foto de perfil eliminada exitosamente',
+      profile_picture_url: null // Incluir URL nula
     });
   } catch (error) {
     loggerUtils.logCriticalError(error);

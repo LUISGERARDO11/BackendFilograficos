@@ -212,7 +212,8 @@ exports.login = [
           mfaRequired: true,
           userId: user.user_id,
           name: user.name,
-          tipo: user.user_type
+          tipo: user.user_type,
+          profile_picture_url: account.profile_picture_url || null // Incluir URL
         });
       }
 
@@ -231,6 +232,7 @@ exports.login = [
         userId: user.user_id,
         name: user.name,
         tipo: user.user_type,
+        profile_picture_url: account.profile_picture_url || null, // Incluir URL
         message: 'Inicio de sesión exitoso'
       });
     } catch (error) {
@@ -364,7 +366,8 @@ exports.alexaLogin = [
         expires_in: 30 * 24 * 60 * 60, // 30 días en segundos
         userId: user.user_id,
         name: user.name,
-        tipo: user.user_type
+        tipo: user.user_type,
+        profile_picture_url: account.profile_picture_url || null // Incluir URL
       });
     } catch (error) {
       loggerUtils.logCriticalError(error);
@@ -547,6 +550,7 @@ exports.verifyOTPMFA = async (req, res) => {
       userId: user.user_id,
       name: user.name,
       tipo: user.user_type,
+      profile_picture_url: account.profile_picture_url || null, // Incluir URL
       message: 'OTP verificado correctamente. Inicio de sesión exitoso.'
     });
   } catch (error) {
