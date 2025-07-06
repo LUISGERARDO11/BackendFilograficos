@@ -23,6 +23,14 @@ router.get(
 );
 
 router.get(
+  '/summary-for-alexa',
+  //authMiddleware,
+  //tokenExpirationMiddleware.verifyTokenExpiration,
+  //roleMiddleware(['administrador']),
+  orderController.getOrderSummaryForAlexa
+);
+
+router.get(
   '/by-date',
   //authMiddleware,
   //tokenExpirationMiddleware.verifyTokenExpiration,

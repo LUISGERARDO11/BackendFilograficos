@@ -139,7 +139,7 @@ exports.getOrders = [
   query('dateFilter')
     .optional()
     .custom((value) => {
-      if (!value) return true; // Permitir valor vacío
+      if (!value) return true;
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       const parts = value.split(',');
       if (parts.length === 1) {
@@ -207,7 +207,7 @@ exports.getOrders = [
   }
 ];
 
-// Obtener un resumen de las ordenes para el administrador
+// Obtener un resumen de las órdenes para el administrador
 exports.getOrderSummary = [
   async (req, res) => {
     //const adminId = req.user.user_id;
@@ -234,6 +234,79 @@ exports.getOrderSummary = [
   }
 ];
 
+// Obtener un resumen de órdenes para la skill de Alexa
+exports.getOrderSummaryForAlexa = [
+  query('statusFilter')
+    .optional()
+    .isIn(['all', 'pending', 'processing', 'shipped', 'delivered'])
+    .withMessage('El filtro de estado debe ser uno de: all, pending, processing, shipped, delivered'),
+  query('dateFilter')
+    .optional()
+    .custom((value) => {
+      if (!value) return true;
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      const parts = value.split(',');
+      if (parts.length === 1) {
+        if (/^\d{4}$/.test(value)) {
+          const year = parseInt(value);
+          return year >= 1000 && year <= 9999;
+        } else if (dateRegex.test(value)) {
+          const date = new Date(value);
+          return !isNaN(date.getTime());
+        }
+        throw new Error('El filtro de fecha debe ser un año válido (número de 4 dígitos) o una fecha en formato YYYY-MM-DD');
+      } else if (parts.length === 2) {
+        const [startDate, endDate] = parts;
+        if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
+          throw new Error('El rango de fechas debe estar en formato YYYY-MM-DD,YYYY-MM-DD');
+        }
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+          throw new Error('El rango de fechas no es válido');
+        }
+        return true;
+      }
+      throw new Error('El filtro de fecha debe ser un año válido (número de 4 dígitos), una fecha en formato YYYY-MM-DD o un rango en formato YYYY-MM-DD,YYYY-MM-DD');
+    }),
+  query('dateField')
+    .optional()
+    .isIn(['delivery', 'creation'])
+    .withMessage('El campo de fecha debe ser uno de: delivery, creation'),
+
+  async (req, res) => {
+    try {
+      const statusFilter = req.query.statusFilter || 'all';
+      const dateFilter = req.query.dateFilter || '';
+      const dateField = req.query.dateField || 'delivery';
+      const errors = validationResult(req);
+
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array(),
+        });
+      }
+
+      const orderService = new OrderService();
+      const summary = await orderService.getOrderSummaryForAlexa(statusFilter, dateFilter, dateField);
+
+      res.status(200).json({
+        success: true,
+        message: 'Resumen de órdenes para Alexa obtenido exitosamente',
+        data: summary
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al obtener el resumen de órdenes para Alexa',
+        error: error.message
+      });
+    }
+  }
+];
 
 exports.getOrdersByDateForAdmin = [
   query('date')

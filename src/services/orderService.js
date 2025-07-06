@@ -766,6 +766,57 @@ class OrderService {
     }
   }
 
+  async getOrderSummaryForAlexa(statusFilter = 'all', dateFilter = '', dateField = 'delivery') {
+    try {
+      const validStatuses = ['pending', 'processing', 'shipped', 'delivered'];
+      const field = dateField === 'delivery' ? 'estimated_delivery_date' : 'created_at';
+      
+      // Determinar el rango de fechas predeterminado (lunes de la semana actual hasta hoy)
+      let effectiveDateFilter = dateFilter;
+      if (!dateFilter) {
+        const today = moment.tz('America/Mexico_City');
+        const startOfWeek = today.clone().startOf('isoWeek'); // Lunes de la semana actual
+        const endOfDay = today.clone().endOf('day'); // Fin del día actual
+        effectiveDateFilter = `${startOfWeek.format('YYYY-MM-DD')},${endOfDay.format('YYYY-MM-DD')}`;
+      }
+      
+      const dateCondition = orderUtils.buildDateCondition(effectiveDateFilter, field);
+
+      let where = {};
+      if (statusFilter !== 'all' && orderUtils.isValidOrderStatus(statusFilter)) {
+        where.order_status = statusFilter;
+      } else {
+        where.order_status = { [Op.in]: validStatuses };
+      }
+      where = { ...where, ...dateCondition };
+
+      const result = await Order.findAll({
+        where,
+        attributes: [
+          [Sequelize.fn('COUNT', Sequelize.col('order_id')), 'total'],
+          [Sequelize.fn('SUM', Sequelize.cast(Sequelize.col('total'), 'FLOAT')), 'total_amount'],
+          [Sequelize.fn('COUNT', Sequelize.literal("CASE WHEN order_status = 'pending' THEN 1 END")), 'pending'],
+          [Sequelize.fn('COUNT', Sequelize.literal("CASE WHEN order_status = 'processing' THEN 1 END")), 'processing'],
+          [Sequelize.fn('COUNT', Sequelize.literal("CASE WHEN order_status = 'shipped' THEN 1 END")), 'shipped'],
+          [Sequelize.fn('COUNT', Sequelize.literal("CASE WHEN order_status = 'delivered' THEN 1 END")), 'delivered']
+        ],
+        raw: true
+      });
+
+      return {
+        total: parseInt(result[0].total) || 0,
+        total_amount: parseFloat(result[0].total_amount) || 0,
+        pending: parseInt(result[0].pending) || 0,
+        processing: parseInt(result[0].processing) || 0,
+        shipped: parseInt(result[0].shipped) || 0,
+        delivered: parseInt(result[0].delivered) || 0
+      };
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al obtener el resumen de órdenes para Alexa: ${error.message}`);
+    }
+  }
+
   /**
    * Obtiene una lista paginada de órdenes para el panel de administración con filtros y estadísticas.
    * @param {number} page - El número de página (por defecto: 1).
