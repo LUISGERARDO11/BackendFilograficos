@@ -86,7 +86,14 @@ app.get('/api/csrf-token', (req, res) => {
 });
 
 // Aplicar protección CSRF
-app.use(doubleCsrfProtection);
+app.use((req, res, next) => {
+  // Excluir solicitudes de Alexa de la protección CSRF
+  if (req.headers['x-alexa-request'] === 'true') {
+    return next();
+  }
+  // Aplicar CSRF a todas las demás solicitudes
+  doubleCsrfProtection(req, res, next);
+});
 
 // Integrar Morgan con Winston para registrar solicitudes HTTP
 app.use(morgan('combined', {

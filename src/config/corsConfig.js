@@ -15,7 +15,13 @@ const corsOptions = {
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Access-Control-Allow-Origin', 'x-csrf-token'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'Access-Control-Allow-Origin', 
+    'x-csrf-token',
+    'x-alexa-request'
+  ],
   credentials: true,
   optionsSuccessStatus: 200
 };
