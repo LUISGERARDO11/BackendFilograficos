@@ -24,11 +24,12 @@ router.get('/',
   tokenExpirationMiddleware.verifyTokenExpiration,
   orderController.getOrders
 );
-//hailie
-router.post('/confirm-payment',
+
+// Confirmar pago de una orden
+router.post('/:order_id/confirm-payment',
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
-  orderController.createOrder
+  orderController.confirmPayment
 );
 
 module.exports = router;
