@@ -561,3 +561,18 @@ exports.updateOrderStatus = [
     }
   }
 ];
+//hailie
+exports.confirmPayment = async (req, res) => {
+  const { order_id } = req.params;
+  const payment = await OrderService.findPaymentByOrderId(order_id);
+  if (!payment || payment.status !== 'pending') return res.status(404).json({ message: 'Pago no encontrado' });
+
+  payment.status = 'validated';
+  await payment.save();
+
+  const order = await OrderService.findOrderById(order_id);
+  if (order) order.payment_status = 'validated';
+  await order?.save();
+
+  res.status(200).json({ success: true, message: 'Pago simulado exitosamente' });
+};
