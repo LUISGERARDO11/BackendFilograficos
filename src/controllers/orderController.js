@@ -562,17 +562,40 @@ exports.updateOrderStatus = [
   }
 ];
 //hailie
-exports.confirmPayment = async (req, res) => {
-  const { order_id } = req.params;
-  const payment = await OrderService.findPaymentByOrderId(order_id);
-  if (!payment || payment.status !== 'pending') return res.status(404).json({ message: 'Pago no encontrado' });
+exports.confirmPayment = [
+  param('order_id')
+    .isInt({ min: 1 })
+    .withMessage('El ID de la orden debe ser un número entero positivo'),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Errores de validación',
+        errors: errors.array()
+      });
+    }
 
-  payment.status = 'validated';
-  await payment.save();
+    const { order_id } = req.params;
+    try {
+      const payment = await OrderService.findPaymentByOrderId(order_id);
+      if (!payment || payment.status !== 'pending') {
+        return res.status(404).json({ success: false, message: 'Pago no encontrado o ya procesado' });
+      }
 
-  const order = await OrderService.findOrderById(order_id);
-  if (order) order.payment_status = 'validated';
-  await order?.save();
+      payment.status = 'validated';
+      await payment.save();
 
-  res.status(200).json({ success: true, message: 'Pago simulado exitosamente' });
-};
+      const order = await OrderService.findOrderById(order_id);
+      if (order) {
+        order.payment_status = 'validated';
+        await order.save();
+      }
+
+      res.status(200).json({ success: true, message: 'Pago simulado exitosamente' });
+    } catch (error) {
+      console.error('Error en confirmPayment:', error);
+      res.status(500).json({ success: false, message: 'Error al confirmar el pago', error: error.message });
+    }
+  }
+];
