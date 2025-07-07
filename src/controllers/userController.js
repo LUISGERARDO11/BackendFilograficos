@@ -100,7 +100,7 @@ exports.getProfile = async (req, res) => {
     const user = await User.findByPk(userId, {
       attributes: ['user_id', 'name', 'email', 'phone', 'status', 'user_type'],
       include: [
-        { model: Address, where: { is_primary: 1 }, required: false },
+        { model: Address, where: { is_primary: true }, required: false },
         { model: Account, attributes: ['profile_picture_url'] }
       ]
     });
