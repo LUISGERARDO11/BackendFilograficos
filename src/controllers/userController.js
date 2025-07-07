@@ -114,8 +114,8 @@ exports.getProfile = async (req, res) => {
       phone: user.phone,
       status: user.status,
       user_type: user.user_type,
-      address: user.Address || null,
-      profile_picture_url: user.Account?.profile_picture_url || null // Incluir URL
+      address: user.Addresses ? user.Addresses[0] : null, // Cambiar a Addresses
+      profile_picture_url: user.Account?.profile_picture_url || null
     });
   } catch (error) {
     res.status(500).json({ message: 'Error al obtener el perfil', error: error.message });
