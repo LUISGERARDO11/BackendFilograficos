@@ -113,109 +113,97 @@ const formatProductList = async (products) => {
 };
 
 const getProductById = async (productId, includeCollaborator = false) => {
-  try {
     const include = [
-      {
-        model: Category,
-        attributes: ['category_id', 'name', 'parent_id'],
-        required: false
-      },
-      {
-        model: ProductVariant,
-        attributes: ['variant_id', 'sku', 'calculated_price', 'stock'],
-        include: [
-          {
-            model: ProductAttributeValue,
-            attributes: ['value'],
-            include: [{
-              model: ProductAttribute,
-              attributes: ['attribute_name', 'data_type', 'allowed_values']
-            }]
-          },
-          {
-            model: ProductImage,
-            attributes: ['image_url', 'order']
-          },
-        ],
-      },
-      {
-        model: CustomizationOption,
-        attributes: ['option_type', 'description']
-      },
+        {
+            model: Category,
+            attributes: ['category_id', 'name', 'parent_id'],
+            required: false
+        },
+        {
+            model: ProductVariant,
+            attributes: ['variant_id', 'sku', 'calculated_price', 'stock'],
+            include: [
+                {
+                    model: ProductAttributeValue,
+                    attributes: ['value'],
+                    include: [{
+                        model: ProductAttribute,
+                        attributes: ['attribute_name', 'data_type', 'allowed_values']
+                    }]
+                },
+                {
+                    model: ProductImage,
+                    attributes: ['image_url', 'order']
+                },
+            ],
+        },
+        {
+            model: CustomizationOption,
+            attributes: ['option_type', 'description']
+        },
     ];
-
     if (includeCollaborator) {
-      include.push({
-        model: Collaborator,
-        attributes: ['collaborator_id', 'name'],
-        required: false
-      });
+        include.push({
+            model: Collaborator,
+            attributes: ['collaborator_id', 'name'],
+            required: false
+        });
     }
 
-    const product = await Product.findOne({
-      where: {
-        product_id: productId,
-        status: 'active',
-      },
-      attributes: [
-        'product_id',
-        'name',
-        'description',
-        'product_type',
-        'standard_delivery_days',
-        'urgent_delivery_enabled',
-        'urgent_delivery_days',
-        'urgent_delivery_cost',
-        'category_id'
-      ],
-      include,
+    const product = await Product.findByPk(productId, {
+        where: { status: 'active' },
+        attributes: [
+            'product_id',
+            'name',
+            'description',
+            'product_type',
+            'standard_delivery_days',
+            'urgent_delivery_enabled',
+            'urgent_delivery_days',
+            'urgent_delivery_cost',
+            'category_id'
+        ],
+        include,
     });
 
     if (!product) return null;
-
+    // 👉 Obtener breadcrumb usando category_id
     const breadcrumb = await buildCategoryBreadcrumb(product.category_id);
 
     return {
-      product_id: product.product_id,
-      name: product.name,
-      description: product.description,
-      product_type: product.product_type,
-      standard_delivery_days: product.standard_delivery_days,
-      urgent_delivery_enabled: product.urgent_delivery_enabled,
-      urgent_delivery_days: product.urgent_delivery_days,
-      urgent_delivery_cost: parseFloat(product.urgent_delivery_cost) || 0,
-      category: product.Category ? { category_id: product.Category.category_id, name: product.Category.name } : null,
-      variants: product.ProductVariants.map(variant => ({
-        variant_id: variant.variant_id,
-        sku: variant.sku,
-        calculated_price: parseFloat(variant.calculated_price),
-        stock: variant.stock,
-        attributes: variant.ProductAttributeValues.map(attr => ({
-          attribute_name: attr.ProductAttribute?.attribute_name,
-          value: attr.value,
-          data_type: attr.ProductAttribute?.data_type,
-          allowed_values: attr.ProductAttribute?.allowed_values,
+        product_id: product.product_id,
+        name: product.name,
+        description: product.description,
+        product_type: product.product_type,
+        standard_delivery_days: product.standard_delivery_days,
+        urgent_delivery_enabled: product.urgent_delivery_enabled,
+        urgent_delivery_days: product.urgent_delivery_days,
+        urgent_delivery_cost: parseFloat(product.urgent_delivery_cost) || 0,
+        category: product.Category ? { category_id: product.Category.category_id, name: product.Category.name } : null,
+        variants: product.ProductVariants.map(variant => ({
+            variant_id: variant.variant_id,
+            sku: variant.sku,
+            calculated_price: parseFloat(variant.calculated_price),
+            stock: variant.stock,
+            attributes: variant.ProductAttributeValues.map(attr => ({
+                attribute_name: attr.ProductAttribute.attribute_name,
+                value: attr.value,
+                data_type: attr.ProductAttribute.data_type,
+                allowed_values: attr.ProductAttribute.allowed_values,
+            })),
+            images: variant.ProductImages.map(img => ({
+                image_url: img.image_url,
+                order: img.order,
+            })),
         })),
-        images: variant.ProductImages.map(img => ({
-          image_url: img.image_url,
-          order: img.order,
+        customizations: product.CustomizationOptions.map(cust => ({
+            type: cust.option_type,
+            description: cust.description,
         })),
-      })),
-      customizations: product.CustomizationOptions.map(cust => ({
-        type: cust.option_type,
-        description: cust.description,
-      })),
-      collaborator: product.Collaborator
-        ? { id: product.Collaborator.collaborator_id, name: product.Collaborator.name }
-        : null,
-      breadcrumb,
+        collaborator: product.Collaborator ? { id: product.Collaborator.collaborator_id, name: product.Collaborator.name } : null,
+         breadcrumb,
     };
-  } catch (error) {
-    console.error('❌ Error en getProductById:', error);
-    throw error;
-  }
 };
-
 
 const getVariantsWithFilters = async ({ search, categoryId, productType, page, limit, sortBy, sortOrder }) => {
     const where = {};
