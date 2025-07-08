@@ -150,8 +150,11 @@ const getProductById = async (productId, includeCollaborator = false) => {
         });
     }
 
-    const product = await Product.findByPk(productId, {
-        where: { status: 'active' },
+    const product = await Product.findOne({
+        where: {
+            product_id: productId,
+            status: 'active',
+        },
         attributes: [
             'product_id',
             'name',
@@ -165,7 +168,6 @@ const getProductById = async (productId, includeCollaborator = false) => {
         ],
         include,
     });
-
     if (!product) return null;
     // 👉 Obtener breadcrumb usando category_id
     const breadcrumb = await buildCategoryBreadcrumb(product.category_id);
@@ -201,7 +203,7 @@ const getProductById = async (productId, includeCollaborator = false) => {
             description: cust.description,
         })),
         collaborator: product.Collaborator ? { id: product.Collaborator.collaborator_id, name: product.Collaborator.name } : null,
-         breadcrumb,
+        breadcrumb,
     };
 };
 
