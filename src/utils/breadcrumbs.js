@@ -6,12 +6,15 @@ async function buildCategoryBreadcrumb(categoryId) {
   let current = await Category.findByPk(categoryId);
 
   while (current) {
-    breadcrumb.unshift(current.name);
+    breadcrumb.unshift({ id: current.category_id, name: current.name });
     if (!current.parent_id) break;
     current = await Category.findByPk(current.parent_id);
   }
 
-  return ['Inicio', ...breadcrumb];
+  // Incluye "Inicio" como raíz
+  breadcrumb.unshift({ id: null, name: 'Inicio' });
+
+  return breadcrumb;
 }
 
 module.exports = { buildCategoryBreadcrumb };
