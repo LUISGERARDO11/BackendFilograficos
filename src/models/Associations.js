@@ -281,6 +281,9 @@ CategoryAttributes.belongsTo(ProductAttribute, { foreignKey: 'attribute_id' });
 
 Category.belongsToMany(ProductAttribute, { through: CategoryAttributes, foreignKey: 'category_id', otherKey: 'attribute_id' });
 ProductAttribute.belongsToMany(Category, { through: CategoryAttributes, foreignKey: 'attribute_id', otherKey: 'category_id' });
+//Hailie breadcrumbs
+Category.hasMany(Category, { as: 'children', foreignKey: 'parent_id' });
+Category.belongsTo(Category, { as: 'parent', foreignKey: 'parent_id' });
 
 // Relaciones de Company y SocialMedia
 Company.hasMany(SocialMedia, { foreignKey: 'company_id' });

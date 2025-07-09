@@ -14,6 +14,14 @@ const Category = sequelize.define('Category', {
     allowNull: false
   },
   description: DataTypes.TEXT,
+  parent_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'categories',
+      key: 'category_id'
+    }
+  },
   active: {
     type: DataTypes.BOOLEAN,
     allowNull: false,

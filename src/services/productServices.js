@@ -1,6 +1,7 @@
 /* Module that exports functions for querying and formatting product data with enhanced search functionality optimized for MySQL */
 const { Product, ProductVariant, Category, Collaborator, ProductAttributeValue, ProductAttribute, ProductImage, CustomizationOption, PriceHistory } = require('../models/Associations');
 const { Op } = require('sequelize');
+const { buildCategoryBreadcrumb } = require('../utils/breadcrumbs');
 
 const getProductsWithFilters = async ({ page, pageSize, sort, categoryId, search, minPrice, maxPrice, collaboratorId, includeCollaborator = false }) => {
     const offset = (page - 1) * pageSize;
@@ -23,23 +24,23 @@ const getProductsWithFilters = async ({ page, pageSize, sort, categoryId, search
     const whereClause = { status: 'active' };
     const variantWhereClause = {};
     const include = [
-        { 
-            model: Category, 
-            attributes: ['category_id', 'name'], 
-            required: false 
+        {
+            model: Category,
+            attributes: ['category_id', 'name'],
+            required: false
         },
-        { 
-            model: ProductVariant, 
-            attributes: [], 
-            where: variantWhereClause, 
-            required: true 
+        {
+            model: ProductVariant,
+            attributes: [],
+            where: variantWhereClause,
+            required: true
         },
     ];
 
     if (includeCollaborator) {
-        include.push({ 
-            model: Collaborator, 
-            attributes: ['collaborator_id', 'name'], 
+        include.push({
+            model: Collaborator,
+            attributes: ['collaborator_id', 'name'],
             required: false,
             where: search ? { name: { [Op.like]: `%${search}%` } } : {}
         });
@@ -61,8 +62,8 @@ const getProductsWithFilters = async ({ page, pageSize, sort, categoryId, search
     const { count, rows: products } = await Product.findAndCountAll({
         where: whereClause,
         attributes: [
-            'product_id', 
-            'name', 
+            'product_id',
+            'name',
             'product_type',
             [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
             [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
@@ -87,11 +88,11 @@ const formatProductList = async (products) => {
         const firstVariant = await ProductVariant.findOne({
             where: { product_id: product.product_id },
             attributes: ['variant_id', 'product_id'],
-            include: [{ 
-                model: ProductImage, 
-                attributes: ['image_url'], 
-                where: { order: 1 }, 
-                required: false 
+            include: [{
+                model: ProductImage,
+                attributes: ['image_url'],
+                where: { order: 1 },
+                required: false
             }],
             order: [['variant_id', 'ASC']],
         });
@@ -113,58 +114,61 @@ const formatProductList = async (products) => {
 
 const getProductById = async (productId, includeCollaborator = false) => {
     const include = [
-        { 
-            model: Category, 
-            attributes: ['category_id', 'name'], 
-            required: false 
+        {
+            model: Category,
+            attributes: ['category_id', 'name', 'parent_id'],
+            required: false
         },
         {
             model: ProductVariant,
             attributes: ['variant_id', 'sku', 'calculated_price', 'stock'],
             include: [
-                { 
-                    model: ProductAttributeValue, 
-                    attributes: ['value'], 
-                    include: [{ 
-                        model: ProductAttribute, 
-                        attributes: ['attribute_name', 'data_type', 'allowed_values'] 
-                    }] 
+                {
+                    model: ProductAttributeValue,
+                    attributes: ['value'],
+                    include: [{
+                        model: ProductAttribute,
+                        attributes: ['attribute_name', 'data_type', 'allowed_values']
+                    }]
                 },
-                { 
-                    model: ProductImage, 
-                    attributes: ['image_url', 'order'] 
+                {
+                    model: ProductImage,
+                    attributes: ['image_url', 'order']
                 },
             ],
         },
-        { 
-            model: CustomizationOption, 
-            attributes: ['option_type', 'description'] 
+        {
+            model: CustomizationOption,
+            attributes: ['option_type', 'description']
         },
     ];
     if (includeCollaborator) {
-        include.push({ 
-            model: Collaborator, 
-            attributes: ['collaborator_id', 'name'], 
-            required: false 
+        include.push({
+            model: Collaborator,
+            attributes: ['collaborator_id', 'name'],
+            required: false
         });
     }
 
     const product = await Product.findByPk(productId, {
         where: { status: 'active' },
         attributes: [
-            'product_id', 
-            'name', 
-            'description', 
+            'product_id',
+            'name',
+            'description',
             'product_type',
             'standard_delivery_days',
             'urgent_delivery_enabled',
             'urgent_delivery_days',
-            'urgent_delivery_cost'
+            'urgent_delivery_cost',
+            'category_id'
         ],
         include,
     });
 
     if (!product) return null;
+    // 👉 Obtener breadcrumb usando category_id
+    const breadcrumb = await buildCategoryBreadcrumb(product.category_id);
 
     return {
         product_id: product.product_id,
@@ -197,6 +201,7 @@ const getProductById = async (productId, includeCollaborator = false) => {
             description: cust.description,
         })),
         collaborator: product.Collaborator ? { id: product.Collaborator.collaborator_id, name: product.Collaborator.name } : null,
+         breadcrumb,
     };
 };
 
@@ -240,11 +245,11 @@ const getVariantsWithFilters = async ({ search, categoryId, productType, page, l
                     { model: Collaborator, attributes: ['name'], required: false }
                 ],
             },
-            { 
-                model: ProductImage, 
-                attributes: ['image_url'], 
-                where: { order: 1 }, 
-                required: false 
+            {
+                model: ProductImage,
+                attributes: ['image_url'],
+                where: { order: 1 },
+                required: false
             },
         ],
         attributes: ['variant_id', 'sku', 'production_cost', 'profit_margin', 'calculated_price'],
