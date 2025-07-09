@@ -56,8 +56,7 @@ exports.generateAlexaJWT = (user) => {
     {
       user_id: user.user_id,
       user_type: user.user_type,
-      client: process.env.ALEXA_CLIENT_ID,
-      scope: 'filograficos:admin' // Agregar scope
+      client: process.env.ALEXA_CLIENT_ID
     },
     process.env.JWT_SECRET,
     { expiresIn: '30d' }
