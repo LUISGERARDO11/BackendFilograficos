@@ -274,7 +274,7 @@ exports.logout = async (req, res) => {
   }
 };
 
-// Nueva función para autenticación de Alexa
+// Autenticación para Alexa con Implicit Grant
 exports.alexaLogin = [
   // Validaciones
   body('email').isEmail().normalizeEmail().withMessage('Correo electrónico inválido'),
@@ -294,9 +294,19 @@ exports.alexaLogin = [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password, client_id } = req.body;
+    const { email, password, client_id, redirect_uri } = req.body;
 
     try {
+      // Validar redirect_uri contra las URLs permitidas
+      const validRedirectUris = [
+        'https://layla.amazon.com/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
+        'https://pitangui.amazon.com/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
+        'https://alexa.amazon.co.jp/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U'
+      ];
+      if (!validRedirectUris.includes(redirect_uri)) {
+        return res.status(400).json({ message: 'URI de redirección inválida' });
+      }
+
       // Buscar usuario por email
       const user = await User.findOne({ where: { email } });
       if (!user) {
@@ -360,15 +370,10 @@ exports.alexaLogin = [
       const { token, session } = await authService.createSession(user, req.ip, 'Alexa-Skill');
 
       loggerUtils.logUserActivity(user.user_id, 'alexa_login', 'Inicio de sesión de Alexa exitoso');
-      res.status(200).json({
-        access_token: token,
-        token_type: 'Bearer',
-        expires_in: 30 * 24 * 60 * 60, // 30 días en segundos
-        userId: user.user_id,
-        name: user.name,
-        tipo: user.user_type,
-        profile_picture_url: account.profile_picture_url || null // Incluir URL
-      });
+
+      // Redirigir con el access_token como fragmento para Implicit Grant
+      const redirectUrl = `${redirect_uri}#access_token=${token}&token_type=Bearer&expires_in=${30 * 24 * 60 * 60}`;
+      res.redirect(redirectUrl);
     } catch (error) {
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error en el inicio de sesión de Alexa', error: error.message });
