@@ -369,14 +369,18 @@ exports.alexaLogin = [
       // Crear sesión para Alexa
       const { token, session } = await authService.createSession(user, req.ip, 'Alexa-Skill');
 
-      loggerUtils.logUserActivity(user.user_id, 'alexa_login', 'Inicio de sesión de Alexa exitoso');
+      loggerUtils.logUserActivity(user.user_id, 'alexa_login', `Inicio de sesión de Alexa exitoso, token generado para redirigir a: ${redirect_uri}`);
 
-      // Redirigir con el access_token como fragmento para Implicit Grant
-      const redirectUrl = `${redirect_uri}#access_token=${token}&token_type=Bearer&expires_in=${30 * 24 * 60 * 60}`;
-      res.redirect(redirectUrl);
+      // Devolver datos para que el frontend maneje la redirección
+      return res.status(200).json({
+        access_token: token,
+        token_type: 'Bearer',
+        expires_in: 30 * 24 * 60 * 60, // 30 días en segundos
+        redirect_uri
+      });
     } catch (error) {
       loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error en el inicio de sesión de Alexa', error: error.message });
+      return res.status(500).json({ message: 'Error en el inicio de sesión de Alexa', error: error.message });
     }
   }
 ];
