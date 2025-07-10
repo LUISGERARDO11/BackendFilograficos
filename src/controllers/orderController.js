@@ -71,47 +71,41 @@ exports.createOrder = [
   }
 ];
 
-// Obtener los detalles de un pedido por ID
-exports.getOrderById = [
-  param('id')
-    .isInt({ min: 1 })
-    .withMessage('El ID del pedido debe ser un número entero positivo'),
+//devolver las opciones activas
+exports.getShippingOptions = [
+  query('include_inactive').optional().isBoolean(),
 
   async (req, res) => {
-    const user_id = req.user.user_id;
-    const errors = validationResult(req);
-
     try {
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          message: 'Errores de validación',
-          errors: errors.array()
-        });
-      }
+      const { include_inactive } = req.query;
+      const whereClause = include_inactive ? {} : { where: { status: 'active' } };
+      const options = await ShippingOption.findAll(whereClause);
 
-      const orderId = parseInt(req.params.id);
-      const orderService = new OrderService();
-      const orderDetails = await orderService.getOrderById(user_id, orderId);
-
-      loggerUtils.logUserActivity(user_id, 'get_order_details', `Detalles del pedido obtenidos: ID ${orderId}`);
-
-      res.status(200).json({
-        success: true,
-        message: 'Detalles del pedido obtenidos exitosamente',
-        data: orderDetails
-      });
+      res.status(200).json(options);
     } catch (error) {
-      loggerUtils.logCriticalError(error);
-      if (error.message === 'Orden no encontrada o acceso denegado') {
-        return res.status(404).json({
-          success: false,
-          message: error.message
-        });
-      }
       res.status(500).json({
-        success: false,
-        message: 'Error al obtener los detalles del pedido',
+        message: 'Error al obtener opciones de envío',
+        error: error.message
+      });
+    }
+  }
+];
+//obtener los puntos de entrega activos
+exports.DeliveryPoint = [
+  // Validación opcional (ej: filtrar por tipo de punto)
+  query('type').optional().isIn(['standard', 'express']),
+
+  async (req, res) => {
+    try {
+      const { type } = req.query;
+      const whereClause = { status: 'active' };
+      if (type) whereClause.type = type;
+
+      const points = await DeliveryPoint.findAll({ where: whereClause });
+      res.status(200).json(points);
+    } catch (error) {
+      res.status(500).json({
+        message: 'Error al obtener puntos de entrega',
         error: error.message
       });
     }
@@ -566,21 +560,50 @@ exports.updateOrderStatus = [
     }
   }
 ];
-//devolver las opciones activas
-exports.getShippingOptions = async (req, res) => {
-  try {
-    const options = await ShippingOption.findAll({ where: { status: 'active' } });
-    res.status(200).json(options);
-  } catch (error) {
-    res.status(500).json({ message: 'Error al obtener opciones de envío', error: error.message });
+
+// Obtener los detalles de un pedido por ID
+exports.getOrderById = [
+  param('id')
+    .isInt({ min: 1 })
+    .withMessage('El ID del pedido debe ser un número entero positivo'),
+
+  async (req, res) => {
+    const user_id = req.user.user_id;
+    const errors = validationResult(req);
+
+    try {
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array()
+        });
+      }
+
+      const orderId = parseInt(req.params.id);
+      const orderService = new OrderService();
+      const orderDetails = await orderService.getOrderById(user_id, orderId);
+
+      loggerUtils.logUserActivity(user_id, 'get_order_details', `Detalles del pedido obtenidos: ID ${orderId}`);
+
+      res.status(200).json({
+        success: true,
+        message: 'Detalles del pedido obtenidos exitosamente',
+        data: orderDetails
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      if (error.message === 'Orden no encontrada o acceso denegado') {
+        return res.status(404).json({
+          success: false,
+          message: error.message
+        });
+      }
+      res.status(500).json({
+        success: false,
+        message: 'Error al obtener los detalles del pedido',
+        error: error.message
+      });
+    }
   }
-};
-//obtener los puntos de entrega activos
-exports.getDeliveryPoints = async (req, res) => {
-  try {
-    const points = await DeliveryPoint.findAll({ where: { status: 'active' } });
-    res.status(200).json(points);
-  } catch (error) {
-    res.status(500).json({ message: 'Error al obtener puntos de entrega', error: error.message });
-  }
-};
+];
