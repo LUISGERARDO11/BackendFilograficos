@@ -24,16 +24,5 @@ router.get('/',
   tokenExpirationMiddleware.verifyTokenExpiration,
   orderController.getOrders
 );
-//devolver las opciones activas
-router.get('/shipping-options',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  orderController.getShippingOptions
-);
-//devolver las opciones activas
-router.get('/delivery',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  orderController.getDeliveryPoints
-);
+
 module.exports = router;

@@ -567,21 +567,3 @@ exports.updateOrderStatus = [
   }
 ];
 
-//devolver las opciones activas
-exports.getShippingOptions = async (req, res) => {
-  try {
-    const options = await ShippingOption.findAll({ where: { status: 'active' } });
-    res.status(200).json(options);
-  } catch (error) {
-    res.status(500).json({ message: 'Error al obtener opciones de envío', error: error.message });
-  }
-};
-//obtener los puntos de entrega activos
-exports.getDeliveryPoints = async (req, res) => {
-  try {
-    const points = await DeliveryPoint.findAll({ where: { status: 'active' } });
-    res.status(200).json(points);
-  } catch (error) {
-    res.status(500).json({ message: 'Error al obtener puntos de entrega', error: error.message });
-  }
-};
