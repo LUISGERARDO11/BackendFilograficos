@@ -19,6 +19,10 @@ exports.createOrder = [
     .isString()
     .trim()
     .withMessage('El código de cupón debe ser una cadena de texto'),
+  body('delivery_option')
+    .optional()
+    .isIn(['home_delivery', 'pickup_point', 'store_pickup'])
+    .withMessage('Opción de envío no válida'),
 
   async (req, res) => {
     const user_id = req.user.user_id; // Obtenido de authMiddleware
@@ -33,12 +37,13 @@ exports.createOrder = [
         });
       }
 
-      const { address_id, payment_method, coupon_code } = req.body;
+      const { address_id, payment_method, coupon_code, delivery_option } = req.body;
       const orderService = new OrderService();
       const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
         address_id,
         payment_method,
-        coupon_code
+        coupon_code,
+        delivery_option
       });
 
       loggerUtils.logUserActivity(user_id, 'create_order', `Orden creada: ID ${order.order_id}`);
@@ -561,3 +566,4 @@ exports.updateOrderStatus = [
     }
   }
 ];
+
