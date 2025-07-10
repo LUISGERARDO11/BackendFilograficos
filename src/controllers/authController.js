@@ -107,6 +107,7 @@ exports.register = [
 
 // Verificar el correo electrónico del usuario
 exports.verifyEmail = async (req, res) => {
+  // Lógica existente (sin cambios)
   const { token } = req.query;
 
   try {
@@ -274,161 +275,6 @@ exports.logout = async (req, res) => {
   }
 };
 
-// Autenticación para Alexa con Implicit Grant
-exports.alexaLogin = [
-  // Validaciones
-  body('email').isEmail().normalizeEmail().withMessage('Correo electrónico inválido'),
-  body('password').not().isEmpty().trim().escape().withMessage('La contraseña es requerida'),
-  body('client_id')
-    .not().isEmpty().withMessage('El client_id es requerido')
-    .custom((value) => {
-      if (value !== process.env.ALEXA_CLIENT_ID) {
-        throw new Error('client_id inválido');
-      }
-      return true;
-    }),
-
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { email, password, client_id, redirect_uri } = req.body;
-
-    try {
-      // Validar redirect_uri contra las URLs permitidas
-      const validRedirectUris = [
-        'https://layla.amazon.com/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
-        'https://pitangui.amazon.com/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
-        'https://alexa.amazon.co.jp/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U'
-      ];
-      if (!validRedirectUris.includes(redirect_uri)) {
-        return res.status(400).json({ message: 'URI de redirección inválida' });
-      }
-
-      // Buscar usuario por email
-      const user = await User.findOne({ where: { email } });
-      if (!user) {
-        loggerUtils.logUserActivity(null, 'alexa_login_failed', `Intento de inicio de sesión fallido para email no encontrado: ${email}`);
-        return res.status(400).json({ message: 'Usuario no encontrado' });
-      }
-
-      // Verificar que el usuario sea administrador y esté activo
-      if (user.user_type !== 'administrador' || user.status !== 'activo') {
-        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', 'Intento de inicio de sesión fallido: usuario no es administrador o no está activo');
-        return res.status(403).json({ message: 'Acceso no autorizado. Solo administradores activos pueden usar la Skill de Alexa.' });
-      }
-
-      // Buscar cuenta asociada
-      const account = await Account.findOne({ where: { user_id: user.user_id } });
-      if (!account) {
-        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', 'Intento de inicio de sesión fallido: cuenta no encontrada');
-        return res.status(400).json({ message: 'Cuenta no encontrada' });
-      }
-
-      // Verificar si el usuario está bloqueado
-      const bloqueado = await authService.isUserBlocked(user.user_id);
-      if (bloqueado.blocked) {
-        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', `Cuenta bloqueada: ${bloqueado.message}`);
-        return res.status(403).json({ message: bloqueado.message });
-      }
-
-      // Verificar contraseña
-      const isMatch = await authService.verifyPassword(password, account.password_hash);
-      if (!isMatch) {
-        const result = await authService.handleFailedAttempt(user.user_id, req.ip);
-        if (result.locked) {
-          loggerUtils.logUserActivity(user.user_id, 'account_locked', 'Cuenta bloqueada por intentos fallidos');
-          return res.status(403).json({ locked: true, message: 'Tu cuenta ha sido bloqueada debido a múltiples intentos fallidos.' });
-        }
-        return res.status(400).json({ message: 'Credenciales incorrectas', ...result });
-      }
-
-      // Limpiar intentos fallidos
-      await authService.clearFailedAttempts(user.user_id);
-
-      // Verificar límite de sesiones para Alexa
-      const alexaSessionsCount = await Session.count({
-        where: { user_id: user.user_id, browser: 'Alexa-Skill', revoked: false }
-      });
-      if (alexaSessionsCount >= 1) {
-        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', 'Límite de sesiones de Alexa alcanzado');
-        return res.status(403).json({ message: 'Límite de sesiones de Alexa alcanzado (1 sesión permitida).' });
-      }
-
-      // Verificar límite total de sesiones (3 para administradores: 1 Alexa + 2 web/móvil)
-      const totalSessionsCount = await Session.count({
-        where: { user_id: user.user_id, revoked: false }
-      });
-      if (totalSessionsCount >= 3) {
-        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', 'Límite total de sesiones alcanzado');
-        return res.status(403).json({ message: 'Límite total de sesiones alcanzado (3 sesiones permitidas para administradores).' });
-      }
-
-      // Crear sesión para Alexa
-      const { token, session } = await authService.createSession(user, req.ip, 'Alexa-Skill');
-
-      loggerUtils.logUserActivity(user.user_id, 'alexa_login', `Inicio de sesión de Alexa exitoso, token generado para redirigir a: ${redirect_uri}`);
-
-      // Devolver datos para que el frontend maneje la redirección
-      return res.status(200).json({
-        access_token: token,
-        token_type: 'Bearer',
-        expires_in: 30 * 24 * 60 * 60, // 30 días en segundos
-        redirect_uri
-      });
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      return res.status(500).json({ message: 'Error en el inicio de sesión de Alexa', error: error.message });
-    }
-  }
-];
-
-// Nueva función para revocar tokens
-exports.revokeToken = [
-  body('token').not().isEmpty().trim().withMessage('El token es requerido'),
-
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { token } = req.body;
-    const userId = req.user ? req.user.user_id : null;
-
-    try {
-      // Verificar que el usuario tenga permisos de administrador
-      if (!userId || req.user.user_type !== 'administrador') {
-        return res.status(403).json({ message: 'Acceso no autorizado. Solo administradores pueden revocar tokens.' });
-      }
-
-      // Verificar si el token está en la tabla Session
-      const session = await Session.findOne({ where: { token, revoked: false } });
-      if (!session) {
-        return res.status(400).json({ message: 'Token no encontrado o ya revocado.' });
-      }
-
-      // Revocar la sesión
-      await authService.revokeSession(token);
-
-      // Agregar el token a la tabla RevokedToken
-      await RevokedToken.create({
-        token,
-        user_id: session.user_id,
-        revokedAt: new Date()
-      });
-
-      loggerUtils.logUserActivity(userId, 'token_revoked', `Token revocado para user_id: ${session.user_id}`);
-      res.status(200).json({ message: 'Token revocado exitosamente.' });
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error al revocar el token', error: error.message });
-    }
-  }
-];
-
 // ** SEGURIDAD Y AUTENTICACIÓN MULTIFACTOR **
 exports.sendOtpMfa = async (req, res) => {
   const { userId } = req.body;
@@ -565,5 +411,153 @@ exports.verifyOTPMFA = async (req, res) => {
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al verificar el OTP.', error: error.message });
+  }
+};
+
+// **Métodos para Alexa Account Linking**
+
+// Endpoint de autorización para Alexa
+exports.alexaAuthorize = async (req, res) => {
+  try {
+    const { client_id, redirect_uri, state, scope, response_type } = req.query;
+
+    // Validar parámetros requeridos
+    if (!client_id || !redirect_uri || !state || !response_type) {
+      return res.status(400).json({ error: 'Parámetros requeridos faltantes' });
+    }
+
+    // Validar client_id
+    if (client_id !== process.env.ALEXA_CLIENT_ID) {
+      return res.status(401).json({ error: 'client_id inválido' });
+    }
+
+    // Validar response_type
+    if (response_type !== 'code') {
+      return res.status(400).json({ error: 'response_type debe ser "code"' });
+    }
+
+    // Validar redirect_uri
+    const validRedirectUris = [
+      'https://alexa.amazon.co.jp/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
+      'https://pitangui.amazon.com/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
+      'https://layla.amazon.com/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
+    ];
+    if (!validRedirectUris.includes(redirect_uri)) {
+      return res.status(401).json({ error: 'redirect_uri inválido' });
+    }
+
+    // Validar scopes
+    const validScopes = ['read:orders', 'write:orders', 'profile', 'email'];
+    const requestedScopes = scope ? scope.split(' ') : [];
+    if (requestedScopes.some(s => !validScopes.includes(s))) {
+      return res.status(400).json({ error: 'Scopes inválidos' });
+    }
+
+    // Redirigir al frontend para el login específico de Alexa
+    const loginUrl = `https://ecommerce-filograficos.vercel.app/alexa-login?client_id=${encodeURIComponent(client_id)}&redirect_uri=${encodeURIComponent(redirect_uri)}&state=${encodeURIComponent(state)}&scope=${encodeURIComponent(scope || '')}&response_type=${encodeURIComponent(response_type)}`;
+    res.redirect(loginUrl);
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ error: 'Error interno del servidor', error_description: error.message });
+  }
+};
+
+// Endpoint para completar la autorización de Alexa
+exports.alexaCompleteAuthorization = async (req, res) => {
+  try {
+    const { user_id, redirect_uri, state, scope } = req.body;
+
+    // Validar parámetros requeridos
+    if (!user_id || !redirect_uri || !state) {
+      return res.status(400).json({ error: 'Parámetros requeridos faltantes' });
+    }
+
+    // Validar redirect_uri
+    const validRedirectUris = [
+      'https://alexa.amazon.co.jp/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
+      'https://pitangui.amazon.com/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
+      'https://layla.amazon.com/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
+    ];
+    if (!validRedirectUris.includes(redirect_uri)) {
+      return res.status(401).json({ error: 'redirect_uri inválido' });
+    }
+
+    // Validar que el usuario es administrador
+    const user = await User.findByPk(user_id);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    if (user.user_type !== 'administrador') {
+      return res.status(403).json({ error: 'Solo los administradores pueden autorizar esta skill' });
+    }
+
+    // Validar scopes
+    const validScopes = ['read:orders', 'write:orders', 'profile', 'email'];
+    const requestedScopes = scope ? scope.split(' ') : ['read:orders', 'write:orders']; // Scopes por defecto
+    if (requestedScopes.some(s => !validScopes.includes(s))) {
+      return res.status(400).json({ error: 'Scopes inválidos' });
+    }
+
+    // Generar código de autorización
+    const authCode = await authService.generateAlexaAuthCode(user_id, redirect_uri, requestedScopes);
+    const redirectUrl = `${redirect_uri}?code=${authCode}&state=${state}`;
+
+    res.status(200).json({ redirectUrl });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ error: 'Error al generar el código de autorización', error_description: error.message });
+  }
+};
+
+// Endpoint para intercambiar código de autorización por tokens
+exports.alexaToken = async (req, res) => {
+  try {
+    const { grant_type, code, refresh_token, client_id, client_secret } = req.body;
+
+    // Validar credenciales del cliente
+    if (client_id !== process.env.ALEXA_CLIENT_ID || client_secret !== process.env.ALEXA_CLIENT_SECRET) {
+      return res.status(401).json({ error: 'invalid_client' });
+    }
+
+    if (grant_type === 'authorization_code') {
+      const authCode = await authService.validateAlexaAuthCode(code);
+      if (!authCode) {
+        return res.status(400).json({ error: 'invalid_grant', error_description: 'Código de autorización inválido o expirado' });
+      }
+
+      const user = await User.findByPk(authCode.user_id);
+      if (!user || user.user_type !== 'administrador') {
+        return res.status(400).json({ error: 'invalid_grant', error_description: 'Usuario no encontrado o no es administrador' });
+      }
+
+      const tokens = await authService.createAlexaTokens(user, req.ip, 'Alexa-Skill', authCode.scopes.split(' '));
+      await authService.markAlexaAuthCodeUsed(code);
+
+      return res.status(200).json({
+        access_token: tokens.accessToken,
+        refresh_token: tokens.refreshToken,
+        token_type: 'Bearer',
+        expires_in: 30 * 24 * 60 * 60, // 30 días en segundos
+        scope: authCode.scopes
+      });
+    } else if (grant_type === 'refresh_token') {
+      const tokens = await authService.validateAlexaRefreshToken(refresh_token);
+      if (!tokens) {
+        return res.status(400).json({ error: 'invalid_grant', error_description: 'Token de refresco inválido o expirado' });
+      }
+
+      return res.status(200).json({
+        access_token: tokens.accessToken,
+        refresh_token: tokens.refreshToken,
+        token_type: 'Bearer',
+        expires_in: 30 * 24 * 60 * 60, // 30 días en segundos
+        scope: tokens.scope
+      });
+    } else {
+      return res.status(400).json({ error: 'unsupported_grant_type' });
+    }
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    return res.status(500).json({ error: 'server_error', error_description: error.message });
   }
 };

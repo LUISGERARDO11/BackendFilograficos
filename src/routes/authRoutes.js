@@ -2,6 +2,7 @@
 application. Here's a breakdown of what each part is doing: */
 const express = require('express');
 const router = express.Router();
+const { body, query } = require('express-validator');
 
 // Importar controladores
 const authController = require('../controllers/authController');
@@ -29,10 +30,25 @@ router.post('/mfa/verify-otp', authController.verifyOTPMFA);
 // Cierre de sesión
 router.post('/logout', authMiddleware, authController.logout);
 
-// Nueva ruta para autenticación de Alexa
-router.post('/alexa-login', authController.alexaLogin);
+// Rutas para Alexa Account Linking
+router.get('/alexa/authorize', [
+  query('client_id').notEmpty().withMessage('Se requiere el client_id'),
+  query('redirect_uri').notEmpty().withMessage('Se requiere el redirect_uri'),
+  query('response_type').equals('code').withMessage('El response_type debe ser "code"'),
+  query('state').notEmpty().withMessage('Se requiere el state'),
+], authLimiter, authController.alexaAuthorize);
 
-// Nueva ruta para revocar tokens (protegida para administradores)
-router.post('/revoke-token', authMiddleware, roleMiddleware(['administrador']), authController.revokeToken);
+router.post('/alexa/token', [
+  body('grant_type').isIn(['authorization_code', 'refresh_token']).withMessage('grant_type inválido'),
+  body('client_id').notEmpty().withMessage('Se requiere el client_id'),
+  body('client_secret').notEmpty().withMessage('Se requiere el client_secret'),
+], authLimiter, authController.alexaToken);
+
+router.post('/alexa/complete-authorization', [
+  body('user_id').isInt().withMessage('Se requiere el user_id'),
+  body('redirect_uri').notEmpty().withMessage('Se requiere el redirect_uri'),
+  body('state').notEmpty().withMessage('Se requiere el state'),
+  body('scope').optional().isString().withMessage('Scope debe ser una cadena'),
+], authLimiter, authController.alexaCompleteAuthorization);
 
 module.exports = router;

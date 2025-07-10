@@ -52,6 +52,7 @@ const SystemConfig = require('./Systemconfig');
 const BackupConfig = require('./BackupConfig');
 const BackupFiles = require('./BackupFiles');
 const RevokedToken = require('./RevokedToken');
+const AlexaAuthCode = require('./AlexaAuthCode');
 
 // Relaciones de Usuarios
 User.hasOne(Account, { foreignKey: 'user_id' });
@@ -89,6 +90,9 @@ BackupConfig.belongsTo(User, { foreignKey: 'created_by' });
 
 User.hasMany(RevokedToken, { foreignKey: 'user_id' });
 RevokedToken.belongsTo(User, { foreignKey: 'user_id' });
+
+User.hasMany(AlexaAuthCode, { foreignKey: 'user_id' });
+AlexaAuthCode.belongsTo(User, { foreignKey: 'user_id' });
 
 // Relaciones de Cuentas
 Account.hasMany(TwoFactorConfig, { foreignKey: 'account_id' });
@@ -281,7 +285,8 @@ CategoryAttributes.belongsTo(ProductAttribute, { foreignKey: 'attribute_id' });
 
 Category.belongsToMany(ProductAttribute, { through: CategoryAttributes, foreignKey: 'category_id', otherKey: 'attribute_id' });
 ProductAttribute.belongsToMany(Category, { through: CategoryAttributes, foreignKey: 'attribute_id', otherKey: 'category_id' });
-//Hailie breadcrumbs
+
+// Hailie breadcrumbs
 Category.hasMany(Category, { as: 'children', foreignKey: 'parent_id' });
 Category.belongsTo(Category, { as: 'parent', foreignKey: 'parent_id' });
 
@@ -343,5 +348,6 @@ module.exports = {
   SocialMedia,
   BackupConfig,
   BackupFiles,
-  RevokedToken
+  RevokedToken,
+  AlexaAuthCode
 };

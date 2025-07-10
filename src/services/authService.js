@@ -4,9 +4,10 @@ require("dotenv").config();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { Op } = require('sequelize');
+const { v4: uuidv4 } = require('uuid');
 
 // Modelos
-const { SystemConfig, Session, Account, FailedAttempt, User, PasswordStatus } = require('../models/Associations');
+const { SystemConfig, Session, Account, FailedAttempt, User, PasswordStatus, AlexaAuthCode } = require('../models/Associations');
 // Utilidades
 const authUtils = require("../utils/authUtils");
 const loggerUtils = require('../utils/loggerUtils');
@@ -50,13 +51,14 @@ exports.generateJWT = async (user) => {
   );
 };
 
-// Nueva función para generar JWT para Alexa (30 días)
-exports.generateAlexaJWT = (user) => {
+// Generar JWT para Alexa (30 días)
+exports.generateAlexaJWT = (user, scopes) => {
   return jwt.sign(
     {
       user_id: user.user_id,
       user_type: user.user_type,
-      client: process.env.ALEXA_CLIENT_ID
+      client: process.env.ALEXA_CLIENT_ID,
+      scope: scopes
     },
     process.env.JWT_SECRET,
     { expiresIn: '30d' }
@@ -73,7 +75,7 @@ exports.verifyJWT = async (token) => {
         token,
         user_id: decoded.user_id,
         revoked: false,
-        expiration: { [Op.gt]: new Date() } // No expirada
+        expiration: { [Op.gt]: new Date() }
       }
     });
 
@@ -90,7 +92,7 @@ exports.verifyJWT = async (token) => {
 // Crear una nueva sesión
 exports.createSession = async (user, ip, browser) => {
   const config = await exports.getConfig();
-  const token = browser === 'Alexa-Skill' ? exports.generateAlexaJWT(user) : await exports.generateJWT(user);
+  const token = browser === 'Alexa-Skill' ? exports.generateAlexaJWT(user, ['read:orders', 'write:orders']) : await exports.generateJWT(user);
   const expiration = new Date(Date.now() + (browser === 'Alexa-Skill' ? 30 * 24 * 60 * 60 * 1000 : config.session_lifetime * 1000));
 
   const session = await Session.create({
@@ -114,9 +116,9 @@ exports.extendSession = async (session) => {
 
   if (timeToExpiration < config.session_extension_threshold) {
     const user = await User.findByPk(session.user_id);
-    const newToken = session.browser === 'Alexa-Skill' ? exports.generateAlexaJWT(user) : await exports.generateJWT(user);
+    const newToken = session.browser === 'Alexa-Skill' ? exports.generateAlexaJWT(user, ['read:orders', 'write:orders']) : await exports.generateJWT(user);
     const newExpiration = new Date(now + (session.browser === 'Alexa-Skill' ? 30 * 24 * 60 * 60 * 1000 : config.session_lifetime * 1000));
-  
+
     await session.update({
       token: newToken,
       expiration: newExpiration,
@@ -279,4 +281,75 @@ exports.isUserBlocked = async (userId) => {
   }
 
   return { blocked: isBlocked, message };
+};
+
+// Funciones para Alexa Account Linking
+exports.generateAlexaAuthCode = async (userId, redirectUri, scopes) => {
+  const code = uuidv4();
+  await AlexaAuthCode.create({
+    code,
+    user_id: userId,
+    redirect_uri: redirectUri,
+    scopes: scopes.join(' '),
+    expires: new Date(Date.now() + 10 * 60 * 1000), // 10 minutos
+    used: false
+  });
+  return code;
+};
+
+exports.validateAlexaAuthCode = async (code) => {
+  const authCode = await AlexaAuthCode.findOne({
+    where: { code, used: false, expires: { [Op.gt]: new Date() } }
+  });
+  return authCode;
+};
+
+exports.markAlexaAuthCodeUsed = async (code) => {
+  await AlexaAuthCode.update({ used: true }, { where: { code } });
+};
+
+exports.createAlexaTokens = async (user, ip, browser, scopes) => {
+  const accessToken = exports.generateAlexaJWT(user, scopes);
+  const refreshToken = uuidv4();
+  const expiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 días
+  const session = await Session.create({
+    user_id: user.user_id,
+    token: accessToken,
+    refresh_token: refreshToken,
+    ip,
+    browser,
+    expiration,
+    last_activity: new Date()
+  });
+  return { accessToken, refreshToken, session };
+};
+
+exports.validateAlexaRefreshToken = async (refreshToken) => {
+  const session = await Session.findOne({
+    where: {
+      refresh_token: refreshToken,
+      revoked: false,
+      expiration: { [Op.gt]: new Date() }
+    }
+  });
+  if (!session) {
+    return null;
+  }
+  const user = await User.findByPk(session.user_id);
+  if (!user || user.user_type !== 'administrador') {
+    return null;
+  }
+  const newAccessToken = exports.generateAlexaJWT(user, ['read:orders', 'write:orders']);
+  const newExpiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  await session.update({
+    token: newAccessToken,
+    expiration: newExpiration,
+    last_activity: new Date()
+  });
+  return {
+    accessToken: newAccessToken,
+    refreshToken,
+    scope: 'read:orders write:orders',
+    user_id: user.user_id
+  };
 };
