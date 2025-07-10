@@ -561,3 +561,12 @@ exports.updateOrderStatus = [
     }
   }
 ];
+//devolver las opciones activas
+exports.getShippingOptions = async (req, res) => {
+  try {
+    const options = await ShippingOption.findAll({ where: { status: 'active' } });
+    res.status(200).json(options);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener opciones de envío', error: error.message });
+  }
+};
