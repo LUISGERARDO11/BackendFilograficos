@@ -71,7 +71,52 @@ exports.createOrder = [
   }
 ];
 
+// Obtener los detalles de un pedido por ID
+exports.getOrderById = [
+  param('id')
+    .isInt({ min: 1 })
+    .withMessage('El ID del pedido debe ser un número entero positivo'),
 
+  async (req, res) => {
+    const user_id = req.user.user_id;
+    const errors = validationResult(req);
+
+    try {
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array()
+        });
+      }
+
+      const orderId = parseInt(req.params.id);
+      const orderService = new OrderService();
+      const orderDetails = await orderService.getOrderById(user_id, orderId);
+
+      loggerUtils.logUserActivity(user_id, 'get_order_details', `Detalles del pedido obtenidos: ID ${orderId}`);
+
+      res.status(200).json({
+        success: true,
+        message: 'Detalles del pedido obtenidos exitosamente',
+        data: orderDetails
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      if (error.message === 'Orden no encontrada o acceso denegado') {
+        return res.status(404).json({
+          success: false,
+          message: error.message
+        });
+      }
+      res.status(500).json({
+        success: false,
+        message: 'Error al obtener los detalles del pedido',
+        error: error.message
+      });
+    }
+  }
+];
 
 // Obtener todas las órdenes del usuario
 exports.getOrders = [
@@ -522,49 +567,21 @@ exports.updateOrderStatus = [
   }
 ];
 
-// Obtener los detalles de un pedido por ID
-exports.getOrderById = [
-  param('id')
-    .isInt({ min: 1 })
-    .withMessage('El ID del pedido debe ser un número entero positivo'),
-
-  async (req, res) => {
-    const user_id = req.user.user_id;
-    const errors = validationResult(req);
-
-    try {
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          message: 'Errores de validación',
-          errors: errors.array()
-        });
-      }
-
-      const orderId = parseInt(req.params.id);
-      const orderService = new OrderService();
-      const orderDetails = await orderService.getOrderById(user_id, orderId);
-
-      loggerUtils.logUserActivity(user_id, 'get_order_details', `Detalles del pedido obtenidos: ID ${orderId}`);
-
-      res.status(200).json({
-        success: true,
-        message: 'Detalles del pedido obtenidos exitosamente',
-        data: orderDetails
-      });
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      if (error.message === 'Orden no encontrada o acceso denegado') {
-        return res.status(404).json({
-          success: false,
-          message: error.message
-        });
-      }
-      res.status(500).json({
-        success: false,
-        message: 'Error al obtener los detalles del pedido',
-        error: error.message
-      });
-    }
+//devolver las opciones activas
+exports.getShippingOptions = async (req, res) => {
+  try {
+    const options = await ShippingOption.findAll({ where: { status: 'active' } });
+    res.status(200).json(options);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener opciones de envío', error: error.message });
   }
-];
+};
+//obtener los puntos de entrega activos
+exports.getDeliveryPoints = async (req, res) => {
+  try {
+    const points = await DeliveryPoint.findAll({ where: { status: 'active' } });
+    res.status(200).json(points);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener puntos de entrega', error: error.message });
+  }
+};
