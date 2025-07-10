@@ -607,3 +607,44 @@ exports.getOrderById = [
     }
   }
 ];
+
+//devolver las opciones activas
+exports.getShippingOptions = [
+  query('include_inactive').optional().isBoolean(),
+
+  async (req, res) => {
+    try {
+      const { include_inactive } = req.query;
+      const whereClause = include_inactive ? {} : { where: { status: 'active' } };
+      const options = await ShippingOption.findAll(whereClause);
+
+      res.status(200).json(options);
+    } catch (error) {
+      res.status(500).json({
+        message: 'Error al obtener opciones de envío',
+        error: error.message
+      });
+    }
+  }
+];
+//obtener los puntos de entrega activos
+exports.DeliveryPoint = [
+  // Validación opcional (ej: filtrar por tipo de punto)
+  query('type').optional().isIn(['standard', 'express']),
+
+  async (req, res) => {
+    try {
+      const { type } = req.query;
+      const whereClause = { status: 'active' };
+      if (type) whereClause.type = type;
+
+      const points = await DeliveryPoint.findAll({ where: whereClause });
+      res.status(200).json(points);
+    } catch (error) {
+      res.status(500).json({
+        message: 'Error al obtener puntos de entrega',
+        error: error.message
+      });
+    }
+  }
+];
