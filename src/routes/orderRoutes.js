@@ -11,6 +11,13 @@ router.post('/create',
   orderController.createOrder
 );
 
+// Obtener opciones de envío disponibles
+router.get('/shippingOptions',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  orderController.getShippingOptions
+);
+
 // Obtener detalles de una orden por ID
 router.get('/:id',
   authMiddleware,
@@ -23,13 +30,6 @@ router.get('/',
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   orderController.getOrders
-);
-
-// Obtener opciones de envío disponibles
-router.get('/shippingOptions',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  orderController.getShippingOptions
 );
 
 module.exports = router;
