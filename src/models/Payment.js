@@ -17,7 +17,7 @@ const Payment = sequelize.define('Payment', {
     }
   },
   payment_method: {
-    type: DataTypes.ENUM('mercado_pago'),
+    type: DataTypes.ENUM('bank_transfer_oxxo', 'bank_transfer_bbva', 'bank_transfer', 'paypal', 'stripe'),
     allowNull: false
   },
   amount: {
