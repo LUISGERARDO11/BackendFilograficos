@@ -42,9 +42,8 @@ const Order = sequelize.define('Order', {
     defaultValue: 'pending'
   },
   payment_method: {
-    type: DataTypes.ENUM('bank_transfer_oxxo', 'bank_transfer_bbva', 'bank_transfer', 'paypal', 'stripe'),
-    defaultValue: 'bank_transfer',
-    allowNull: true
+    type: DataTypes.ENUM('mercado_pago'),
+    allowNull: false
   },
   order_status: {
     type: DataTypes.ENUM('pending', 'processing', 'shipped', 'delivered'),

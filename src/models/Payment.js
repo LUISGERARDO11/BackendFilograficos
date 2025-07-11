@@ -17,7 +17,7 @@ const Payment = sequelize.define('Payment', {
     }
   },
   payment_method: {
-    type: DataTypes.ENUM('bank_transfer_oxxo', 'bank_transfer_bbva', 'bank_transfer', 'paypal', 'stripe'),
+    type: DataTypes.ENUM('mercado_pago'),
     allowNull: false
   },
   amount: {
@@ -40,6 +40,10 @@ const Payment = sequelize.define('Payment', {
     type: DataTypes.INTEGER,
     defaultValue: 0,
     allowNull: false
+  },
+  preference_id: {
+    type: DataTypes.STRING(100),
+    allowNull: true // Para almacenar el ID de la preferencia de Mercado Pago
   }
 }, {
   tableName: 'payments',
