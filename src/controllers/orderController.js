@@ -566,7 +566,7 @@ exports.updateOrderStatus = [
     }
   }
 ];
-//Hailie
+//obtener opciones de envio
 exports.getShippingOptions = [
   async (req, res) => {
     try {
