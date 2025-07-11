@@ -291,7 +291,7 @@ exports.generateAlexaAuthCode = async (userId, redirectUri, scopes) => {
     user_id: userId,
     redirect_uri: redirectUri,
     scopes: scopes.join(' '),
-    expires: new Date(Date.now() + 10 * 60 * 1000), // 10 minutos
+    expires_at: new Date(Date.now() + 10 * 60 * 1000), // 10 minutos
     used: false
   });
   return code;
@@ -299,7 +299,7 @@ exports.generateAlexaAuthCode = async (userId, redirectUri, scopes) => {
 
 exports.validateAlexaAuthCode = async (code) => {
   const authCode = await AlexaAuthCode.findOne({
-    where: { code, used: false, expires: { [Op.gt]: new Date() } }
+    where: { code, used: false, expires_at: { [Op.gt]: new Date() } }
   });
   return authCode;
 };
