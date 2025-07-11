@@ -68,3 +68,15 @@ exports.isPasswordCompromised = (password) => {
 
   return passwordList.has(password.trim());
 };
+
+exports.parseBasicAuth = (authHeader) => {
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    return { client_id: null, client_secret: null };
+  }
+
+  const base64Credentials = authHeader.split(' ')[1];
+  const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
+  const [client_id, client_secret] = credentials.split(':');
+
+  return { client_id, client_secret };
+};

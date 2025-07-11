@@ -512,27 +512,47 @@ exports.alexaCompleteAuthorization = async (req, res) => {
 // Endpoint para intercambiar código de autorización por tokens
 exports.alexaToken = async (req, res) => {
   try {
-    const { grant_type, code, refresh_token, client_id, client_secret } = req.body;
+    const { grant_type, code, refresh_token } = req.body;
+
+    // Extraer client_id y client_secret del encabezado Authorization (HTTP Basic)
+    let client_id, client_secret;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Basic ')) {
+      const credentials = authUtils.parseBasicAuth(authHeader);
+      client_id = credentials.client_id;
+      client_secret = credentials.client_secret;
+    } else {
+      // Fallback: intentar obtener del cuerpo de la solicitud
+      client_id = req.body.client_id;
+      client_secret = req.body.client_secret;
+    }
+
+    loggerUtils.logUserActivity(null, 'alexa_token_request', `Solicitud de token con grant_type: ${grant_type}, client_id: ${client_id}`);
+    console.log(null, 'alexa_token_request', `Solicitud de token con grant_type: ${grant_type}, client_id: ${client_id}`)
 
     // Validar credenciales del cliente
     if (client_id !== process.env.ALEXA_CLIENT_ID || client_secret !== process.env.ALEXA_CLIENT_SECRET) {
-      return res.status(401).json({ error: 'invalid_client' });
+      loggerUtils.logUserActivity(null, 'alexa_token_failed', `Credenciales inválidas: client_id ${client_id}`);
+      return res.status(401).json({ error: 'invalid_client', error_description: 'Credenciales del cliente inválidas' });
     }
 
     if (grant_type === 'authorization_code') {
       const authCode = await authService.validateAlexaAuthCode(code);
       if (!authCode) {
+        loggerUtils.logUserActivity(null, 'alexa_token_failed', `Código de autorización inválido: ${code}`);
         return res.status(400).json({ error: 'invalid_grant', error_description: 'Código de autorización inválido o expirado' });
       }
 
       const user = await User.findByPk(authCode.user_id);
       if (!user || user.user_type !== 'administrador') {
+        loggerUtils.logUserActivity(null, 'alexa_token_failed', `Usuario no encontrado o no es administrador: ${authCode.user_id}`);
         return res.status(400).json({ error: 'invalid_grant', error_description: 'Usuario no encontrado o no es administrador' });
       }
 
       const tokens = await authService.createAlexaTokens(user, req.ip, 'Alexa-Skill', authCode.scopes.split(' '));
       await authService.markAlexaAuthCodeUsed(code);
 
+      loggerUtils.logUserActivity(user.user_id, 'alexa_token_success', 'Token de acceso generado para Alexa');
       return res.status(200).json({
         access_token: tokens.accessToken,
         refresh_token: tokens.refreshToken,
@@ -543,9 +563,11 @@ exports.alexaToken = async (req, res) => {
     } else if (grant_type === 'refresh_token') {
       const tokens = await authService.validateAlexaRefreshToken(refresh_token);
       if (!tokens) {
+        loggerUtils.logUserActivity(null, 'alexa_token_failed', `Token de refresco inválido: ${refresh_token}`);
         return res.status(400).json({ error: 'invalid_grant', error_description: 'Token de refresco inválido o expirado' });
       }
 
+      loggerUtils.logUserActivity(tokens.user_id, 'alexa_token_success', 'Token de acceso renovado para Alexa');
       return res.status(200).json({
         access_token: tokens.accessToken,
         refresh_token: tokens.refreshToken,
@@ -554,6 +576,7 @@ exports.alexaToken = async (req, res) => {
         scope: tokens.scope
       });
     } else {
+      loggerUtils.logUserActivity(null, 'alexa_token_failed', `Grant type no soportado: ${grant_type}`);
       return res.status(400).json({ error: 'unsupported_grant_type' });
     }
   } catch (error) {
