@@ -566,4 +566,25 @@ exports.updateOrderStatus = [
     }
   }
 ];
-
+//Hailie
+exports.getShippingOptions = [
+  async (req, res) => {
+    try {
+      const shippingOptions = await ShippingOption.findAll({
+        where: { status: 'active' },
+        attributes: ['shipping_option_id', 'name', 'base_cost']
+      });
+      res.status(200).json({
+        success: true,
+        data: shippingOptions.map(option => ({
+          id: option.name.toLowerCase().replace(/ /g, '_'), // Mapear a home_delivery, etc.
+          name: option.name,
+          cost: parseFloat(option.base_cost)
+        }))
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ success: false, message: 'Error al obtener opciones de envío' });
+    }
+  }
+];
