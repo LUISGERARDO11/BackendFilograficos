@@ -6,9 +6,7 @@ const jwt = require("jsonwebtoken");
 const { Op } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 
-// Modelos
 const { SystemConfig, Session, Account, FailedAttempt, User, PasswordStatus, AlexaAuthCode } = require('../models/Associations');
-// Utilidades
 const authUtils = require("../utils/authUtils");
 const loggerUtils = require('../utils/loggerUtils');
 const sequelize = require('../config/dataBase');
@@ -57,8 +55,7 @@ exports.generateAlexaJWT = (user, scopes) => {
     {
       user_id: user.user_id,
       user_type: user.user_type,
-      client: process.env.ALEXA_CLIENT_ID,
-      scope: scopes
+      scope: scopes.join(' ')
     },
     process.env.JWT_SECRET,
     { expiresIn: '30d' }
@@ -310,8 +307,9 @@ exports.markAlexaAuthCodeUsed = async (code) => {
 
 exports.createAlexaTokens = async (user, ip, browser, scopes) => {
   const accessToken = exports.generateAlexaJWT(user, scopes);
+  loggerUtils.logUserActivity(null, 'alexa_token_creation', `Tamaño del accessToken: ${accessToken.length} caracteres`);
   const refreshToken = uuidv4();
-  const expiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 días
+  const expiration = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   const session = await Session.create({
     user_id: user.user_id,
     token: accessToken,
