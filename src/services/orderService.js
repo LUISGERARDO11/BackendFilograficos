@@ -6,7 +6,7 @@ const orderUtils = require('../utils/orderUtils');
 const NotificationManager = require('./notificationManager');
 
 // Importar todos los modelos necesarios al inicio del archivo
-const { Cart, CartDetail, Order, OrderDetail, OrderHistory, Payment, Address, CouponUsage, Promotion, ProductVariant, Customization, Product, ProductImage, User } = require('../models/Associations');
+const { Cart, CartDetail, Order, OrderDetail, OrderHistory, Payment, Address, CouponUsage, Promotion, ProductVariant, Customization, Product, ProductImage, User,ShippingOption } = require('../models/Associations');
 
 class OrderService {
   /**
@@ -16,16 +16,15 @@ class OrderService {
    * @returns {Object} - La orden creada, el pago y las instrucciones de pago.
    * @throws {Error} - Si el carrito está vacío, la dirección es inválida, el stock es insuficiente o falla alguna operación.
    */
-  async createOrder(userId, { address_id, payment_method, coupon_code }) {
+  //se cambio esto hailie
+  async createOrder(userId, { address_id, payment_method, coupon_code, delivery_option }) {
     const transaction = await Cart.sequelize.transaction();
     try {
       // Verificar dirección si se proporciona
       let address = null;
       if (address_id) {
         address = await Address.findOne({ where: { address_id, user_id: userId }, transaction });
-        if (!address) {
-          throw new Error('Dirección no válida');
-        }
+        if (!address) throw new Error('Dirección no válida');
       }
 
       // Obtener carrito del usuario
@@ -35,9 +34,7 @@ class OrderService {
         transaction
       });
 
-      if (!cart) {
-        throw new Error('Carrito no encontrado');
-      }
+      if (!cart) throw new Error('Carrito no encontrado');
 
       // Obtener detalles del carrito
       const cartDetails = await CartDetail.findAll({
@@ -67,23 +64,15 @@ class OrderService {
         transaction
       });
 
-      if (!cartDetails || cartDetails.length === 0) {
-        throw new Error('Carrito vacío');
-      }
+      if (!cartDetails || cartDetails.length === 0) throw new Error('Carrito vacío');
 
       // Validar ítems urgentes y disponibilidad de stock
       for (const detail of cartDetails) {
         const variant = detail.ProductVariant;
         const product = variant?.Product;
-        if (!variant || !product) {
-          throw new Error(`Variante o producto no encontrado para el ítem ${detail.variant_id}`);
-        }
-        if (detail.is_urgent && !product.urgent_delivery_enabled) {
-          throw new Error(`El producto ${product.name || 'desconocido'} no permite entrega urgente`);
-        }
-        if (variant.stock < detail.quantity) {
-          throw new Error(`Stock insuficiente para el producto ${product.name || 'desconocido'} (SKU: ${variant.sku}). Disponible: ${variant.stock}, Requerido: ${detail.quantity}`);
-        }
+        if (!variant || !product) throw new Error(`Variante o producto no encontrado para el ítem ${detail.variant_id}`);
+        if (detail.is_urgent && !product.urgent_delivery_enabled) throw new Error(`El producto ${product.name || 'desconocido'} no permite entrega urgente`);
+        if (variant.stock < detail.quantity) throw new Error(`Stock insuficiente para ${product.name || 'desconocido'} (Disponible: ${variant.stock}, Requerido: ${detail.quantity})`);
       }
 
       // Calcular costos y días de entrega
@@ -94,9 +83,7 @@ class OrderService {
       for (const detail of cartDetails) {
         const product = detail.ProductVariant.Product;
         const unitPrice = detail.unit_price || detail.ProductVariant.calculated_price;
-        if (!unitPrice) {
-          throw new Error(`Precio no definido para el ítem ${product.name || detail.variant_id}`);
-        }
+        if (!unitPrice) throw new Error(`Precio no definido para ${product.name || detail.variant_id}`);
 
         const urgentCost = detail.is_urgent ? parseFloat(detail.urgent_delivery_fee || 0) : 0;
         total_urgent_cost += urgentCost * detail.quantity;
@@ -128,14 +115,27 @@ class OrderService {
         });
       }
 
+      // Calcular costos con opción de envío
+      let shippingCost = 0;
+      if (delivery_option) {
+        const shippingOption = await ShippingOption.findOne({
+          where: { name: delivery_option.replace('_', ' ').replace(/^\w/, c => c.toUpperCase()), status: 'active' }
+        });
+        if (!shippingOption) throw new Error('Opción de envío no válida o inactiva');
+        shippingCost = parseFloat(shippingOption.base_cost);
+      }
+
       // Calcular subtotal, descuento y total
       const subtotal = orderDetailsData.reduce((sum, detail) => sum + (detail.quantity * detail.unit_price), 0);
       const discount = orderDetailsData.reduce((sum, detail) => sum + detail.discount_applied, 0);
-      const shipping_cost = 20.00;
-      const total = Math.max(0, subtotal + shipping_cost - discount);
+      const total = Math.max(0, subtotal + shippingCost + total_urgent_cost - discount);
 
-      // Calcular fecha estimada de entrega
-      const estimated_delivery_date = moment().add(maxDeliveryDays, 'days').toDate();
+      // Ajustar estimated_delivery_date según delivery_option
+      let estimatedDeliveryDays = maxDeliveryDays;
+      if (delivery_option === 'home_delivery' && cartDetails.some(detail => detail.is_urgent)) {
+        estimatedDeliveryDays = Math.min(estimatedDeliveryDays, 1); // Priorizar entrega urgente
+      }
+      const estimated_delivery_date = moment().add(estimatedDeliveryDays, 'days').toDate();
 
       // Crear orden
       const order = await Order.create({
@@ -144,39 +144,26 @@ class OrderService {
         total,
         total_urgent_cost,
         discount,
-        shipping_cost,
+        shipping_cost: shippingCost,
         payment_status: 'pending',
         payment_method,
         order_status: 'pending',
         estimated_delivery_date,
-        delivery_option: null
+        delivery_option
       }, { transaction });
 
-      // Crear detalles del pedido
+      // Crear detalles del pedido, actualizar stock, historial, pago, cupones y limpiar carrito (lógica existente)
       for (const detailData of orderDetailsData) {
-        await OrderDetail.create({
-          ...detailData,
-          order_id: order.order_id
-        }, { transaction });
+        await OrderDetail.create({ ...detailData, order_id: order.order_id }, { transaction });
       }
 
-      // Actualizar stock de las variantes
       for (const detail of cartDetails) {
-        const variant = await ProductVariant.findOne({
-          where: { variant_id: detail.variant_id },
-          transaction
-        });
+        const variant = await ProductVariant.findOne({ where: { variant_id: detail.variant_id }, transaction });
         if (variant) {
-          await variant.update({
-            stock: variant.stock - detail.quantity,
-            updated_at: new Date()
-          }, { transaction });
-        } else {
-          throw new Error(`Variante no encontrada: ${detail.variant_id}`);
-        }
+          await variant.update({ stock: variant.stock - detail.quantity, updated_at: new Date() }, { transaction });
+        } else throw new Error(`Variante no encontrada: ${detail.variant_id}`);
       }
 
-      // Crear historial de la orden
       await OrderHistory.create({
         user_id: userId,
         order_id: order.order_id,
@@ -185,7 +172,6 @@ class OrderService {
         total
       }, { transaction });
 
-      // Crear registro de pago
       const payment = await Payment.create({
         order_id: order.order_id,
         payment_method,
@@ -194,7 +180,6 @@ class OrderService {
         attempts: 0
       }, { transaction });
 
-      // Manejar cupones
       if (coupon_code && cart.promotion_id) {
         const coupon = await CouponUsage.findOne({
           where: { user_id: userId, cart_id: cart.cart_id, promotion_id: cart.promotion_id },
@@ -207,19 +192,15 @@ class OrderService {
             promotion_id: cart.promotion_id,
             usage_date: new Date()
           }, { transaction });
-        } else {
-          throw new Error('Cupón no válido');
-        }
+        } else throw new Error('Cupón no válido');
       }
 
-      // Limpiar carrito
       await CartDetail.destroy({ where: { cart_id: cart.cart_id }, transaction });
       await CouponUsage.destroy({ where: { cart_id: cart.cart_id }, transaction });
       await Cart.destroy({ where: { cart_id: cart.cart_id }, transaction });
 
       await transaction.commit();
 
-      // Ajuste: Eliminar 'sku' de Product y moverlo a ProductVariant
       const orderDetails = await OrderDetail.findAll({
         where: { order_id: order.order_id },
         include: [
@@ -231,25 +212,15 @@ class OrderService {
         ]
       });
 
-      // Obtener datos del usuario
-      const user = await User.findOne({
-        where: { user_id: userId },
-        attributes: ['user_id', 'name', 'email']
-      });
-
+      const user = await User.findOne({ where: { user_id: userId }, attributes: ['user_id', 'name', 'email'] });
       const paymentInstructions = this.generatePaymentInstructions(payment_method, total);
 
       loggerUtils.logUserActivity(userId, 'create_order', `Orden creada exitosamente: order_id ${order.order_id}`);
-
-      this.notifyOrderCreation(order, user, orderDetails, payment).catch(err => {
-        loggerUtils.logCriticalError(err, 'Error al enviar notificación asíncrona');
-      });
+      this.notifyOrderCreation(order, user, orderDetails, payment).catch(err => loggerUtils.logCriticalError(err, 'Error al enviar notificación asíncrona'));
 
       return { order, payment, paymentInstructions };
     } catch (error) {
-      if (transaction && !transaction.finished) {
-        await transaction.rollback();
-      }
+      if (transaction && !transaction.finished) await transaction.rollback();
       loggerUtils.logCriticalError(error);
       throw new Error(`Error al crear la orden: ${error.message}`);
     }
@@ -643,14 +614,14 @@ class OrderService {
     }
   }
 
-   /**
-   * Obtiene órdenes para una fecha específica para el panel de administración.
-   * @param {string} date - Fecha en formato YYYY-MM-DD.
-   * @param {string} dateField - Campo de fecha a filtrar ('delivery' o 'creation').
-   * @param {number} adminId - ID del administrador.
-   * @returns {Array} - Lista de órdenes formateadas para la fecha especificada.
-   * @throws {Error} - Si la fecha es inválida o hay un error en la consulta.
-   */
+  /**
+  * Obtiene órdenes para una fecha específica para el panel de administración.
+  * @param {string} date - Fecha en formato YYYY-MM-DD.
+  * @param {string} dateField - Campo de fecha a filtrar ('delivery' o 'creation').
+  * @param {number} adminId - ID del administrador.
+  * @returns {Array} - Lista de órdenes formateadas para la fecha especificada.
+  * @throws {Error} - Si la fecha es inválida o hay un error en la consulta.
+  */
   //async getOrdersByDateForAdmin(date, dateField, adminId) {
   async getOrdersByDateForAdmin(date, dateField) {
     try {
@@ -770,7 +741,7 @@ class OrderService {
     try {
       const validStatuses = ['pending', 'processing', 'shipped', 'delivered'];
       const field = dateField === 'delivery' ? 'estimated_delivery_date' : 'created_at';
-      
+
       // Determinar el rango de fechas predeterminado (lunes de la semana actual hasta hoy)
       let effectiveDateFilter = dateFilter;
       if (!dateFilter) {
@@ -779,7 +750,7 @@ class OrderService {
         const endOfDay = today.clone().endOf('day'); // Fin del día actual
         effectiveDateFilter = `${startOfWeek.format('YYYY-MM-DD')},${endOfDay.format('YYYY-MM-DD')}`;
       }
-      
+
       const dateCondition = orderUtils.buildDateCondition(effectiveDateFilter, field);
 
       let where = {};
