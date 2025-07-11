@@ -436,11 +436,11 @@ exports.alexaAuthorize = async (req, res) => {
       return res.status(400).json({ error: 'response_type debe ser "code"' });
     }
 
-    // Validar redirect_uri
+    // Validar redirect_uri - URLs CORREGIDAS
     const validRedirectUris = [
-      'https://alexa.amazon.co.jp/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
-      'https://pitangui.amazon.com/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
-      'https://layla.amazon.com/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
+      'https://alexa.amazon.co.jp/api/skill/link/M34IVTO0VOKV0U',
+      'https://pitangui.amazon.com/api/skill/link/M34IVTO0VOKV0U',
+      'https://layla.amazon.com/api/skill/link/M34IVTO0VOKV0U',
     ];
     if (!validRedirectUris.includes(redirect_uri)) {
       return res.status(401).json({ error: 'redirect_uri inválido' });
@@ -472,11 +472,11 @@ exports.alexaCompleteAuthorization = async (req, res) => {
       return res.status(400).json({ error: 'Parámetros requeridos faltantes' });
     }
 
-    // Validar redirect_uri
+    // Validar redirect_uri - URLs CORREGIDAS
     const validRedirectUris = [
-      'https://alexa.amazon.co.jp/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
-      'https://pitangui.amazon.com/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
-      'https://layla.amazon.com/spa/skill/account-linking-status.html?vendorId=M34IVTO0VOKV0U',
+      'https://alexa.amazon.co.jp/api/skill/link/M34IVTO0VOKV0U',
+      'https://pitangui.amazon.com/api/skill/link/M34IVTO0VOKV0U',
+      'https://layla.amazon.com/api/skill/link/M34IVTO0VOKV0U',
     ];
     if (!validRedirectUris.includes(redirect_uri)) {
       return res.status(401).json({ error: 'redirect_uri inválido' });
