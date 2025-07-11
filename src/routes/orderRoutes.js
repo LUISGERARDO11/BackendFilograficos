@@ -25,4 +25,10 @@ router.get('/',
   orderController.getOrders
 );
 
+// Obtener opciones de envío disponibles
+router.get('/shippingOptions',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  orderController.getShippingOptions
+);
 module.exports = router;
