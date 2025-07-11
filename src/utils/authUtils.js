@@ -74,9 +74,13 @@ exports.parseBasicAuth = (authHeader) => {
     return { client_id: null, client_secret: null };
   }
 
-  const base64Credentials = authHeader.split(' ')[1];
-  const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
-  const [client_id, client_secret] = credentials.split(':');
-
-  return { client_id, client_secret };
+  try {
+    const base64Credentials = authHeader.split(' ')[1];
+    const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
+    const [client_id, client_secret] = credentials.split(':');
+    return { client_id, client_secret };
+  } catch (error) {
+    loggerUtils.logCriticalError(error, 'Error al parsear Authorization header');
+    return { client_id: null, client_secret: null };
+  }
 };
