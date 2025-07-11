@@ -512,8 +512,7 @@ exports.alexaCompleteAuthorization = async (req, res) => {
 // Endpoint para intercambiar código de autorización por tokens
 exports.alexaToken = async (req, res) => {
   try {
-    // Log completo del cuerpo y encabezados para depuración
-    loggerUtils.logUserActivity(null, 'alexa_token_request', `Solicitud recibida: body=${JSON.stringify(req.body)}, headers.authorization=${req.headers.authorization || 'missing'}`);
+    loggerUtils.logUserActivity(null, 'alexa_token_request', `Solicitud recibida: body=${JSON.stringify(req.body)}, headers.authorization=${req.headers.authorization || 'missing'}, content-type=${req.headers['content-type'] || 'missing'}`);
 
     const { grant_type, code, refresh_token } = req.body;
 
@@ -530,16 +529,13 @@ exports.alexaToken = async (req, res) => {
       client_secret = req.body.client_secret;
     }
 
-    // Log de credenciales extraídas
     loggerUtils.logUserActivity(null, 'alexa_token_request', `Credenciales extraídas: client_id=${client_id || 'missing'}, client_secret=${client_secret ? 'provided' : 'missing'}`);
 
-    // Validar credenciales del cliente
     if (client_id !== process.env.ALEXA_CLIENT_ID || client_secret !== process.env.ALEXA_CLIENT_SECRET) {
       loggerUtils.logUserActivity(null, 'alexa_token_failed', `Credenciales inválidas: client_id=${client_id || 'missing'}, client_secret=${client_secret ? 'provided' : 'missing'}`);
       return res.status(401).json({ error: 'invalid_client', error_description: 'Credenciales del cliente inválidas' });
     }
 
-    // Validar grant_type
     if (!grant_type) {
       loggerUtils.logUserActivity(null, 'alexa_token_failed', 'grant_type no proporcionado');
       return res.status(400).json({ error: 'invalid_request', error_description: 'El parámetro grant_type es obligatorio' });

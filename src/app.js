@@ -63,6 +63,8 @@ app.set('trust proxy', 1);
 // Middleware para el manejo de JSON
 app.use(express.json());
 
+app.use(express.urlencoded({ extended: true }));
+
 // Middleware para detectar la zona horaria del cliente
 app.use((req, res, next) => {
   const clientTimezone = req.headers['x-timezone'] || 'America/Mexico_City'; // Por defecto America/Mexico_City
