@@ -1,7 +1,7 @@
 const { body, param, query, validationResult } = require('express-validator');
 const OrderService = require('../services/orderService');
 const loggerUtils = require('../utils/loggerUtils');
-
+const { ShippingOption } = require('../models/Associations');
 // Crear una orden a partir del carrito del usuario
 exports.createOrder = [
   // Validaciones

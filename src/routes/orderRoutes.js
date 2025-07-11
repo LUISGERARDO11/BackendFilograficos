@@ -27,7 +27,8 @@ router.get('/',
 
 // Obtener opciones de envío disponibles
 router.get('/shippingOptions',
-
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
   orderController.getShippingOptions
 );
 
