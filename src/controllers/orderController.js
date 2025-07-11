@@ -2,15 +2,9 @@ const { body, param, query, validationResult } = require('express-validator');
 const OrderService = require('../services/orderService');
 const loggerUtils = require('../utils/loggerUtils');
 const { ShippingOption } = require('../models/Associations');
-const mercadopago = require('mercadopago');
-
-// Configurar Mercado Pago con variable de entorno
-mercadopago.configure({
-  access_token: process.env.ACCESS_TOKEN || 'default_token_for_development' 
-});
-
+// Crear una orden a partir del carrito del usuario
 exports.createOrder = [
-  // [Validaciones existentes permanecen iguales]
+  // Validaciones
   body('address_id')
     .optional()
     .isInt({ min: 1 })
@@ -18,8 +12,8 @@ exports.createOrder = [
   body('payment_method')
     .notEmpty()
     .withMessage('El método de pago es obligatorio')
-    .isIn(['mercado_pago'])
-    .withMessage('Método de pago no válido. Solo se acepta Mercado Pago'),
+    .isIn(['bank_transfer_oxxo', 'bank_transfer_bbva', 'bank_transfer'])
+    .withMessage('Método de pago no válido'),
   body('coupon_code')
     .optional()
     .isString()
@@ -31,7 +25,7 @@ exports.createOrder = [
     .withMessage('Opción de envío no válida'),
 
   async (req, res) => {
-    const user_id = req.user.user_id;
+    const user_id = req.user.user_id; // Obtenido de authMiddleware
     const errors = validationResult(req);
 
     try {
@@ -45,35 +39,11 @@ exports.createOrder = [
 
       const { address_id, payment_method, coupon_code, delivery_option } = req.body;
       const orderService = new OrderService();
-
-      // [Lógica existente permanece igual]
-      const cart = await orderService.getUserCart(user_id);
-      const total = cart.total + (await orderService.getShippingCost(delivery_option));
-
-      const preference = {
-        items: cart.items.map(item => ({
-          title: item.product_name,
-          unit_price: item.subtotal / item.quantity,
-          quantity: item.quantity
-        })),
-        back_urls: {
-          success: 'https://tu-dominio.com/success',
-          failure: 'https://tu-dominio.com/failure',
-          pending: 'https://tu-dominio.com/pending'
-        },
-        auto_return: 'approved',
-        external_reference: `order_${Date.now()}`
-      };
-
-      const mpResponse = await mercadopago.preferences.create(preference);
-      const preferenceId = mpResponse.body.id;
-
       const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
         address_id,
-        payment_method: 'mercado_pago',
+        payment_method,
         coupon_code,
-        delivery_option,
-        preference_id: preferenceId
+        delivery_option
       });
 
       loggerUtils.logUserActivity(user_id, 'create_order', `Orden creada: ID ${order.order_id}`);
@@ -86,7 +56,7 @@ exports.createOrder = [
           total: order.total,
           total_urgent_cost: order.total_urgent_cost || 0.00,
           estimated_delivery_date: order.estimated_delivery_date,
-          payment_url: mpResponse.body.init_point,
+          payment_instructions: paymentInstructions,
           status: order.order_status
         }
       });
