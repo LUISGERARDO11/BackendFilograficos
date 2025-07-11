@@ -561,3 +561,110 @@ exports.alexaToken = async (req, res) => {
     return res.status(500).json({ error: 'server_error', error_description: error.message });
   }
 };
+
+exports.alexaLogin = [
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, password, client_id, redirect_uri, state, scope } = req.body;
+
+    try {
+      // Validar client_id
+      if (client_id !== process.env.ALEXA_CLIENT_ID) {
+        loggerUtils.logUserActivity(null, 'alexa_login_failed', `Client ID inválido: ${client_id}`);
+        return res.status(401).json({ error: 'client_id inválido' });
+      }
+
+      // Validar redirect_uri
+      const validRedirectUris = [
+        'https://alexa.amazon.co.jp/api/skill/link/M34IVTO0VOKV0U',
+        'https://pitangui.amazon.com/api/skill/link/M34IVTO0VOKV0U',
+        'https://layla.amazon.com/api/skill/link/M34IVTO0VOKV0U',
+      ];
+      if (!validRedirectUris.includes(redirect_uri)) {
+        loggerUtils.logUserActivity(null, 'alexa_login_failed', `Redirect URI inválido: ${redirect_uri}`);
+        return res.status(401).json({ error: 'redirect_uri inválido' });
+      }
+
+      // Validar scopes
+      const validScopes = ['read:orders', 'write:orders', 'profile', 'email'];
+      const requestedScopes = scope ? scope.split(' ') : ['read:orders', 'write:orders'];
+      if (requestedScopes.some(s => !validScopes.includes(s))) {
+        loggerUtils.logUserActivity(null, 'alexa_login_failed', `Scopes inválidos: ${scope}`);
+        return res.status(400).json({ error: 'Scopes inválidos' });
+      }
+
+      // Buscar usuario
+      const user = await User.findOne({ where: { email } });
+      if (!user) {
+        loggerUtils.logUserActivity(null, 'alexa_login_failed', `Usuario no encontrado: ${email}`);
+        return res.status(400).json({ message: 'Usuario no encontrado' });
+      }
+
+      // Verificar que el usuario sea administrador
+      if (user.user_type !== 'administrador') {
+        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', 'Usuario no es administrador');
+        return res.status(403).json({ message: 'Solo los administradores pueden autorizar esta skill' });
+      }
+
+      // Verificar estado del usuario
+      if (user.status === 'pendiente') {
+        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', 'Cuenta pendiente de verificación');
+        return res.status(403).json({ message: 'Debes verificar tu correo electrónico antes de iniciar sesión.' });
+      }
+
+      // Verificar si el usuario está bloqueado
+      const bloqueado = await authService.isUserBlocked(user.user_id);
+      if (bloqueado.blocked) {
+        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', `Cuenta bloqueada: ${bloqueado.message}`);
+        return res.status(403).json({ message: bloqueado.message });
+      }
+
+      // Verificar contraseña
+      const account = await Account.findOne({ where: { user_id: user.user_id } });
+      if (!account) {
+        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', 'Cuenta no encontrada');
+        return res.status(400).json({ message: 'Cuenta no encontrada' });
+      }
+
+      const isMatch = await authService.verifyPassword(password, account.password_hash);
+      if (!isMatch) {
+        const result = await authService.handleFailedAttempt(user.user_id, req.ip);
+        if (result.locked) {
+          loggerUtils.logUserActivity(user.user_id, 'account_locked', 'Cuenta bloqueada por intentos fallidos');
+          return res.status(403).json({ locked: true, message: 'Tu cuenta ha sido bloqueada debido a múltiples intentos fallidos.' });
+        }
+        return res.status(400).json({ message: 'Credenciales incorrectas', ...result });
+      }
+
+      await authService.clearFailedAttempts(user.user_id);
+
+      // Verificar sesiones activas
+      const activeSessionsCount = await Session.count({ where: { user_id: user.user_id, revoked: false } });
+      if (activeSessionsCount >= 3) {
+        loggerUtils.logUserActivity(user.user_id, 'alexa_login_failed', 'Límite de sesiones activas alcanzado');
+        return res.status(403).json({ message: 'Límite de sesiones activas alcanzado (3 sesiones permitidas para administradores).' });
+      }
+
+      // Generar código de autorización para Alexa
+      const authCode = await authService.generateAlexaAuthCode(user.user_id, redirect_uri, requestedScopes);
+      const redirectUrl = `${redirect_uri}?code=${authCode}&state=${state}`;
+
+      loggerUtils.logUserActivity(user.user_id, 'alexa_login', 'Inicio de sesión para Alexa exitoso');
+      res.status(200).json({
+        redirectUrl,
+        userId: user.user_id,
+        name: user.name,
+        tipo: user.user_type,
+        profile_picture_url: account.profile_picture_url || null,
+        message: 'Inicio de sesión para Alexa exitoso'
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error en el inicio de sesión para Alexa', error: error.message });
+    }
+  }
+];

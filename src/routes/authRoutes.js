@@ -44,6 +44,16 @@ router.post('/alexa/token', [
   body('client_secret').notEmpty().withMessage('Se requiere el client_secret'),
 ], authLimiter, authController.alexaToken);
 
+// authRoutes.js
+router.post('/alexa/login', [
+  body('email').isEmail().normalizeEmail(),
+  body('password').not().isEmpty().trim().escape(),
+  body('client_id').notEmpty().withMessage('Se requiere el client_id'),
+  body('redirect_uri').notEmpty().withMessage('Se requiere el redirect_uri'),
+  body('state').notEmpty().withMessage('Se requiere el state'),
+  body('scope').optional().isString().withMessage('Scope debe ser una cadena'),
+], authLimiter, authController.alexaLogin);
+
 router.post('/alexa/complete-authorization', [
   body('user_id').isInt().withMessage('Se requiere el user_id'),
   body('redirect_uri').notEmpty().withMessage('Se requiere el redirect_uri'),
