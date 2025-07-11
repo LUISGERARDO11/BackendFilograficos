@@ -6,7 +6,7 @@ const orderUtils = require('../utils/orderUtils');
 const NotificationManager = require('./notificationManager');
 
 // Importar todos los modelos necesarios al inicio del archivo
-const { Cart, CartDetail, Order, OrderDetail, OrderHistory, Payment, Address, CouponUsage, Promotion, ProductVariant, Customization, Product, ProductImage, User,ShippingOption } = require('../models/Associations');
+const { Cart, CartDetail, Order, OrderDetail, OrderHistory, Payment, Address, CouponUsage, Promotion, ProductVariant, Customization, Product, ProductImage, User, ShippingOption } = require('../models/Associations');
 
 class OrderService {
   /**
@@ -1234,32 +1234,17 @@ class OrderService {
    */
   generatePaymentInstructions(paymentMethod, amount) {
     switch (paymentMethod) {
-      case 'bank_transfer_oxxo':
+      case 'mercado_pago':
         return {
-          method: 'Oxxo',
-          reference: `OX${Math.floor(Math.random() * 1000000000)}`,
+          method: 'Mercado Pago',
           amount,
-          instructions: `Realiza el depósito en cualquier tienda Oxxo con la referencia proporcionada. Sube el comprobante en el portal.`
-        };
-      case 'bank_transfer_bbva':
-        return {
-          method: 'BBVA',
-          account: '1234 5678 9012 3456',
-          clabe: '012345678901234567',
-          amount,
-          instructions: `Realiza la transferencia al número de cuenta o CLABE proporcionado. Sube el comprobante en el portal.`
-        };
-      case 'bank_transfer':
-        return {
-          method: 'Bank Transfer',
-          amount,
-          instructions: `Contacta al soporte para obtener instrucciones de pago. Monto: ${orderUtils.formatCurrency(amount)}.`
+          instructions: 'Serás redirigido a Mercado Pago para completar el pago.'
         };
       default:
         return {
           method: 'Unknown',
           amount,
-          instructions: `Método de pago no soportado. Contacta al soporte.`
+          instructions: 'Método de pago no soportado.'
         };
     }
   }
