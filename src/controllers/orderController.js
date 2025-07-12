@@ -8,7 +8,7 @@ const mercadopago = require('mercadopago');
 mercadopago.configure({
   access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN // Usa variable de entorno
 });
-// Crear una orden a partir del carrito del usuario
+
 exports.createOrder = [
   body('address_id')
     .optional()
@@ -44,14 +44,21 @@ exports.createOrder = [
 
       const { address_id, payment_method, coupon_code, delivery_option } = req.body;
       const orderService = new OrderService();
-      const cart = await orderService.getCart(user_id); // Asegúrate de que OrderService tenga este método
 
-      // Crear preferencia de pago con Mercado Pago
+      // Crear preferencia de pago con Mercado Pago (esto se hará antes de crear la orden)
+      const cart = await Cart.findOne({
+        where: { user_id },
+        include: [{ model: CartDetail, include: [{ model: ProductVariant, include: [{ model: Product }] }] }]
+      });
+      if (!cart || !cart.CartDetails || cart.CartDetails.length === 0) {
+        throw new Error('Carrito no encontrado o vacío');
+      }
+
       const preference = {
-        items: cart.items.map(item => ({
-          title: item.product_name,
-          unit_price: item.subtotal / item.quantity,
-          quantity: item.quantity,
+        items: cart.CartDetails.map(detail => ({
+          title: detail.ProductVariant.Product.name,
+          unit_price: detail.unit_price || detail.ProductVariant.calculated_price,
+          quantity: detail.quantity,
           currency_id: 'MXN' // Ajusta según tu moneda
         })),
         back_urls: {
@@ -61,13 +68,13 @@ exports.createOrder = [
         },
         auto_return: 'approved',
         notification_url: `${process.env.BACKEND_URL}/webhook/mercadopago`,
-        external_reference: user_id // Opcional: referencia al usuario
+        external_reference: user_id
       };
 
       const mpResponse = await mercadopago.preferences.create(preference);
       const preferenceId = mpResponse.body.id;
 
-      // Crear orden y pago en tu sistema
+      // Llamar al servicio con el preference_id
       const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
         address_id,
         payment_method,
@@ -75,10 +82,6 @@ exports.createOrder = [
         delivery_option,
         preference_id: preferenceId
       });
-
-      // Actualizar el modelo Payment con la preferencia
-      payment.preference_id = preferenceId;
-      await payment.save();
 
       loggerUtils.logUserActivity(user_id, 'create_order', `Orden creada: ID ${order.order_id}`);
 
