@@ -9,7 +9,7 @@ const ShippingOption = sequelize.define('ShippingOption', {
     allowNull: false
   },
   name: {
-    type: DataTypes.ENUM('Delivery Points', 'Home Delivery', 'In-Store Pickup'),
+    type: DataTypes.ENUM('Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'),
     allowNull: false,
     unique: true
   },
