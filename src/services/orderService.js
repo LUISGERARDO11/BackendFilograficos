@@ -132,7 +132,7 @@ class OrderService {
 
       // Ajustar estimated_delivery_date según delivery_option
       let estimatedDeliveryDays = maxDeliveryDays;
-      if (delivery_option === 'home_delivery' && cartDetails.some(detail => detail.is_urgent)) {
+      if (delivery_option === 'Entrega a Domicilio' && cartDetails.some(detail => detail.is_urgent)) {
         estimatedDeliveryDays = Math.min(estimatedDeliveryDays, 1); // Priorizar entrega urgente
       }
       const estimated_delivery_date = moment().add(estimatedDeliveryDays, 'days').toDate();

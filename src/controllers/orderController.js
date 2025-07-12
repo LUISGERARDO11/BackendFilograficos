@@ -21,7 +21,7 @@ exports.createOrder = [
     .withMessage('El código de cupón debe ser una cadena de texto'),
   body('delivery_option')
     .optional()
-    .isIn(['home_delivery', 'pickup_point', 'store_pickup'])
+    .isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'])
     .withMessage('Opción de envío no válida'),
 
   async (req, res) => {
@@ -370,7 +370,7 @@ exports.getOrdersForAdmin = [
   query('dateFilter').optional().custom(/* mismo código de validación de fecha */),
   query('dateField').optional().isIn(['delivery', 'creation']).withMessage('El campo de fecha debe ser uno de: delivery, creation'),
   query('paymentMethod').optional().isIn(['mercado_pago']).withMessage('El método de pago debe ser válido'),
-  query('deliveryOption').optional().isIn(['home_delivery', 'pickup_point', 'store_pickup']).withMessage('La opción de entrega debe ser válida'),
+  query('deliveryOption').optional().isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda']).withMessage('La opción de entrega debe ser válida'),
   query('minTotal').optional().isFloat({ min: 0 }).withMessage('El total mínimo debe ser un número positivo'),
   query('maxTotal').optional().isFloat({ min: 0 }).withMessage('El total máximo debe ser un número positivo'),
   query('isUrgent').optional().isBoolean().withMessage('El filtro de urgencia debe ser un booleano'),
@@ -549,7 +549,7 @@ exports.getShippingOptions = [
       res.status(200).json({
         success: true,
         data: shippingOptions.map(option => ({
-          id: option.name.toLowerCase().replace(/ /g, '_'), // Mapear a home_delivery, etc.
+          id: option.name.toLowerCase().replace(/ /g, '_'), // Mapear a name.
           name: option.name,
           cost: parseFloat(option.base_cost)
         }))

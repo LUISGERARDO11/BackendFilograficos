@@ -54,7 +54,7 @@ const Order = sequelize.define('Order', {
     allowNull: true
   },
   delivery_option: {
-    type: DataTypes.ENUM('home_delivery', 'pickup_point', 'store_pickup'),
+    type: DataTypes.ENUM('Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'),
     allowNull: true,
     defaultValue: null
   }
