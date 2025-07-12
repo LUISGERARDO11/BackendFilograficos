@@ -1,7 +1,7 @@
 const { body, param, query, validationResult } = require('express-validator');
 const OrderService = require('../services/orderService');
 const loggerUtils = require('../utils/loggerUtils');
-const { ShippingOption,Cart,CartDetail,ProductVariant ,Product  } = require('../models/Associations');
+const { ShippingOption, Cart, CartDetail, ProductVariant, Product } = require('../models/Associations');
 const mercadopago = require('mercadopago');
 
 // Configurar Mercado Pago con el access token
@@ -57,7 +57,7 @@ exports.createOrder = [
       const preference = {
         items: cart.CartDetails.map(detail => ({
           title: detail.ProductVariant.Product.name,
-          unit_price: detail.unit_price || detail.ProductVariant.calculated_price,
+          unit_price: Number(detail.unit_price || detail.ProductVariant.calculated_price),
           quantity: detail.quantity,
           currency_id: 'MXN' // Ajusta según tu moneda
         })),
@@ -68,7 +68,7 @@ exports.createOrder = [
         },
         auto_return: 'approved',
         notification_url: `${process.env.BACKEND_URL}/webhook/mercadopago`,
-        external_reference: user_id
+        external_reference: String(user_id),
       };
 
       const mpResponse = await mercadopago.preferences.create(preference);
