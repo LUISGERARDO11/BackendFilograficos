@@ -549,7 +549,7 @@ exports.getShippingOptions = [
       res.status(200).json({
         success: true,
         data: shippingOptions.map(option => ({
-          id: option.name.toLowerCase().replace(/ /g, '_'), // Mapear a name.
+          id: option.name,
           name: option.name,
           cost: parseFloat(option.base_cost)
         }))
