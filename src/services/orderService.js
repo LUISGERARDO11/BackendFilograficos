@@ -17,7 +17,7 @@ class OrderService {
    * @throws {Error} - Si el carrito está vacío, la dirección es inválida, el stock es insuficiente o falla alguna operación.
    */
   //se cambio esto hailie
-  async createOrder(userId, { address_id, payment_method, coupon_code, delivery_option }) {
+  async createOrder(userId, { address_id, payment_method, coupon_code, delivery_option, preference_id }) {
     const transaction = await Cart.sequelize.transaction();
     try {
       // Verificar dirección si se proporciona
@@ -152,7 +152,7 @@ class OrderService {
         delivery_option
       }, { transaction });
 
-      // Crear detalles del pedido, actualizar stock, historial, pago, cupones y limpiar carrito (lógica existente)
+      // Crear detalles del pedido, actualizar stock, historial, pago, cupones y limpiar carrito
       for (const detailData of orderDetailsData) {
         await OrderDetail.create({ ...detailData, order_id: order.order_id }, { transaction });
       }
@@ -177,7 +177,8 @@ class OrderService {
         payment_method,
         amount: total,
         status: 'pending',
-        attempts: 0
+        attempts: 0,
+        preference_id // Asignar el preference_id recibido
       }, { transaction });
 
       if (coupon_code && cart.promotion_id) {
