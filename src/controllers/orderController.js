@@ -1,7 +1,7 @@
 const { body, param, query, validationResult } = require('express-validator');
 const OrderService = require('../services/orderService');
 const loggerUtils = require('../utils/loggerUtils');
-const { ShippingOption,Cart,CartDetail } = require('../models/Associations');
+const { ShippingOption,Cart,CartDetail,ProductVariant  } = require('../models/Associations');
 const mercadopago = require('mercadopago');
 
 // Configurar Mercado Pago con el access token
