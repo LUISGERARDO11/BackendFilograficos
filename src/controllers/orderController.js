@@ -55,12 +55,22 @@ exports.createOrder = [
       }
 
       const preference = {
-        items: cart.CartDetails.map(detail => ({
-          title: detail.ProductVariant.Product.name,
-          unit_price: Number(detail.unit_price || detail.ProductVariant.calculated_price),
-          quantity: detail.quantity,
-          currency_id: 'MXN' // Ajusta según tu moneda
-        })),
+        items: cart.CartDetails.map(detail => {
+          const product = detail.ProductVariant.Product;
+          const price = Number(detail.unit_price || detail.ProductVariant.calculated_price);
+
+          if (!price || price <= 0 || isNaN(price)) {
+            throw new Error(`Precio inválido para el producto: ${product?.name || 'desconocido'}`);
+          }
+
+          return {
+            title: product.name || 'Producto',
+            description: `Compra de ${product.name} - Variante ${detail.ProductVariant.variant_id}`,
+            unit_price: price,
+            quantity: detail.quantity,
+            currency_id: 'MXN'
+          };
+        }),
         back_urls: {
           success: `${process.env.FRONTEND_URL}/order-confirmation`,
           failure: `${process.env.FRONTEND_URL}/checkout`,
@@ -68,7 +78,7 @@ exports.createOrder = [
         },
         auto_return: 'approved',
         notification_url: `${process.env.BACKEND_URL}/webhook/mercadopago`,
-        external_reference: String(user_id),
+        external_reference: String(user_id)
       };
 
       const mpResponse = await mercadopago.preferences.create(preference);
