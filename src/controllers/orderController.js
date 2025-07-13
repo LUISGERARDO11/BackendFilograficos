@@ -59,14 +59,15 @@ exports.createOrder = [
           title: detail.ProductVariant.Product.name,
           unit_price: Number(detail.unit_price || detail.ProductVariant.calculated_price),
           quantity: detail.quantity,
-          currency_id: 'MXN' // Ajusta según tu moneda
+          currency_id: 'MXN' 
         })),
         back_urls: {
-          success: `http://localhost:4200/api/order/order-confirmation`,
-          failure: `http://localhost:4200/checkout`,
-          pending: `http://localhost:4200/checkout`
+          success: `${process.env.FRONTEND_URL}/order-confirmation`,
+          failure: `${process.env.FRONTEND_URL}/checkout`,
+          pending: `${process.env.FRONTEND_URL}/checkout`
         },
         auto_return: 'approved',
+        notification_url: `${process.env.URL_FRONTEND_ORDER_DETAIL}/${order.order_id}`,
         external_reference: String(user_id),
       };
 
