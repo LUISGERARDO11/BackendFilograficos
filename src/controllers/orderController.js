@@ -62,7 +62,7 @@ exports.createOrder = [
           currency_id: 'MXN' // Ajusta según tu moneda
         })),
         back_urls: {
-          success: `http://localhost:4200/order-confirmation`,
+          success: `http://localhost:4200/api/order/order-confirmation`,
           failure: `http://localhost:4200/checkout`,
           pending: `http://localhost:4200/checkout`
         },
