@@ -72,9 +72,9 @@ exports.createOrder = [
           };
         }),
         back_urls: {
-          success: `${process.env.FRONTEND_URL}/order-confirmation`,
-          failure: `${process.env.FRONTEND_URL}/checkout`,
-          pending: `${process.env.FRONTEND_URL}/checkout`
+          success: `http://localhost:4200/order-confirmation`,
+          failure: `http://localhost:4200/checkout`,
+          pending: `http://localhost:4200/checkout`
         },
         auto_return: 'approved',
         notification_url: `${process.env.BACKEND_URL}/webhook/mercadopago`,
