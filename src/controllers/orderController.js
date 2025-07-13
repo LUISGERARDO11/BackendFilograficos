@@ -72,6 +72,7 @@ exports.createOrder = [
       };
 
       const mpResponse = await mercadopago.preferences.create(preference);
+      console.log('Respuesta de Mercado Pago:', JSON.stringify(mpResponse.body, null, 2));
       const preferenceId = mpResponse.body.id;
 
       // Llamar al servicio con el preference_id
