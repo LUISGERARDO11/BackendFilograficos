@@ -83,7 +83,7 @@ exports.createOrder = [
 
       const mpResponse = await mercadopago.preferences.create(preference);
       console.log('Respuesta de Mercado Pago:', JSON.stringify(mpResponse.body, null, 2));
-      const preferenceId = mpResponse.body.id;
+      const initPoint = mpResponse.body.init_point;
 
       // Llamar al servicio con el preference_id
       const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
@@ -105,7 +105,7 @@ exports.createOrder = [
           total_urgent_cost: order.total_urgent_cost || 0.00,
           estimated_delivery_date: order.estimated_delivery_date,
           payment_instructions: paymentInstructions,
-          preference_id: preferenceId,
+          preference_id: mpResponse.body.id,
           init_point: mpResponse.body.init_point,
           status: order.order_status
         }
