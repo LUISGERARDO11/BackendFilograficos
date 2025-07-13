@@ -67,7 +67,7 @@ exports.createOrder = [
           pending: `${process.env.FRONTEND_URL}/checkout`
         },
         auto_return: 'approved',
-        notification_url: `${process.env.URL_FRONTEND_ORDER_DETAIL}/${order.order_id}`,
+        notification_url: `${process.env.URL_FRONTEND_ORDER_DETAIL}`,
         external_reference: String(user_id),
       };
 
