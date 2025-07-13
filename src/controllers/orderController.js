@@ -105,7 +105,8 @@ exports.createOrder = [
           total_urgent_cost: order.total_urgent_cost || 0.00,
           estimated_delivery_date: order.estimated_delivery_date,
           payment_instructions: paymentInstructions,
-          preference_id: preferenceId, // Enviar al frontend
+          preference_id: preferenceId,
+          init_point: mpResponse.body.init_point,
           status: order.order_status
         }
       });
