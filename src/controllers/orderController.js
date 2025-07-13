@@ -4,9 +4,8 @@ const loggerUtils = require('../utils/loggerUtils');
 const { ShippingOption, Cart, CartDetail, ProductVariant, Product } = require('../models/Associations');
 const mercadopago = require('mercadopago');
 
-// Configurar Mercado Pago con el access token
 mercadopago.configure({
-  access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN // Usa variable de entorno
+  access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN
 });
 
 exports.createOrder = [
@@ -45,7 +44,7 @@ exports.createOrder = [
       const { address_id, payment_method, coupon_code, delivery_option } = req.body;
       const orderService = new OrderService();
 
-      // Crear preferencia de pago con Mercado Pago (esto se hará antes de crear la orden)
+      // Obtener carrito
       const cart = await Cart.findOne({
         where: { user_id },
         include: [{ model: CartDetail, include: [{ model: ProductVariant, include: [{ model: Product }] }] }]
@@ -54,47 +53,49 @@ exports.createOrder = [
         throw new Error('Carrito no encontrado o vacío');
       }
 
+      // Crear preferencia de pago con Mercado Pago
       const preference = {
-        items: cart.CartDetails.map(detail => {
-          const product = detail.ProductVariant.Product;
-          const price = Number(detail.unit_price || detail.ProductVariant.calculated_price);
-
-          if (!price || price <= 0 || isNaN(price)) {
-            throw new Error(`Precio inválido para el producto: ${product?.name || 'desconocido'}`);
-          }
-
-          return {
-            title: product.name || 'Producto',
-            description: `Compra de ${product.name} - Variante ${detail.ProductVariant.variant_id}`,
-            unit_price: price,
-            quantity: detail.quantity,
-            currency_id: 'MXN'
-          };
-        }),
+        items: cart.CartDetails.map(detail => ({
+          title: detail.ProductVariant.Product.name,
+          unit_price: Number(detail.unit_price || detail.ProductVariant.calculated_price),
+          quantity: detail.quantity,
+          currency_id: 'MXN'
+        })),
+        shipments: {
+          cost: 0, // Inicializar en 0, se actualizará después
+          mode: 'not_specified'
+        },
         back_urls: {
           success: `${process.env.FRONTEND_URL}/order-confirmation`,
           failure: `${process.env.FRONTEND_URL}/checkout`,
           pending: `${process.env.FRONTEND_URL}/checkout`
         },
         auto_return: 'approved',
-        notification_url: `${process.env.URL_FRONTEND_ORDER_DETAIL}`,
-        external_reference: String(user_id)
+        notification_url: `${process.env.BACKEND_URL}/webhook/mercadopago`,
+        external_reference: String(user_id),
       };
 
-      const mpResponse = await mercadopago.preferences.create(preference);
-      console.log('Respuesta de Mercado Pago:', JSON.stringify(mpResponse.body, null, 2));
-
-      // Llamar al servicio con el preference_id
-      const preferenceId = mpResponse.body.id;
-      const initPoint = mpResponse.body.init_point;
-
-      const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
+      // Llamar al servicio y obtener shippingCost
+      const { order, payment, paymentInstructions, shippingCost } = await orderService.createOrder(user_id, {
         address_id,
         payment_method,
         coupon_code,
         delivery_option,
-        preference_id: preferenceId
+        preference_id: null // preference_id se genera después
       });
+
+      // Actualizar el costo de envío en la preferencia
+      preference.shipments.cost = shippingCost;
+
+      const mpResponse = await mercadopago.preferences.create(preference);
+      const preferenceId = mpResponse.body.id;
+
+      // Actualizar el payment con el preference_id generado
+      await Payment.update(
+        { preference_id: preferenceId },
+        { where: { payment_id: payment.payment_id }, transaction: null }
+      );
+
       loggerUtils.logUserActivity(user_id, 'create_order', `Orden creada: ID ${order.order_id}`);
 
       res.status(201).json({
@@ -106,8 +107,7 @@ exports.createOrder = [
           total_urgent_cost: order.total_urgent_cost || 0.00,
           estimated_delivery_date: order.estimated_delivery_date,
           payment_instructions: paymentInstructions,
-          preference_id: mpResponse.body.id,
-          init_point: mpResponse.body.init_point,
+          preference_id: preferenceId,
           status: order.order_status
         }
       });

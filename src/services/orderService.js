@@ -219,7 +219,7 @@ class OrderService {
       loggerUtils.logUserActivity(userId, 'create_order', `Orden creada exitosamente: order_id ${order.order_id}`);
       this.notifyOrderCreation(order, user, orderDetails, payment).catch(err => loggerUtils.logCriticalError(err, 'Error al enviar notificación asíncrona'));
 
-      return { order, payment, paymentInstructions };
+      return { order, payment, paymentInstructions, shippingCost }; // Añadir shippingCost al retorno
     } catch (error) {
       if (transaction && !transaction.finished) await transaction.rollback();
       loggerUtils.logCriticalError(error);
