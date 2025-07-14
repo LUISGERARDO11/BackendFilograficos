@@ -1,7 +1,7 @@
 const { body, param, query, validationResult } = require('express-validator');
 const OrderService = require('../services/orderService');
 const loggerUtils = require('../utils/loggerUtils');
-const { ShippingOption, Cart, CartDetail, ProductVariant, Product, Payment } = require('../models/Associations');
+const { ShippingOption, Cart, CartDetail, ProductVariant, Product, Payment} = require('../models/Associations');
 const mercadopago = require('mercadopago');
 
 mercadopago.configure({
@@ -72,7 +72,7 @@ exports.createOrder = [
         },
         auto_return: 'approved',
         notification_url: `${process.env.BACKEND_URL}/api/payments/webhook`,
-        external_reference: String(user_id),
+        external_reference: String(order.order_id),
       };
 
       // Llamar al servicio y obtener shippingCost
