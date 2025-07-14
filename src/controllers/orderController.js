@@ -1,7 +1,7 @@
 const { body, param, query, validationResult } = require('express-validator');
 const OrderService = require('../services/orderService');
 const loggerUtils = require('../utils/loggerUtils');
-const { ShippingOption, Cart, CartDetail, ProductVariant, Product , Payment } = require('../models/Associations');
+const { ShippingOption, Cart, CartDetail, ProductVariant, Product, Payment } = require('../models/Associations');
 const mercadopago = require('mercadopago');
 
 mercadopago.configure({
@@ -71,7 +71,7 @@ exports.createOrder = [
           pending: `${process.env.FRONTEND_URL}/checkout`
         },
         auto_return: 'approved',
-        notification_url: `${process.env.URL_FRONTEND_ORDER_DETAIL}`,
+        notification_url: `${process.env.BACKEND_URL}/api/payments/webhook`,
         external_reference: String(user_id),
       };
 
