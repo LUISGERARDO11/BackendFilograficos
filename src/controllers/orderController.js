@@ -1,7 +1,7 @@
 const { body, param, query, validationResult } = require('express-validator');
 const OrderService = require('../services/orderService');
 const loggerUtils = require('../utils/loggerUtils');
-const { ShippingOption, Cart, CartDetail, ProductVariant, Product, Payment} = require('../models/Associations');
+const { ShippingOption, Cart, CartDetail, ProductVariant, Product, Payment } = require('../models/Associations');
 const mercadopago = require('mercadopago');
 
 mercadopago.configure({
@@ -9,24 +9,10 @@ mercadopago.configure({
 });
 
 exports.createOrder = [
-  body('address_id')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('El ID de la dirección debe ser un número entero positivo'),
-  body('payment_method')
-    .notEmpty()
-    .withMessage('El método de pago es obligatorio')
-    .isIn(['mercado_pago'])
-    .withMessage('Método de pago no válido. Solo se acepta Mercado Pago'),
-  body('coupon_code')
-    .optional()
-    .isString()
-    .trim()
-    .withMessage('El código de cupón debe ser una cadena de texto'),
-  body('delivery_option')
-    .optional()
-    .isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'])
-    .withMessage('Opción de envío no válida'),
+  body('address_id').optional().isInt({ min: 1 }).withMessage('El ID de la dirección debe ser un número entero positivo'),
+  body('payment_method').notEmpty().withMessage('El método de pago es obligatorio').isIn(['mercado_pago']).withMessage('Método de pago no válido. Solo se acepta Mercado Pago'),
+  body('coupon_code').optional().isString().trim().withMessage('El código de cupón debe ser una cadena de texto'),
+  body('delivery_option').optional().isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda']).withMessage('Opción de envío no válida'),
 
   async (req, res) => {
     const user_id = req.user.user_id;
@@ -53,7 +39,16 @@ exports.createOrder = [
         throw new Error('Carrito no encontrado o vacío');
       }
 
-      // Crear preferencia de pago con Mercado Pago
+      // Crear la orden primero
+      const { order, payment, paymentInstructions, shippingCost } = await orderService.createOrder(user_id, {
+        address_id,
+        payment_method,
+        coupon_code,
+        delivery_option,
+        preference_id: null
+      });
+
+      // Crear preferencia de pago con Mercado Pago después de tener el order_id
       const preference = {
         items: cart.CartDetails.map(detail => ({
           title: detail.ProductVariant.Product.name,
@@ -62,7 +57,7 @@ exports.createOrder = [
           currency_id: 'MXN'
         })),
         shipments: {
-          cost: 0, // Inicializar en 0, se actualizará después
+          cost: shippingCost,
           mode: 'not_specified'
         },
         back_urls: {
@@ -72,28 +67,16 @@ exports.createOrder = [
         },
         auto_return: 'approved',
         notification_url: `${process.env.BACKEND_URL}/api/payments/webhook`,
-        external_reference: String(order.order_id),
+        external_reference: String(order.order_id), // Usar order_id
       };
-
-      // Llamar al servicio y obtener shippingCost
-      const { order, payment, paymentInstructions, shippingCost } = await orderService.createOrder(user_id, {
-        address_id,
-        payment_method,
-        coupon_code,
-        delivery_option,
-        preference_id: null // preference_id se genera después
-      });
-
-      // Actualizar el costo de envío en la preferencia
-      preference.shipments.cost = shippingCost;
 
       const mpResponse = await mercadopago.preferences.create(preference);
       const preferenceId = mpResponse.body.id;
 
-      // Actualizar el payment con el preference_id generado
+      // Actualizar el payment con el preference_id
       await Payment.update(
         { preference_id: preferenceId },
-        { where: { payment_id: payment.payment_id }, transaction: null }
+        { where: { payment_id: payment.payment_id } }
       );
 
       loggerUtils.logUserActivity(user_id, 'create_order', `Orden creada: ID ${order.order_id}`);
