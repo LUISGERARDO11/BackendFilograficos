@@ -1,7 +1,7 @@
 const { body, param, query, validationResult } = require('express-validator');
 const OrderService = require('../services/orderService');
 const loggerUtils = require('../utils/loggerUtils');
-const { ShippingOption, Cart, CartDetail, ProductVariant, Product, Payment } = require('../models/Associations');
+const { ShippingOption, Cart, CartDetail, ProductVariant, Product, Payment} = require('../models/Associations');
 const mercadopago = require('mercadopago');
 
 mercadopago.configure({
@@ -61,7 +61,7 @@ exports.createOrder = [
           mode: 'not_specified'
         },
         back_urls: {
-          success: `${process.env.FRONTEND_URL}/order-confirmation?id=${order.order_id}`,
+          success: `${process.env.FRONTEND_URL}/order-confirmation`,
           failure: `${process.env.FRONTEND_URL}/checkout`,
           pending: `${process.env.FRONTEND_URL}/checkout`
         },
