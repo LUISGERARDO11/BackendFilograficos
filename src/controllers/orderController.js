@@ -53,7 +53,16 @@ exports.createOrder = [
         throw new Error('Carrito no encontrado o vacío');
       }
 
-      // Crear preferencia de pago con Mercado Pago
+      // Llamar al servicio para crear la orden
+      const { order, payment, paymentInstructions, shippingCost } = await orderService.createOrder(user_id, {
+        address_id,
+        payment_method,
+        coupon_code,
+        delivery_option,
+        preference_id: null
+      });
+
+      // Crear preferencia de pago con Mercado Pago después de obtener la orden
       const preference = {
         items: cart.CartDetails.map(detail => ({
           title: detail.ProductVariant.Product.name,
@@ -62,11 +71,11 @@ exports.createOrder = [
           currency_id: 'MXN'
         })),
         shipments: {
-          cost: 0, // Inicializar en 0, se actualizará después
+          cost: shippingCost,
           mode: 'not_specified'
         },
         back_urls: {
-          success: `${process.env.FRONTEND_URL}/order-confirmation`,
+          success: `${process.env.FRONTEND_URL}/order-confirmation?order_id=${order.order_id}`,
           failure: `${process.env.FRONTEND_URL}/checkout`,
           pending: `${process.env.FRONTEND_URL}/checkout`
         },
@@ -74,18 +83,6 @@ exports.createOrder = [
         notification_url: `${process.env.BACKEND_URL}/api/payment/webhook`,
         external_reference: String(order.order_id)
       };
-
-      // Llamar al servicio y obtener shippingCost
-      const { order, payment, paymentInstructions, shippingCost } = await orderService.createOrder(user_id, {
-        address_id,
-        payment_method,
-        coupon_code,
-        delivery_option,
-        preference_id: null // preference_id se genera después
-      });
-
-      // Actualizar el costo de envío en la preferencia
-      preference.shipments.cost = shippingCost;
 
       const mpResponse = await mercadopago.preferences.create(preference);
       const preferenceId = mpResponse.body.id;
@@ -96,6 +93,7 @@ exports.createOrder = [
         { where: { payment_id: payment.payment_id }, transaction: null }
       );
 
+      loggerUtils.logUserActivity(user_id, 'preference_id_saved', `Preference ID ${preferenceId} guardado para payment_id ${payment.payment_id}`);
       loggerUtils.logUserActivity(user_id, 'create_order', `Orden creada: ID ${order.order_id}`);
 
       res.status(201).json({
