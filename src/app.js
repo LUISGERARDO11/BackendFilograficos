@@ -93,7 +93,8 @@ app.use((req, res, next) => {
   // Excluir solicitudes de Alexa de la protección CSRF
   if (
     req.headers['x-alexa-request'] === 'true' ||
-    req.path === '/api/auth/alexa/token' // Excluir específicamente el endpoint de token de Alexa
+    req.path === '/api/auth/alexa/token' ||
+    req.path === '/api/payments/webhook'//holi le movi yo hai
   ) {
     return next();
   }
