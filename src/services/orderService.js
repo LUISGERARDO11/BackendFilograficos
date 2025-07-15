@@ -320,7 +320,7 @@ class OrderService {
               'payment_id',
               'payment_method',
               'amount',
-              'status',
+              'status', // Asegúrate de que se incluya
               'created_at',
               'updated_at'
             ],
@@ -338,7 +338,6 @@ class OrderService {
           }
         ]
       });
-
       if (!order) {
         throw new Error('Orden no encontrada o acceso denegado');
       }
@@ -364,6 +363,7 @@ class OrderService {
         order: {
           order_id: order.order_id,
           status: order.order_status,
+          payment_status: order.Payments?.[0]?.status || 'pending', // Añadir payment_status explícitamente
           created_at: moment(order.created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
           estimated_delivery_date: moment(order.estimated_delivery_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
           delivery_days: deliveryDays,
@@ -417,7 +417,6 @@ class OrderService {
           date: moment(history.purchase_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
         })) || []
       };
-
       return orderDetails;
     } catch (error) {
       loggerUtils.logCriticalError(error);
