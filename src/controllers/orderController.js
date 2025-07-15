@@ -61,7 +61,7 @@ exports.createOrder = [
           mode: 'not_specified'
         },
         back_urls: {
-          success: `${process.env.FRONTEND_URL}/order-confirmation`,
+          success: `${process.env.FRONTEND_URL}/order-confirmation?id=${order.order_id}`,
           failure: `${process.env.FRONTEND_URL}/checkout`,
           pending: `${process.env.FRONTEND_URL}/checkout`
         },
