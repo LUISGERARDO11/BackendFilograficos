@@ -53,7 +53,16 @@ exports.createOrder = [
         throw new Error('Carrito no encontrado o vacío');
       }
 
-      // Crear preferencia de pago con Mercado Pago
+      // Crear la orden primero
+      const { order, payment, paymentInstructions, shippingCost } = await orderService.createOrder(user_id, {
+        address_id,
+        payment_method,
+        coupon_code,
+        delivery_option,
+        preference_id: null // se actualizará más adelante
+      });
+
+      // Ahora sí puedes construir la preferencia de Mercado Pago
       const preference = {
         items: cart.CartDetails.map(detail => ({
           title: detail.ProductVariant.Product.name,
@@ -62,7 +71,7 @@ exports.createOrder = [
           currency_id: 'MXN'
         })),
         shipments: {
-          cost: 0, // Inicializar en 0, se actualizará después
+          cost: shippingCost || 0,
           mode: 'not_specified'
         },
         back_urls: {
@@ -71,21 +80,9 @@ exports.createOrder = [
           pending: `${process.env.FRONTEND_URL}/checkout`
         },
         auto_return: 'approved',
-        notification_url: `${process.env.URL_FRONTEND_ORDER_DETAIL}`,
-        external_reference: String(user_id),
+        notification_url: `${process.env.BACKEND_URL}/api/payment/webhook`,
+        external_reference: String(order.order_id)
       };
-
-      // Llamar al servicio y obtener shippingCost
-      const { order, payment, paymentInstructions, shippingCost } = await orderService.createOrder(user_id, {
-        address_id,
-        payment_method,
-        coupon_code,
-        delivery_option,
-        preference_id: null // preference_id se genera después
-      });
-
-      // Actualizar el costo de envío en la preferencia
-      preference.shipments.cost = shippingCost;
 
       const mpResponse = await mercadopago.preferences.create(preference);
       const preferenceId = mpResponse.body.id;
