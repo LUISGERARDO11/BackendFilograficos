@@ -1,58 +1,65 @@
-const { validationResult, param, query } = require('express-validator');
+// controllers/paymentController.js
 const { Payment, Order } = require('../models/Associations');
 const mercadopago = require('mercadopago');
-
-// Configura la clave de acceso a Mercado Pago (ya debe estar en tu entorno)
-mercadopago.configure({
-  access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN
-});
+const loggerUtils = require('../utils/loggerUtils');
 
 exports.handleMercadoPagoWebhook = async (req, res) => {
   try {
-    const { action, type, data } = req.body;
+    const { type, data } = req.body;
 
-    if (!data?.id || type !== 'payment') {
-      return res.status(400).json({ success: false, message: 'Datos de webhook inválidos' });
-    }
+    if (type === 'payment') {
+      const paymentId = data.id;
+      const payment = await mercadopago.payment.get(paymentId);
 
-    // Obtener datos del pago desde MercadoPago
-    const paymentInfo = await mercadopago.payment.findById(data.id);
-    const paymentData = paymentInfo.body;
+      const localPayment = await Payment.findOne({
+        where: { preference_id: payment.body.preference_id },
+      });
 
-    const {
-      id: transaction_id,
-      status,
-      external_reference,
-      transaction_details,
-      preference_id
-    } = paymentData;
+      if (!localPayment) {
+        loggerUtils.logCriticalError(new Error(`Pago no encontrado para preference_id: ${payment.body.preference_id}`));
+        return res.status(404).json({ success: false, message: 'Pago no encontrado' });
+      }
 
-    // Buscar el registro de Payment por preference_id
-    const paymentRecord = await Payment.findOne({ where: { preference_id } });
+      let newStatus;
+      switch (payment.body.status) {
+        case 'approved':
+          newStatus = 'validated';
+          break;
+        case 'rejected':
+        case 'cancelled':
+          newStatus = 'failed';
+          break;
+        case 'pending':
+        case 'in_process':
+          newStatus = 'pending';
+          break;
+        default:
+          newStatus = 'pending';
+      }
 
-    if (!paymentRecord) {
-      return res.status(404).json({ success: false, message: 'Registro de pago no encontrado' });
-    }
+      await localPayment.update({
+        status: newStatus,
+        transaction_id: paymentId,
+        updated_at: new Date(),
+      });
 
-    // Actualizar estado del pago
-    paymentRecord.status = status;
-    paymentRecord.transaction_id = String(transaction_id);
-    paymentRecord.receipt_url = transaction_details?.external_resource_url || null;
-    paymentRecord.attempts += 1;
-
-    await paymentRecord.save();
-
-    // Actualizar orden si el pago fue aprobado
-    if (status === 'approved') {
       await Order.update(
-        { payment_status: 'validated' },
-        { where: { order_id: external_reference } }
+        { payment_status: newStatus },
+        { where: { order_id: localPayment.order_id } }
       );
+
+      loggerUtils.logUserActivity(
+        localPayment.order_id,
+        'payment_status_update',
+        `Pago actualizado: ID ${paymentId}, estado: ${newStatus}`
+      );
+
+      return res.status(200).json({ success: true, message: 'Notificación procesada' });
     }
 
-    return res.sendStatus(200);
+    return res.status(200).json({ success: true, message: 'Notificación recibida' });
   } catch (error) {
-    console.error('Error en el webhook de Mercado Pago:', error);
-    return res.status(500).json({ success: false, message: 'Error procesando el webhook' });
+    loggerUtils.logCriticalError(error);
+    return res.status(500).json({ success: false, message: 'Error al procesar la notificación' });
   }
 };
