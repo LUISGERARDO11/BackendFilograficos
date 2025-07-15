@@ -13,7 +13,7 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
       return res.status(200).json({ success: true, message: 'Notificación recibida' });
     }
 
-    const paymentId = data.id;
+    const paymentId = data.id; // ID del pago de Mercado Pago
     loggerUtils.logUserActivity(null, 'webhook_payment', `Procesando pago ID: ${paymentId}, preference_id: ${data?.preference_id || 'No proporcionado'}`);
 
     if (!paymentId) {
@@ -36,6 +36,7 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No se proporcionó preference_id' });
     }
 
+    // Buscar el pago local usando el preference_id
     const localPayment = await Payment.findOne({
       where: { preference_id: preferenceId },
       include: [{ model: Order, attributes: ['user_id', 'order_id'] }]
@@ -46,6 +47,7 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Pago no encontrado' });
     }
 
+    // Actualizar el estado basado en el status de Mercado Pago
     let newStatus;
     switch (payment.body.status) {
       case 'approved':
