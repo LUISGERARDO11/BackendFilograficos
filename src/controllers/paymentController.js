@@ -11,12 +11,19 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
       const paymentId = data.id;
       const payment = await mercadopago.payment.get(paymentId);
 
+      const preferenceId = payment.body.preference_id;
+
+      if (!preferenceId) {
+        loggerUtils.logCriticalError(new Error(`preference_id no encontrado en el payment ${paymentId}`));
+        return res.status(400).json({ success: false, message: 'preference_id no encontrado' });
+      }
+
       const localPayment = await Payment.findOne({
-        where: { preference_id: payment.body.preference_id },
+        where: { preference_id: preferenceId },
       });
 
       if (!localPayment) {
-        loggerUtils.logCriticalError(new Error(`Pago no encontrado para preference_id: ${payment.body.preference_id}`));
+        loggerUtils.logCriticalError(new Error(`Pago no encontrado para preference_id: ${preferenceId}`));
         return res.status(404).json({ success: false, message: 'Pago no encontrado' });
       }
 
