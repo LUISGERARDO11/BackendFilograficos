@@ -78,12 +78,12 @@ exports.createOrder = [
           mode: 'not_specified'
         },
         back_urls: {
-          success: `${process.env.FRONTEND_URL}/order-confirmation`,
-          failure: `${process.env.FRONTEND_URL}/checkout`,
-          pending: `${process.env.FRONTEND_URL}/checkout`
+          success: `${process.env.FRONTEND_URL}/order-confirmation`.replace(/([^:]\/)\/+/g, "$1"),
+          failure: `${process.env.FRONTEND_URL}/checkout`.replace(/([^:]\/)\/+/g, "$1"),
+          pending: `${process.env.FRONTEND_URL}/checkout`.replace(/([^:]\/)\/+/g, "$1")
         },
         auto_return: 'approved',
-        notification_url: `${process.env.BACKEND_URL}/api/payment/webhook`,
+        notification_url: `https://${process.env.BACKEND_URL}/api/payment/webhook`,
         external_reference: String(order.order_id)
       };
 
