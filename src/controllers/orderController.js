@@ -71,7 +71,7 @@ exports.createOrder = [
           pending: `${process.env.FRONTEND_URL}/checkout`
         },
         auto_return: 'approved',
-        notification_url: `${process.env.URL_FRONTEND_ORDER_DETAIL}`,
+        notification_url: `${process.env.BACKEND_URL}/api/payment/webhook`,
         external_reference: String(user_id),
       };
 
