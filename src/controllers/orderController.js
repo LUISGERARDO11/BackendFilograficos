@@ -64,14 +64,17 @@ exports.createOrder = [
 
       // Ahora sí puedes construir la preferencia de Mercado Pago
       const preference = {
-        items: cart.CartDetails.map(detail => ({
-          title: detail.ProductVariant.Product.name,
-          unit_price: Number(detail.unit_price || detail.ProductVariant.calculated_price),
-          quantity: detail.quantity,
-          currency_id: 'MXN'
-        })),
+        items: cart.CartDetails.map(detail => {
+          const unit_price = Number(detail.unit_price ?? detail.ProductVariant?.calculated_price ?? 0);
+          return {
+            title: detail.ProductVariant.Product.name || 'Producto',
+            unit_price: unit_price > 0 ? unit_price : 1, // evitar precios 0
+            quantity: detail.quantity > 0 ? detail.quantity : 1,
+            currency_id: 'MXN'
+          };
+        }),
         shipments: {
-          cost: shippingCost || 0,
+          cost: typeof shippingCost === 'number' && shippingCost >= 0 ? shippingCost : 0,
           mode: 'not_specified'
         },
         back_urls: {
@@ -83,6 +86,8 @@ exports.createOrder = [
         notification_url: `${process.env.BACKEND_URL}/api/payment/webhook`,
         external_reference: String(order.order_id)
       };
+
+      console.log('Preference a enviar a MercadoPago:', preference);
 
       const mpResponse = await mercadopago.preferences.create(preference);
       const preferenceId = mpResponse.body.id;
