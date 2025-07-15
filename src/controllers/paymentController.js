@@ -3,6 +3,10 @@ const { Payment, Order } = require('../models/Associations');
 const mercadopago = require('mercadopago');
 const loggerUtils = require('../utils/loggerUtils');
 
+mercadopago.configure({
+  access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN
+});
+
 exports.handleMercadoPagoWebhook = async (req, res) => {
     try {
         const { type, data } = req.body;
