@@ -7,6 +7,8 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
   try {
     const { type, data, topic, id } = req.body;
 
+    loggerUtils.logUserActivity(null, 'webhook_received', `Recibida notificación: type=${type}, topic=${topic}, data=${JSON.stringify(data)}, id=${id}`);
+
     // Manejo de notificaciones de tipo 'payment'
     if (type === 'payment' || topic === 'payment') {
       const paymentId = data?.id || id;
@@ -15,7 +17,11 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
         return res.status(400).json({ success: false, message: 'paymentId no encontrado' });
       }
 
+      loggerUtils.logUserActivity(null, 'webhook_processing', `Procesando paymentId: ${paymentId}`);
+
       const payment = await mercadopago.payment.get(paymentId);
+      loggerUtils.logUserActivity(null, 'webhook_payment_fetched', `Datos de payment: ${JSON.stringify(payment.body)}`);
+
       let preferenceId = payment.body.preference_id;
 
       // Si no se encuentra preference_id, intentamos obtenerlo desde merchant_order
@@ -23,33 +29,34 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
         try {
           const merchantOrder = await mercadopago.merchant_orders.get(payment.body.order.id);
           preferenceId = merchantOrder.body.preference_id;
+          loggerUtils.logUserActivity(null, 'webhook_merchant_order_fetched', `preference_id encontrado en merchant_order: ${preferenceId}`);
         } catch (error) {
           loggerUtils.logCriticalError(new Error(`Error al obtener merchant_order para payment ${paymentId}: ${error.message}`));
         }
       }
 
-      // Validación final del preference_id
-      if (!preferenceId) {
-        // Como respaldo, intentamos buscar por transaction_id
-        const localPaymentByTransaction = await Payment.findOne({
-          where: { transaction_id: paymentId },
+      let localPayment = null;
+      // Buscar por preference_id si está disponible
+      if (preferenceId) {
+        localPayment = await Payment.findOne({
+          where: { preference_id: preferenceId },
         });
-
-        if (localPaymentByTransaction) {
-          preferenceId = localPaymentByTransaction.preference_id;
-        } else {
-          loggerUtils.logCriticalError(new Error(`preference_id no encontrado en el payment ${paymentId}`));
-          return res.status(400).json({ success: false, message: 'preference_id no encontrado' });
-        }
+        loggerUtils.logUserActivity(null, 'webhook_payment_searched_by_preference', `Búsqueda por preference_id: ${preferenceId}, resultado: ${localPayment ? 'encontrado' : 'no encontrado'}`);
       }
 
-      // Buscar el pago local con el preference_id
-      const localPayment = await Payment.findOne({
-        where: { preference_id: preferenceId },
-      });
-
+      // Respaldo: buscar por transaction_id
       if (!localPayment) {
-        loggerUtils.logCriticalError(new Error(`Pago no encontrado para preference_id: ${preferenceId}`));
+        localPayment = await Payment.findOne({
+          where: { transaction_id: paymentId },
+        });
+        loggerUtils.logUserActivity(null, 'webhook_payment_searched_by_transaction', `Búsqueda por transaction_id: ${paymentId}, resultado: ${localPayment ? 'encontrado' : 'no encontrado'}`);
+      }
+
+      // Si no se encuentra el pago
+      if (!localPayment) {
+        loggerUtils.logCriticalError(
+          new Error(`Pago no encontrado para paymentId: ${paymentId}, preference_id: ${preferenceId || 'no disponible'}`)
+        );
         return res.status(404).json({ success: false, message: 'Pago no encontrado' });
       }
 
@@ -70,12 +77,14 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
           newStatus = 'pending';
       }
 
+      // Actualizar el pago
       await localPayment.update({
         status: newStatus,
         transaction_id: paymentId,
         updated_at: new Date(),
       });
 
+      // Actualizar el estado de la orden
       await Order.update(
         { payment_status: newStatus },
         { where: { order_id: localPayment.order_id } }
@@ -106,7 +115,6 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
         return res.status(400).json({ success: false, message: 'preference_id no encontrado' });
       }
 
-      // Buscar el pago local con el preference_id
       const localPayment = await Payment.findOne({
         where: { preference_id: preferenceId },
       });
@@ -116,8 +124,45 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
         return res.status(404).json({ success: false, message: 'Pago no encontrado' });
       }
 
-      // Opcional: Actualizar estado basado en merchant_order
-      // Por ahora, confirmamos la recepción de la notificación
+      // Procesar pagos asociados en merchant_order
+      const payments = merchantOrder.body.payments || [];
+      if (payments.length > 0) {
+        const paymentStatus = payments[0].status;
+        let newStatus;
+        switch (paymentStatus) {
+          case 'approved':
+            newStatus = 'validated';
+            break;
+          case 'rejected':
+          case 'cancelled':
+            newStatus = 'failed';
+            break;
+          case 'pending':
+          case 'in_process':
+            newStatus = 'pending';
+            break;
+          default:
+            newStatus = 'pending';
+        }
+
+        await localPayment.update({
+          status: newStatus,
+          transaction_id: payments[0].id || localPayment.transaction_id,
+          updated_at: new Date(),
+        });
+
+        await Order.update(
+          { payment_status: newStatus },
+          { where: { order_id: localPayment.order_id } }
+        );
+
+        loggerUtils.logUserActivity(
+          localPayment.order_id,
+          'payment_status_update',
+          `Pago actualizado desde merchant_order: ID ${merchantOrderId}, estado: ${newStatus}`
+        );
+      }
+
       return res.status(200).json({ success: true, message: 'Notificación de merchant_order procesada' });
     }
 
