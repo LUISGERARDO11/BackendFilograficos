@@ -94,7 +94,7 @@ app.use((req, res, next) => {
   if (
     req.headers['x-alexa-request'] === 'true' ||
     req.path === '/api/auth/alexa/token' ||
-    req.path === '/api/payments/webhook'//holi le movi yo hai
+    req.path === '/api/payment/webhook'//holi le movi yo hai
   ) {
     return next();
   }
