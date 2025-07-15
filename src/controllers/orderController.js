@@ -72,7 +72,7 @@ exports.createOrder = [
         },
         auto_return: 'approved',
         notification_url: `${process.env.BACKEND_URL}/api/payment/webhook`,
-        external_reference: String(user_id),
+        external_reference: String(order.order_id)
       };
 
       // Llamar al servicio y obtener shippingCost
