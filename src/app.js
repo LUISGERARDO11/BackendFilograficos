@@ -23,7 +23,7 @@ const { BackupConfig } = require('./models/Associations');
 
 // Importar rutas disponibles
 const routes = [
-  { path: '/api/payments', router: require('./routes/paymentRoutes') },
+  { path: '/api/payment', router: require('./routes/paymentRoutes') },
   { path: '/api/auth', router: require('./routes/authRoutes') },
   { path: '/api/company', router: require('./routes/companyRoutes') },
   { path: '/api/email-templates', router: require('./routes/emailTemplateRoutes') },
