@@ -10,7 +10,7 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
 
     if (type === 'payment') {
       const paymentId = data.id;
-      loggerUtils.logUserActivity(null, 'webhook_payment', `Procesando pago ID: ${paymentId}`);
+      loggerUtils.logUserActivity(null, 'webhook_payment', `Procesando pago ID: ${paymentId}, preference_id: ${data?.preference_id}`);
       const payment = await mercadopago.payment.get(paymentId);
 
       const localPayment = await Payment.findOne({
@@ -54,7 +54,7 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
       loggerUtils.logUserActivity(
         localPayment.order_id,
         'payment_status_update',
-        `Pago actualizado: ID ${paymentId}, estado: ${newStatus}`
+        `Pago actualizado: ID ${paymentId}, estado: ${newStatus}, order_id: ${localPayment.order_id}`
       );
 
       return res.status(200).json({ success: true, message: 'Notificación procesada' });
