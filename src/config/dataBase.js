@@ -13,12 +13,16 @@ const sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, proces
   dialect: 'mysql',
   dialectModule: require('mysql2'),
   dialectOptions: {
-    ssl: process.env.DB_SSL_CA 
-      ? { ca: Buffer.from(process.env.DB_SSL_CA, 'utf-8') } 
-      : undefined,
-    timezone: '+00:00' // Forzar UTC en la conexión
+    ssl: process.env.DB_SSL_CA ? { ca: Buffer.from(process.env.DB_SSL_CA, 'utf-8') } : undefined,
+    timezone: '+00:00'
   },
-  timezone: '+00:00' // Asegurar que Sequelize maneje fechas en UTC
+  timezone: '+00:00',
+  pool: {
+    max: 5, // Máximo de conexiones
+    min: 0,
+    acquire: 30000, // Timeout de 30s
+    idle: 10000 // Cierre de conexiones inactivas después de 10s
+  }
 });
 
 // Probar la conexión
