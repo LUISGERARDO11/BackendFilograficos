@@ -9,8 +9,12 @@ exports.getAllProducts = async (req, res) => {
 
         console.log('Filtros recibidos:', params);
 
+        // Determinar si el usuario está autenticado
+        const includeCollaborator = !!req.user; // req.user existe si el middleware de autenticación tuvo éxito
+
         const { count, products } = await productServices.getProductsWithFilters({ 
-            ...params,
+            ...params, 
+            includeCollaborator,
             search: params.search 
         });
         const formattedProducts = await productServices.formatProductList(products);
@@ -34,7 +38,10 @@ exports.getAllProducts = async (req, res) => {
 exports.getProductById = async (req, res) => {
     try {
         const { product_id } = req.params;
-        const product = await productServices.getProductById(product_id);
+        // Determinar si el usuario está autenticado
+        const includeCollaborator = !!req.user; // req.user existe si el middleware de autenticación tuvo éxito
+
+        const product = await productServices.getProductById(product_id, includeCollaborator);
 
         if (!product) {
             return res.status(404).json({ message: 'Producto no encontrado' });

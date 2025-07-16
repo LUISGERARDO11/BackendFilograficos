@@ -5,12 +5,12 @@ const router = express.Router();
 const productCatalogController = require('../controllers/productCatalogController');
 const productStockController = require('../controllers/productStockController');
 const productPriceController = require('../controllers/productPriceController');
-const publicProductCatalogController = require('../controllers/publicProductCatalogController');//(HAILIE)
-const authProductCatalogController = require('../controllers/authProductCatalogController');//(HAILIE)
+const productCollectionController = require('../controllers/productCollectionController');
 const productHomeController = require('../controllers/productHomeController');
 
 // Importar middlewares
 const authMiddleware = require('../middlewares/authMiddleware');
+const authOptionalMiddleware = require('../middlewares/authOptionalMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 const validateProductImages = require('../middlewares/validateProductImages');
@@ -167,29 +167,19 @@ router.get(
   productPriceController.getPriceHistoryByVariantId
 );
 
-// Rutas públicas y autenticadas
+// Rutas unificadas para el catálogo (público y autenticado)
 router.get(
-  '/public-catalog',
-  publicProductCatalogController.getAllProducts
+    '/collection',
+    authOptionalMiddleware,
+    validateGetAllProducts,
+    productCollectionController.getAllProducts
 );
 
 router.get(
-  '/auth-catalog',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  authProductCatalogController.getAllProducts
-);
-
-router.get(
-  '/public-catalog/:product_id',
-  publicProductCatalogController.getProductById
-);
-
-router.get(
-  '/auth-catalog/:product_id',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  authProductCatalogController.getProductById
+    '/collection/:product_id',
+    authOptionalMiddleware,
+    validateGetProductById,
+    productCollectionController.getProductById
 );
 
 module.exports = router;
