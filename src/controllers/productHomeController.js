@@ -18,38 +18,45 @@ exports.getHomeData = async (req, res) => {
       name: product.name,
       description: product.description,
       product_type: product.product_type,
-      average_rating: product.average_rating,
-      total_reviews: product.total_reviews,
+      average_rating: product.average_rating || '0.00',
+      total_reviews: product.total_reviews || 0,
       min_price: product.getDataValue('min_price') || null,
       max_price: product.getDataValue('max_price') || null,
       total_stock: product.getDataValue('total_stock') || 0,
-      variantCount: product.getDataValue('variantCount') || 0,
-      category_id: product.Category?.category_id || null,
-      category_name: product.Category?.name || null,
-      image: Array.isArray(product.ProductVariants) && product.ProductVariants.length > 0 
-        ? product.ProductVariants[0].ProductImages?.[0]?.image_url || null 
-        : null,
-      created_at: product.created_at
+      variant_count: product.getDataValue('variantCount') || 0,
+      category: product.Category?.name || null,
+      image_url: product.getDataValue('image_url') || null,
+      created_at: product.created_at ? product.created_at.toISOString() : null,
+      updated_at: product.updated_at ? product.updated_at.toISOString() : null,
+      collaborator: product.collaborator_id ? `Collaborator ${product.collaborator_id}` : null,
+      standard_delivery_days: product.standard_delivery_days || null,
+      urgent_delivery_enabled: product.urgent_delivery_enabled || false,
+      urgent_delivery_days: product.urgent_delivery_days || null,
+      urgent_delivery_cost: product.urgent_delivery_cost || null
     }));
 
     // 1. Productos destacados (top 12 por average_rating)
     const featuredProducts = await Product.findAll({
-      where: { status: 'active', average_rating: { [Op.gt]: 0 } },
+      where: { 
+        status: 'active',
+        average_rating: { [Op.gt]: 0 }
+      },
       include: [
         {
           model: ProductVariant,
-          attributes: ['variant_id', 'calculated_price', 'stock'],
+          attributes: [],
           required: false,
+          where: { is_deleted: false },
           include: [{
             model: ProductImage,
-            attributes: ['image_url'],
+            attributes: [],
             where: { order: 1 },
             required: false
           }]
         },
         {
           model: Category,
-          attributes: ['category_id', 'name'],
+          attributes: ['name'],
           required: false
         }
       ],
@@ -61,12 +68,27 @@ exports.getHomeData = async (req, res) => {
         'average_rating',
         'total_reviews',
         'created_at',
+        'updated_at',
+        'collaborator_id',
+        'standard_delivery_days',
+        'urgent_delivery_enabled',
+        'urgent_delivery_days',
+        'urgent_delivery_cost',
         [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
         [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
         [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock'],
-        [Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')), 'variantCount']
+        [Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')), 'variantCount'],
+        [Product.sequelize.literal(`(
+          SELECT pi.image_url 
+          FROM product_images pi
+          JOIN product_variants pv ON pi.variant_id = pv.variant_id
+          WHERE pv.product_id = Product.product_id 
+          AND pi.order = 1
+          AND pv.is_deleted = false
+          LIMIT 1
+        )`), 'image_url']
       ],
-      group: ['Product.product_id', 'Category.category_id', 'Category.name', 'ProductVariants.variant_id', 'ProductVariants.ProductImages.image_id'],
+      group: ['Product.product_id'],
       order: [['average_rating', 'DESC'], ['total_reviews', 'DESC']],
       limit: 12,
       subQuery: false
@@ -78,18 +100,19 @@ exports.getHomeData = async (req, res) => {
       include: [
         {
           model: ProductVariant,
-          attributes: ['variant_id', 'calculated_price', 'stock'],
+          attributes: [],
           required: false,
+          where: { is_deleted: false },
           include: [{
             model: ProductImage,
-            attributes: ['image_url'],
+            attributes: [],
             where: { order: 1 },
             required: false
           }]
         },
         {
           model: Category,
-          attributes: ['category_id', 'name'],
+          attributes: ['name'],
           required: false
         }
       ],
@@ -101,12 +124,27 @@ exports.getHomeData = async (req, res) => {
         'average_rating',
         'total_reviews',
         'created_at',
+        'updated_at',
+        'collaborator_id',
+        'standard_delivery_days',
+        'urgent_delivery_enabled',
+        'urgent_delivery_days',
+        'urgent_delivery_cost',
         [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
         [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
         [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock'],
-        [Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')), 'variantCount']
+        [Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')), 'variantCount'],
+        [Product.sequelize.literal(`(
+          SELECT pi.image_url 
+          FROM product_images pi
+          JOIN product_variants pv ON pi.variant_id = pv.variant_id
+          WHERE pv.product_id = Product.product_id 
+          AND pi.order = 1
+          AND pv.is_deleted = false
+          LIMIT 1
+        )`), 'image_url']
       ],
-      group: ['Product.product_id', 'Category.category_id', 'Category.name', 'ProductVariants.variant_id', 'ProductVariants.ProductImages.image_id'],
+      group: ['Product.product_id'],
       order: [['created_at', 'DESC']],
       limit: 6,
       subQuery: false
@@ -116,7 +154,7 @@ exports.getHomeData = async (req, res) => {
     let topSellingProducts = [];
     const whereOrder = {
       created_at: { [Op.gte]: currentMonthStart },
-      order_status: { [Op.in]: ['processing', 'shipped', 'delivered'] } // Solo órdenes confirmadas
+      order_status: { [Op.in]: ['processing', 'shipped', 'delivered'] }
     };
 
     // Consulta base para el mes actual
@@ -124,28 +162,26 @@ exports.getHomeData = async (req, res) => {
       include: [
         {
           model: ProductVariant,
-          attributes: ['variant_id', 'calculated_price', 'stock'],
+          attributes: [],
+          where: { is_deleted: false },
+          required: false,
           include: [
             {
               model: OrderDetail,
               attributes: [],
+              required: false,
               include: [{
                 model: Order,
                 attributes: [],
-                where: whereOrder
+                where: whereOrder,
+                required: false
               }]
-            },
-            {
-              model: ProductImage,
-              attributes: ['image_url'],
-              where: { order: 1 },
-              required: false
             }
           ]
         },
         {
           model: Category,
-          attributes: ['category_id', 'name'],
+          attributes: ['name'],
           required: false
         }
       ],
@@ -158,14 +194,29 @@ exports.getHomeData = async (req, res) => {
         'average_rating',
         'total_reviews',
         'created_at',
+        'updated_at',
+        'collaborator_id',
+        'standard_delivery_days',
+        'urgent_delivery_enabled',
+        'urgent_delivery_days',
+        'urgent_delivery_cost',
         [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
         [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
         [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock'],
         [Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')), 'variantCount'],
-        [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.OrderDetails.quantity')), 'total_sold']
+        [Product.sequelize.fn('COALESCE', Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.OrderDetails.quantity')), 0), 'total_sold'],
+        [Product.sequelize.literal(`(
+          SELECT pi.image_url 
+          FROM product_images pi
+          JOIN product_variants pv ON pi.variant_id = pv.variant_id
+          WHERE pv.product_id = Product.product_id 
+          AND pi.order = 1
+          AND pv.is_deleted = false
+          LIMIT 1
+        )`), 'image_url']
       ],
-      group: ['Product.product_id', 'Category.category_id', 'Category.name', 'ProductVariants.variant_id', 'ProductVariants.ProductImages.image_id'],
-      order: [[Product.sequelize.literal('total_sold'), 'DESC']],
+      group: ['Product.product_id'],
+      order: [[Product.sequelize.literal('total_sold'), 'DESC'], ['created_at', 'DESC']],
       limit: 12,
       subQuery: false
     });
@@ -176,37 +227,35 @@ exports.getHomeData = async (req, res) => {
         include: [
           {
             model: ProductVariant,
-            attributes: ['variant_id', 'calculated_price', 'stock'],
+            attributes: [],
+            where: { is_deleted: false },
+            required: false,
             include: [
               {
                 model: OrderDetail,
                 attributes: [],
+                required: false,
                 include: [{
                   model: Order,
                   attributes: [],
                   where: {
                     created_at: { [Op.between]: [previousMonthStart, previousMonthEnd] },
                     order_status: { [Op.in]: ['processing', 'shipped', 'delivered'] }
-                  }
+                  },
+                  required: false
                 }]
-              },
-              {
-                model: ProductImage,
-                attributes: ['image_url'],
-                where: { order: 1 },
-                required: false
               }
             ]
           },
           {
             model: Category,
-            attributes: ['category_id', 'name'],
+            attributes: ['name'],
             required: false
           }
         ],
         where: {
           status: 'active',
-          product_id: { [Op.notIn]: topSellingProducts.map(p => p.product_id) } // Excluir productos ya obtenidos
+          product_id: { [Op.notIn]: topSellingProducts.map(p => p.product_id) }
         },
         attributes: [
           'product_id',
@@ -216,14 +265,29 @@ exports.getHomeData = async (req, res) => {
           'average_rating',
           'total_reviews',
           'created_at',
+          'updated_at',
+          'collaborator_id',
+          'standard_delivery_days',
+          'urgent_delivery_enabled',
+          'urgent_delivery_days',
+          'urgent_delivery_cost',
           [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
           [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
           [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock'],
           [Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')), 'variantCount'],
-          [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.OrderDetails.quantity')), 'total_sold']
+          [Product.sequelize.fn('COALESCE', Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.OrderDetails.quantity')), 0), 'total_sold'],
+          [Product.sequelize.literal(`(
+            SELECT pi.image_url 
+            FROM product_images pi
+            JOIN product_variants pv ON pi.variant_id = pv.variant_id
+            WHERE pv.product_id = Product.product_id 
+            AND pi.order = 1
+            AND pv.is_deleted = false
+            LIMIT 1
+          )`), 'image_url']
         ],
-        group: ['Product.product_id', 'Category.category_id', 'Category.name', 'ProductVariants.variant_id', 'ProductVariants.ProductImages.image_id'],
-        order: [[Product.sequelize.literal('total_sold'), 'DESC']],
+        group: ['Product.product_id'],
+        order: [[Product.sequelize.literal('total_sold'), 'DESC'], ['created_at', 'DESC']],
         limit: 12 - topSellingProducts.length,
         subQuery: false
       });
