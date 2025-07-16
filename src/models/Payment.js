@@ -53,7 +53,7 @@ const Payment = sequelize.define('Payment', {
   },
   preference_id: {
     type: DataTypes.STRING(100),
-    allowNull: true 
+    allowNull: true // Para almacenar el ID de la preferencia de Mercado Pago
   }
 }, {
   tableName: 'payments',
