@@ -5,24 +5,29 @@ const { ShippingOption } = require('../models/Associations');//AQUI
 
 // Crear una orden a partir del carrito del usuario AQUI
 exports.createOrder = [
-  // Validaciones
   body('address_id')
-    .optional()
+    .if(body('delivery_option').equals('Entrega a Domicilio'))
+    .notEmpty()
+    .withMessage('La dirección es obligatoria para Entrega a Domicilio')
     .isInt({ min: 1 })
     .withMessage('El ID de la dirección debe ser un número entero positivo'),
   body('payment_method')
     .notEmpty()
     .withMessage('El método de pago es obligatorio')
-    .isIn(['bank_transfer_oxxo', 'bank_transfer_bbva', 'bank_transfer'])
-    .withMessage('Método de pago no válido'),
+    .isIn(['mercado_pago'])
+    .withMessage('Método de pago no válido. Solo se acepta Mercado Pago'),
   body('coupon_code')
     .optional()
     .isString()
     .trim()
     .withMessage('El código de cupón debe ser una cadena de texto'),
+  body('delivery_option')
+    .optional()
+    .isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'])
+    .withMessage('Opción de envío no válida'),
 
   async (req, res) => {
-    const user_id = req.user.user_id; // Obtenido de authMiddleware
+    const user_id = req.user.user_id;
     const errors = validationResult(req);
 
     try {
@@ -34,12 +39,13 @@ exports.createOrder = [
         });
       }
 
-      const { address_id, payment_method, coupon_code } = req.body;
+      const { address_id, payment_method, coupon_code, delivery_option } = req.body;
       const orderService = new OrderService();
       const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
         address_id,
         payment_method,
-        coupon_code
+        coupon_code,
+        delivery_option
       });
 
       loggerUtils.logUserActivity(user_id, 'create_order', `Orden creada: ID ${order.order_id}`);

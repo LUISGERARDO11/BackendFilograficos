@@ -17,11 +17,14 @@ class OrderService {
    * @throws {Error} - Si el carrito está vacío, la dirección es inválida, el stock es insuficiente o falla alguna operación.
    */
   //AQUI
-  async createOrder(userId, { address_id, payment_method, coupon_code }) {
+  async createOrder(userId, { address_id, payment_method, coupon_code, delivery_option }) {
     const transaction = await Cart.sequelize.transaction();
     try {
-      // Verificar dirección si se proporciona
+      // Verificar dirección
       let address = null;
+      if (delivery_option === 'Entrega a Domicilio' && !address_id) {
+        throw new Error('La dirección es obligatoria para Entrega a Domicilio');
+      }
       if (address_id) {
         address = await Address.findOne({ where: { address_id, user_id: userId }, transaction });
         if (!address) {
@@ -132,7 +135,14 @@ class OrderService {
       // Calcular subtotal, descuento y total
       const subtotal = orderDetailsData.reduce((sum, detail) => sum + (detail.quantity * detail.unit_price), 0);
       const discount = orderDetailsData.reduce((sum, detail) => sum + detail.discount_applied, 0);
-      const shipping_cost = 20.00;
+      let shipping_cost = 0.00;
+      if (delivery_option) {
+        const shippingOption = await ShippingOption.findOne({ where: { name: delivery_option, status: 'active' }, transaction });
+        if (!shippingOption) {
+          throw new Error('Opción de envío no válida o inactiva');
+        }
+        shipping_cost = parseFloat(shippingOption.base_cost);
+      }
       const total = Math.max(0, subtotal + shipping_cost - discount);
 
       // Calcular fecha estimada de entrega
@@ -150,7 +160,7 @@ class OrderService {
         payment_method,
         order_status: 'pending',
         estimated_delivery_date,
-        delivery_option: null
+        delivery_option: delivery_option || null
       }, { transaction });
 
       // Crear detalles del pedido
@@ -220,13 +230,13 @@ class OrderService {
 
       await transaction.commit();
 
-      // Ajuste: Eliminar 'sku' de Product y moverlo a ProductVariant
+      // Obtener detalles de la orden
       const orderDetails = await OrderDetail.findAll({
         where: { order_id: order.order_id },
         include: [
           {
             model: ProductVariant,
-            attributes: ['variant_id', 'sku', 'calculated_price'], // Incluir 'sku' desde ProductVariant
+            attributes: ['variant_id', 'sku', 'calculated_price'],
             include: [{ model: Product, attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'] }]
           }
         ]

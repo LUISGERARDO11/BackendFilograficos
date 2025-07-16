@@ -53,6 +53,11 @@ const Order = sequelize.define('Order', {
     type: DataTypes.DATE,
     allowNull: true
   },
+  total_urgent_cost: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0.00
+  },
   delivery_option: {
     type: DataTypes.ENUM('Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'),
     allowNull: true,
