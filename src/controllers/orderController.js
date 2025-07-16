@@ -1,14 +1,11 @@
 const { body, param, query, validationResult } = require('express-validator');
 const OrderService = require('../services/orderService');
 const loggerUtils = require('../utils/loggerUtils');
-const { ShippingOption, Cart, CartDetail, ProductVariant, Product, Payment } = require('../models/Associations');
-const mercadopago = require('mercadopago');
+const { ShippingOption } = require('../models/Associations');//AQUI
 
-mercadopago.configure({
-  access_token: process.env.MERCADO_PAGO_ACCESS_TOKEN
-});
-
+// Crear una orden a partir del carrito del usuario AQUI
 exports.createOrder = [
+  // Validaciones
   body('address_id')
     .optional()
     .isInt({ min: 1 })
@@ -16,20 +13,16 @@ exports.createOrder = [
   body('payment_method')
     .notEmpty()
     .withMessage('El método de pago es obligatorio')
-    .isIn(['mercado_pago'])
-    .withMessage('Método de pago no válido. Solo se acepta Mercado Pago'),
+    .isIn(['bank_transfer_oxxo', 'bank_transfer_bbva', 'bank_transfer'])
+    .withMessage('Método de pago no válido'),
   body('coupon_code')
     .optional()
     .isString()
     .trim()
     .withMessage('El código de cupón debe ser una cadena de texto'),
-  body('delivery_option')
-    .optional()
-    .isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'])
-    .withMessage('Opción de envío no válida'),
 
   async (req, res) => {
-    const user_id = req.user.user_id;
+    const user_id = req.user.user_id; // Obtenido de authMiddleware
     const errors = validationResult(req);
 
     try {
@@ -41,62 +34,13 @@ exports.createOrder = [
         });
       }
 
-      const { address_id, payment_method, coupon_code, delivery_option } = req.body;
+      const { address_id, payment_method, coupon_code } = req.body;
       const orderService = new OrderService();
-
-      // Obtener carrito
-      const cart = await Cart.findOne({
-        where: { user_id },
-        include: [{ model: CartDetail, include: [{ model: ProductVariant, include: [{ model: Product }] }] }]
-      });
-      if (!cart || !cart.CartDetails || cart.CartDetails.length === 0) {
-        throw new Error('Carrito no encontrado o vacío');
-      }
-
-      // Crear la orden primero
-      const { order, payment, paymentInstructions, shippingCost } = await orderService.createOrder(user_id, {
+      const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
         address_id,
         payment_method,
-        coupon_code,
-        delivery_option,
-        preference_id: null // se actualizará más adelante
+        coupon_code
       });
-
-      // Ahora sí puedes construir la preferencia de Mercado Pago
-      const preference = {
-        items: cart.CartDetails.map(detail => {
-          const unit_price = Number(detail.unit_price ?? detail.ProductVariant?.calculated_price ?? 0);
-          return {
-            title: detail.ProductVariant.Product.name || 'Producto',
-            unit_price: unit_price > 0 ? unit_price : 1, // evitar precios 0
-            quantity: detail.quantity > 0 ? detail.quantity : 1,
-            currency_id: 'MXN'
-          };
-        }),
-        shipments: {
-          cost: typeof shippingCost === 'number' && shippingCost >= 0 ? shippingCost : 0,
-          mode: 'not_specified'
-        },
-        back_urls: {
-          success: `${process.env.FRONTEND_URL}/order-confirmation`.replace(/([^:]\/)\/+/g, "$1"),
-          failure: `${process.env.FRONTEND_URL}/checkout`.replace(/([^:]\/)\/+/g, "$1"),
-          pending: `${process.env.FRONTEND_URL}/checkout`.replace(/([^:]\/)\/+/g, "$1")
-        },
-        auto_return: 'approved',
-        notification_url: `https://${process.env.BACKEND_URL}/api/payment/webhook`,
-        external_reference: String(order.order_id)
-      };
-
-      console.log('Preference a enviar a MercadoPago:', preference);
-
-      const mpResponse = await mercadopago.preferences.create(preference);
-      const preferenceId = mpResponse.body.id;
-
-      // Actualizar el payment con el preference_id generado
-      await Payment.update(
-        { preference_id: preferenceId },
-        { where: { payment_id: payment.payment_id }, transaction: null }
-      );
 
       loggerUtils.logUserActivity(user_id, 'create_order', `Orden creada: ID ${order.order_id}`);
 
@@ -109,7 +53,6 @@ exports.createOrder = [
           total_urgent_cost: order.total_urgent_cost || 0.00,
           estimated_delivery_date: order.estimated_delivery_date,
           payment_instructions: paymentInstructions,
-          preference_id: preferenceId,
           status: order.order_status
         }
       });
@@ -564,7 +507,7 @@ exports.getOrderDetailsByIdForAdmin = [
   }
 ];
 
-// Actualizar el estado de una orden
+// Actualizar el estado de una orden AQUI 
 exports.updateOrderStatus = [
   param('id')
     .isInt({ min: 1 })
@@ -576,7 +519,7 @@ exports.updateOrderStatus = [
     .withMessage('El nuevo estado debe ser uno de: pending, processing, shipped, delivered'),
 
   async (req, res) => {
-    //const adminId = req.user.user_id;
+    const adminId = req.user.user_id;
     const errors = validationResult(req);
 
     try {
@@ -591,10 +534,9 @@ exports.updateOrderStatus = [
       const orderId = parseInt(req.params.id);
       const { newStatus } = req.body;
       const orderService = new OrderService();
-      //const updatedOrder = await orderService.updateOrderStatus(orderId, newStatus, adminId);
-      const updatedOrder = await orderService.updateOrderStatus(orderId, newStatus);
+      const updatedOrder = await orderService.updateOrderStatus(orderId, newStatus, adminId);
 
-      //loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado por admin: ID ${orderId}, nuevo estado: ${newStatus}`);
+      loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado por admin: ID ${orderId}, nuevo estado: ${newStatus}`);
 
       res.status(200).json({
         success: true,

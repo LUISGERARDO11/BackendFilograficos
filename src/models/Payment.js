@@ -1,6 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/dataBase');
-
+//REGRESANDO 
 const Payment = sequelize.define('Payment', {
   payment_id: {
     type: DataTypes.INTEGER,
@@ -33,27 +33,13 @@ const Payment = sequelize.define('Payment', {
     allowNull: true
   },
   status: {
-    type: DataTypes.ENUM(
-      'pending',
-      'validated',
-      'failed',
-      'approved',
-      'in_process',
-      'rejected',
-      'cancelled',
-      'refunded',
-      'charged_back'
-    ),
+    type: DataTypes.ENUM('pending', 'validated', 'failed'),
     defaultValue: 'pending'
   },
   attempts: {
     type: DataTypes.INTEGER,
     defaultValue: 0,
     allowNull: false
-  },
-  preference_id: {
-    type: DataTypes.STRING(100),
-    allowNull: true // Para almacenar el ID de la preferencia de Mercado Pago
   }
 }, {
   tableName: 'payments',

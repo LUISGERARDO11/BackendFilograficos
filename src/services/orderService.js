@@ -16,15 +16,17 @@ class OrderService {
    * @returns {Object} - La orden creada, el pago y las instrucciones de pago.
    * @throws {Error} - Si el carrito está vacío, la dirección es inválida, el stock es insuficiente o falla alguna operación.
    */
-  //se cambio esto hailie
-  async createOrder(userId, { address_id, payment_method, coupon_code, delivery_option, preference_id }) {
+  //AQUI
+  async createOrder(userId, { address_id, payment_method, coupon_code }) {
     const transaction = await Cart.sequelize.transaction();
     try {
       // Verificar dirección si se proporciona
       let address = null;
       if (address_id) {
         address = await Address.findOne({ where: { address_id, user_id: userId }, transaction });
-        if (!address) throw new Error('Dirección no válida');
+        if (!address) {
+          throw new Error('Dirección no válida');
+        }
       }
 
       // Obtener carrito del usuario
@@ -34,7 +36,9 @@ class OrderService {
         transaction
       });
 
-      if (!cart) throw new Error('Carrito no encontrado');
+      if (!cart) {
+        throw new Error('Carrito no encontrado');
+      }
 
       // Obtener detalles del carrito
       const cartDetails = await CartDetail.findAll({
@@ -64,15 +68,23 @@ class OrderService {
         transaction
       });
 
-      if (!cartDetails || cartDetails.length === 0) throw new Error('Carrito vacío');
+      if (!cartDetails || cartDetails.length === 0) {
+        throw new Error('Carrito vacío');
+      }
 
       // Validar ítems urgentes y disponibilidad de stock
       for (const detail of cartDetails) {
         const variant = detail.ProductVariant;
         const product = variant?.Product;
-        if (!variant || !product) throw new Error(`Variante o producto no encontrado para el ítem ${detail.variant_id}`);
-        if (detail.is_urgent && !product.urgent_delivery_enabled) throw new Error(`El producto ${product.name || 'desconocido'} no permite entrega urgente`);
-        if (variant.stock < detail.quantity) throw new Error(`Stock insuficiente para ${product.name || 'desconocido'} (Disponible: ${variant.stock}, Requerido: ${detail.quantity})`);
+        if (!variant || !product) {
+          throw new Error(`Variante o producto no encontrado para el ítem ${detail.variant_id}`);
+        }
+        if (detail.is_urgent && !product.urgent_delivery_enabled) {
+          throw new Error(`El producto ${product.name || 'desconocido'} no permite entrega urgente`);
+        }
+        if (variant.stock < detail.quantity) {
+          throw new Error(`Stock insuficiente para el producto ${product.name || 'desconocido'} (SKU: ${variant.sku}). Disponible: ${variant.stock}, Requerido: ${detail.quantity}`);
+        }
       }
 
       // Calcular costos y días de entrega
@@ -83,7 +95,9 @@ class OrderService {
       for (const detail of cartDetails) {
         const product = detail.ProductVariant.Product;
         const unitPrice = detail.unit_price || detail.ProductVariant.calculated_price;
-        if (!unitPrice) throw new Error(`Precio no definido para ${product.name || detail.variant_id}`);
+        if (!unitPrice) {
+          throw new Error(`Precio no definido para el ítem ${product.name || detail.variant_id}`);
+        }
 
         const urgentCost = detail.is_urgent ? parseFloat(detail.urgent_delivery_fee || 0) : 0;
         total_urgent_cost += urgentCost * detail.quantity;
@@ -115,27 +129,14 @@ class OrderService {
         });
       }
 
-      // Calcular costos con opción de envío
-      let shippingCost = 0;
-      if (delivery_option) {
-        const shippingOption = await ShippingOption.findOne({
-          where: { name: delivery_option.replace('_', ' ').replace(/^\w/, c => c.toUpperCase()), status: 'active' }
-        });
-        if (!shippingOption) throw new Error('Opción de envío no válida o inactiva');
-        shippingCost = parseFloat(shippingOption.base_cost);
-      }
-
       // Calcular subtotal, descuento y total
       const subtotal = orderDetailsData.reduce((sum, detail) => sum + (detail.quantity * detail.unit_price), 0);
       const discount = orderDetailsData.reduce((sum, detail) => sum + detail.discount_applied, 0);
-      const total = Math.max(0, subtotal + shippingCost + total_urgent_cost - discount);
+      const shipping_cost = 20.00;
+      const total = Math.max(0, subtotal + shipping_cost - discount);
 
-      // Ajustar estimated_delivery_date según delivery_option
-      let estimatedDeliveryDays = maxDeliveryDays;
-      if (delivery_option === 'Entrega a Domicilio' && cartDetails.some(detail => detail.is_urgent)) {
-        estimatedDeliveryDays = Math.min(estimatedDeliveryDays, 1); // Priorizar entrega urgente
-      }
-      const estimated_delivery_date = moment().add(estimatedDeliveryDays, 'days').toDate();
+      // Calcular fecha estimada de entrega
+      const estimated_delivery_date = moment().add(maxDeliveryDays, 'days').toDate();
 
       // Crear orden
       const order = await Order.create({
@@ -144,26 +145,39 @@ class OrderService {
         total,
         total_urgent_cost,
         discount,
-        shipping_cost: shippingCost,
+        shipping_cost,
         payment_status: 'pending',
         payment_method,
         order_status: 'pending',
         estimated_delivery_date,
-        delivery_option
+        delivery_option: null
       }, { transaction });
 
-      // Crear detalles del pedido, actualizar stock, historial, pago, cupones y limpiar carrito
+      // Crear detalles del pedido
       for (const detailData of orderDetailsData) {
-        await OrderDetail.create({ ...detailData, order_id: order.order_id }, { transaction });
+        await OrderDetail.create({
+          ...detailData,
+          order_id: order.order_id
+        }, { transaction });
       }
 
+      // Actualizar stock de las variantes
       for (const detail of cartDetails) {
-        const variant = await ProductVariant.findOne({ where: { variant_id: detail.variant_id }, transaction });
+        const variant = await ProductVariant.findOne({
+          where: { variant_id: detail.variant_id },
+          transaction
+        });
         if (variant) {
-          await variant.update({ stock: variant.stock - detail.quantity, updated_at: new Date() }, { transaction });
-        } else throw new Error(`Variante no encontrada: ${detail.variant_id}`);
+          await variant.update({
+            stock: variant.stock - detail.quantity,
+            updated_at: new Date()
+          }, { transaction });
+        } else {
+          throw new Error(`Variante no encontrada: ${detail.variant_id}`);
+        }
       }
 
+      // Crear historial de la orden
       await OrderHistory.create({
         user_id: userId,
         order_id: order.order_id,
@@ -172,15 +186,16 @@ class OrderService {
         total
       }, { transaction });
 
+      // Crear registro de pago
       const payment = await Payment.create({
         order_id: order.order_id,
         payment_method,
         amount: total,
         status: 'pending',
-        attempts: 0,
-        preference_id // Asignar el preference_id recibido
+        attempts: 0
       }, { transaction });
 
+      // Manejar cupones
       if (coupon_code && cart.promotion_id) {
         const coupon = await CouponUsage.findOne({
           where: { user_id: userId, cart_id: cart.cart_id, promotion_id: cart.promotion_id },
@@ -193,35 +208,49 @@ class OrderService {
             promotion_id: cart.promotion_id,
             usage_date: new Date()
           }, { transaction });
-        } else throw new Error('Cupón no válido');
+        } else {
+          throw new Error('Cupón no válido');
+        }
       }
 
+      // Limpiar carrito
       await CartDetail.destroy({ where: { cart_id: cart.cart_id }, transaction });
       await CouponUsage.destroy({ where: { cart_id: cart.cart_id }, transaction });
       await Cart.destroy({ where: { cart_id: cart.cart_id }, transaction });
 
       await transaction.commit();
 
+      // Ajuste: Eliminar 'sku' de Product y moverlo a ProductVariant
       const orderDetails = await OrderDetail.findAll({
         where: { order_id: order.order_id },
         include: [
           {
             model: ProductVariant,
-            attributes: ['variant_id', 'sku', 'calculated_price'],
+            attributes: ['variant_id', 'sku', 'calculated_price'], // Incluir 'sku' desde ProductVariant
             include: [{ model: Product, attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'] }]
           }
         ]
       });
 
-      const user = await User.findOne({ where: { user_id: userId }, attributes: ['user_id', 'name', 'email'] });
+      // Obtener datos del usuario
+      const user = await User.findOne({
+        where: { user_id: userId },
+        attributes: ['user_id', 'name', 'email']
+      });
+
       const paymentInstructions = this.generatePaymentInstructions(payment_method, total);
 
       loggerUtils.logUserActivity(userId, 'create_order', `Orden creada exitosamente: order_id ${order.order_id}`);
-      this.notifyOrderCreation(order, user, orderDetails, payment).catch(err => loggerUtils.logCriticalError(err, 'Error al enviar notificación asíncrona'));
 
-      return { order, payment, paymentInstructions, shippingCost }; // Añadir shippingCost al retorno
+      this.notifyOrderCreation(order, user, orderDetails, payment).catch(err => {
+        loggerUtils.logCriticalError(err, 'Error al enviar notificación asíncrona');
+      });
+
+      return { order, payment, paymentInstructions };
     } catch (error) {
-      if (transaction && !transaction.finished) await transaction.rollback();
+      if (transaction && !transaction.finished) {
+        await transaction.rollback();
+      }
       loggerUtils.logCriticalError(error);
       throw new Error(`Error al crear la orden: ${error.message}`);
     }
@@ -1068,8 +1097,8 @@ class OrderService {
    * @returns {Object} - La orden actualizada.
    * @throws {Error} - Si el estado es inválido o la orden no se encuentra.
    */
-  //async updateOrderStatus(orderId, newStatus, adminId) {
-  async updateOrderStatus(orderId, newStatus) {
+  //AQUI
+  async updateOrderStatus(orderId, newStatus, adminId) {
     const transaction = await Order.sequelize.transaction();
     try {
       if (!orderUtils.isValidOrderStatus(newStatus)) {
@@ -1077,13 +1106,13 @@ class OrderService {
       }
 
       // Validar que adminId pertenece a un administrador
-      //const admin = await User.findOne({
-      //  where: { user_id: adminId, user_type: 'administrador' },
-      //  transaction,
-      //});
-      //if (!admin) {
-      //  throw new Error('Usuario administrador no válido');
-      //}
+      const admin = await User.findOne({
+        where: { user_id: adminId, user_type: 'administrador' },
+        transaction,
+      });
+      if (!admin) {
+        throw new Error('Usuario administrador no válido');
+      }
 
       // Obtener la orden con todas las relaciones necesarias
       const order = await Order.findOne({
@@ -1166,7 +1195,7 @@ class OrderService {
         purchase_date: new Date(),
         order_status: newStatus,
         total: parseFloat(order.total) || 0,
-        //updated_by: adminId,
+        updated_by: adminId,
       }, { transaction });
 
       // Actualizar el objeto order con el nuevo estado para devolverlo
@@ -1200,22 +1229,10 @@ class OrderService {
       await notificationManager.notifyOrderStatusChange(order, user, orderDetails, payment);
 
       // Registrar la actividad
-      //loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado: ID ${orderId}, nuevo estado: ${newStatus}`);
+      loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado: ID ${orderId}, nuevo estado: ${newStatus}`);
 
-      return {
-        ...orderUtils.formatOrderDetails(order),
-        created_at: moment(order.created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
-        estimated_delivery_date: moment(order.estimated_delivery_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
-        payment: order.Payments?.[0] ? {
-          ...order.Payments[0].dataValues,
-          created_at: moment(order.Payments[0].created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
-          updated_at: moment(order.Payments[0].updated_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
-        } : null,
-        history: order.OrderHistories?.map(history => ({
-          ...history.dataValues,
-          purchase_date: moment(history.purchase_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
-        })) || []
-      };
+      // Devolver la orden formateada
+      return orderUtils.formatOrderDetails(order);
     } catch (error) {
       // Solo intentar revertir si la transacción no se ha confirmado
       if (!transaction.finished) {
