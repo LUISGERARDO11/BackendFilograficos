@@ -10,32 +10,26 @@ exports.handleMercadoPagoWebhook = async (req, res) => {
     if (type === 'payment') {
       const paymentId = data.id;
       const payment = await mercadopago.payment.get(paymentId);
+      console.log('== MP Payment Response ==>', payment.body);
+
+      const preferenceId =
+        payment.body.preference_id || payment.body.metadata?.preference_id;
+
+      if (!preferenceId) {
+        loggerUtils.logCriticalError(new Error(`preference_id no encontrado en el payment ${paymentId}`));
+        return res.status(400).json({ success: false, message: 'preference_id no encontrado' });
+      }
 
       const localPayment = await Payment.findOne({
-        where: { preference_id: payment.body.preference_id },
+        where: { preference_id: preferenceId },
       });
 
       if (!localPayment) {
-        loggerUtils.logCriticalError(new Error(`Pago no encontrado para preference_id: ${payment.body.preference_id}`));
+        loggerUtils.logCriticalError(new Error(`Pago no encontrado para preference_id: ${preferenceId}`));
         return res.status(404).json({ success: false, message: 'Pago no encontrado' });
       }
 
-      let newStatus;
-      switch (payment.body.status) {
-        case 'approved':
-          newStatus = 'validated';
-          break;
-        case 'rejected':
-        case 'cancelled':
-          newStatus = 'failed';
-          break;
-        case 'pending':
-        case 'in_process':
-          newStatus = 'pending';
-          break;
-        default:
-          newStatus = 'pending';
-      }
+      const newStatus = payment.body.status;
 
       await localPayment.update({
         status: newStatus,
