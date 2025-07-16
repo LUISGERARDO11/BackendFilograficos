@@ -420,7 +420,33 @@ exports.getOrdersForAdmin = [
   query('pageSize').optional().isInt({ min: 1, max: 100 }).withMessage('El tamaño de página debe ser un número entero entre 1 y 100'),
   query('searchTerm').optional().isString().trim().withMessage('El término de búsqueda debe ser una cadena'),
   query('statusFilter').optional().isIn(['all', 'pending', 'processing', 'shipped', 'delivered']).withMessage('El filtro de estado debe ser uno de: all, pending, processing, shipped, delivered'),
-  query('dateFilter').optional().custom(/* mismo código de validación de fecha */),
+  query('dateFilter').optional().custom((value) => {
+    if (!value) return true;
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    const parts = value.split(',');
+    if (parts.length === 1) {
+      if (/^\d{4}$/.test(value)) {
+        const year = parseInt(value);
+        return year >= 1000 && year <= 9999;
+      } else if (dateRegex.test(value)) {
+        const date = new Date(value);
+        return !isNaN(date.getTime());
+      }
+      throw new Error('El filtro de fecha debe ser un año válido (número de 4 dígitos) o una fecha en formato YYYY-MM-DD');
+    } else if (parts.length === 2) {
+      const [startDate, endDate] = parts;
+      if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
+        throw new Error('El rango de fechas debe estar en formato YYYY-MM-DD,YYYY-MM-DD');
+      }
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+        throw new Error('El rango de fechas no es válido');
+      }
+      return true;
+    }
+    throw new Error('El filtro de fecha debe ser un año válido (número de 4 dígitos), una fecha en formato YYYY-MM-DD o un rango en formato YYYY-MM-DD,YYYY-MM-DD');
+  }),
   query('dateField').optional().isIn(['delivery', 'creation']).withMessage('El campo de fecha debe ser uno de: delivery, creation'),
   query('paymentMethod').optional().isIn(['mercado_pago']).withMessage('El método de pago debe ser válido'),
   query('deliveryOption').optional().isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda']).withMessage('La opción de entrega debe ser válida'),
