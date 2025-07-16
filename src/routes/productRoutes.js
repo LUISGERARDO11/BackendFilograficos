@@ -7,6 +7,7 @@ const productStockController = require('../controllers/productStockController');
 const productPriceController = require('../controllers/productPriceController');
 const publicProductCatalogController = require('../controllers/publicProductCatalogController');//(HAILIE)
 const authProductCatalogController = require('../controllers/authProductCatalogController');//(HAILIE)
+const productHomeController = require('../controllers/productHomeController');
 
 // Importar middlewares
 const authMiddleware = require('../middlewares/authMiddleware');
@@ -40,6 +41,12 @@ router.get(
   roleMiddleware(['administrador']),
   validateGetAllProducts,
   productCatalogController.getAllProducts
+);
+
+// Nueva ruta para datos del home (pública)
+router.get(
+  '/home-data',
+  productHomeController.getHomeData
 );
 
 // Ruta para eliminar lógicamente un producto (solo administradores)
@@ -160,7 +167,7 @@ router.get(
   productPriceController.getPriceHistoryByVariantId
 );
 
-// Rutas públicas y autenticadas (HAILIE)
+// Rutas públicas y autenticadas
 router.get(
   '/public-catalog',
   publicProductCatalogController.getAllProducts
