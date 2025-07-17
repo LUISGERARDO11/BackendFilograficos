@@ -71,7 +71,7 @@ class OrderService {
         ],
         transaction
       });
-
+      console.log('Cart Details:', cartDetails);
       if (!cartDetails || cartDetails.length === 0) {
         throw new Error('Carrito vacío');
       }
