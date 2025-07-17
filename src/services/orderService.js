@@ -104,7 +104,6 @@ class OrderService {
         if (!unitPrice) {
           throw new Error(`Precio no definido para el ítem ${product?.name || `Producto ID ${detail.variant_id}`}`);
         }
-
         const urgentCost = detail.is_urgent ? parseFloat(detail.urgent_delivery_fee || 0) : 0;
         total_urgent_cost += urgentCost * detail.quantity;
 
@@ -130,9 +129,11 @@ class OrderService {
           discount_applied: itemDiscount,
           unit_measure: detail.unit_measure || 1.00,
           is_urgent: detail.is_urgent,
-          additional_cost: urgentCost
+          additional_cost: urgentCost,
+          Product: product // Añadir el objeto Product al mapeo
         });
       }
+      console.log('Order Details Data:', orderDetailsData);
 
       // Calcular subtotal, descuento y total
       const subtotal = orderDetailsData.reduce((sum, detail) => sum + (detail.quantity * detail.unit_price), 0);
@@ -210,7 +211,7 @@ class OrderService {
       // Generar preferencia de Mercado Pago
       const preference = {
         items: orderDetailsData.map(detail => ({
-          title: detail.ProductVariant.Product.name || `Producto ID ${detail.variant_id}`,
+          title: detail.Product?.name || `Producto ID ${detail.variant_id}`, // Accede al Product guardado
           unit_price: parseFloat(detail.unit_price),
           quantity: detail.quantity,
           currency_id: 'MXN'
