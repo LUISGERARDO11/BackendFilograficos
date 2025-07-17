@@ -618,7 +618,9 @@ exports.handleMercadoPagoWebhook = [
           const newOrderStatus = newPaymentStatus === 'approved' ? 'processing' : 'pending';
           console.log(`Updating order ${orderId}: paymentStatus=${newPaymentStatus}, orderStatus=${newOrderStatus}`);
 
-          // Usar updateOrderStatus con los cuatro parámetros
+          // Actualizar Payments.status primero
+          await orderService.updatePaymentStatus(orderId, newPaymentStatus);
+          // Luego actualizar orders
           await orderService.updateOrderStatus(orderId, newOrderStatus, null, newPaymentStatus);
 
           loggerUtils.logUserActivity('system', 'webhook_payment_update', `Estado actualizado: Order ${orderId}, PaymentStatus ${newPaymentStatus}, OrderStatus ${newOrderStatus}`);
@@ -645,7 +647,9 @@ exports.handleMercadoPagoWebhook = [
             const newOrderStatus = newPaymentStatus === 'approved' ? 'processing' : 'pending';
             console.log(`Updating order ${orderId}: paymentStatus=${newPaymentStatus}, orderStatus=${newOrderStatus}`);
 
-            // Usar updateOrderStatus con los cuatro parámetros
+            // Actualizar Payments.status primero
+            await orderService.updatePaymentStatus(orderId, newPaymentStatus);
+            // Luego actualizar orders
             await orderService.updateOrderStatus(orderId, newOrderStatus, null, newPaymentStatus);
 
             loggerUtils.logUserActivity('system', 'webhook_merchant_order_update', `Estado actualizado: Order ${orderId}, PaymentStatus ${newPaymentStatus}, OrderStatus ${newOrderStatus}`);
