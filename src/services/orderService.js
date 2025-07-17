@@ -1126,7 +1126,7 @@ class OrderService {
    * @throws {Error} - Si el estado es inválido o la orden no se encuentra.
    */
   //AQUI
-  async updateOrderStatus(orderId, newStatus, adminId = null) {
+  async updateOrderStatus(orderId, newStatus, adminId = null, paymentStatus = null) {
     const transaction = await Order.sequelize.transaction();
     try {
       if (!orderUtils.isValidOrderStatus(newStatus)) {
@@ -1212,8 +1212,10 @@ class OrderService {
       }
 
       // Actualizar el estado de la orden
-      await order.update({ order_status: newStatus }, { transaction });
-
+      await order.update({
+        order_status: newStatus,
+        ...(paymentStatus && { payment_status: paymentStatus }) // Actualiza payment_status solo si se pasa
+      }, { transaction });
       // Actualizar el estado del pago si la orden está en 'delivered'
       if (newStatus === 'delivered') {
         const payment = await Payment.findOne({ where: { order_id: orderId }, transaction });
@@ -1234,7 +1236,7 @@ class OrderService {
 
       // Actualizar el objeto order con el nuevo estado para devolverlo
       order.order_status = newStatus;
-
+      if (paymentStatus) order.payment_status = paymentStatus;
       // Confirmar la transacción
       await transaction.commit();
 
@@ -1276,6 +1278,7 @@ class OrderService {
       throw new Error(`Error al actualizar el estado de la orden: ${error.message}`);
     }
   }
+
   async updatePaymentStatus(orderId, newStatus) {
     const transaction = await Payment.sequelize.transaction();
     try {
