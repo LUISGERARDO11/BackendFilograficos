@@ -4,6 +4,7 @@ const { Op, Sequelize } = require('sequelize');
 const moment = require('moment-timezone');
 const orderUtils = require('../utils/orderUtils');
 const NotificationManager = require('./notificationManager');
+const mercadopago = require('../config/mercado-pago.config');
 
 // Importar todos los modelos necesarios al inicio del archivo
 const { Cart, CartDetail, Order, OrderDetail, OrderHistory, Payment, Address, CouponUsage, Promotion, ProductVariant, Customization, Product, ProductImage, User, ShippingOption } = require('../models/Associations');
@@ -205,6 +206,30 @@ class OrderService {
         attempts: 0
       }, { transaction });
 
+      // Generar preferencia de Mercado Pago
+      const preference = {
+        items: orderDetailsData.map(detail => ({
+          title: detail.ProductVariant.Product.name || `Producto ID ${detail.variant_id}`,
+          unit_price: parseFloat(detail.unit_price),
+          quantity: detail.quantity,
+          currency_id: 'MXN'
+        })),
+        back_urls: {
+          success: 'https://ecommerce-filograficos.vercel.app/payment-callback?status=success',
+          failure: 'https://ecommerce-filograficos.vercel.app/payment-callback?status=failure',
+          pending: 'https://ecommerce-filograficos.vercel.app/payment-callback?status=pending'
+        },
+        auto_return: 'approved',
+        external_reference: order.order_id.toString(),
+        notification_url: 'https://backend-filograficos.vercel.app/webhook/mercado-pago'
+      };
+      const mpResponse = await mercadopago.preferences.create(preference);
+      const preferenceId = mpResponse.body.id;
+      const paymentUrl = mpResponse.body.init_point;
+
+      // Actualizar payment con preference_id
+      await payment.update({ preference_id: preferenceId }, { transaction });
+
       // Manejar cupones
       if (coupon_code && cart.promotion_id) {
         const coupon = await CouponUsage.findOne({
@@ -248,13 +273,14 @@ class OrderService {
         attributes: ['user_id', 'name', 'email']
       });
 
-      const paymentInstructions = this.generatePaymentInstructions(payment_method, total);
-
-      loggerUtils.logUserActivity(userId, 'create_order', `Orden creada exitosamente: order_id ${order.order_id}`);
-
       this.notifyOrderCreation(order, user, orderDetails, payment).catch(err => {
         loggerUtils.logCriticalError(err, 'Error al enviar notificación asíncrona');
       });
+
+      const paymentInstructions = {
+        preference_id: preferenceId,
+        payment_url: paymentUrl
+      };
 
       return { order, payment, paymentInstructions };
     } catch (error) {
@@ -1108,7 +1134,7 @@ class OrderService {
    * @throws {Error} - Si el estado es inválido o la orden no se encuentra.
    */
   //AQUI
-  async updateOrderStatus(orderId, newStatus, adminId) {
+  async updateOrderStatus(orderId, newStatus, adminId = null) {
     const transaction = await Order.sequelize.transaction();
     try {
       if (!orderUtils.isValidOrderStatus(newStatus)) {
@@ -1120,8 +1146,14 @@ class OrderService {
         where: { user_id: adminId, user_type: 'administrador' },
         transaction,
       });
-      if (!admin) {
-        throw new Error('Usuario administrador no válido');
+      if (adminId) {
+        const admin = await User.findOne({
+          where: { user_id: adminId, user_type: 'administrador' },
+          transaction,
+        });
+        if (!admin) {
+          throw new Error('Usuario administrador no válido');
+        }
       }
 
       // Obtener la orden con todas las relaciones necesarias

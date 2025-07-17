@@ -24,11 +24,11 @@ const Payment = sequelize.define('Payment', {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false
   },
-  receipt_url: {
-    type: DataTypes.STRING(255),
+  preference_id: {
+    type: DataTypes.STRING(100),
     allowNull: true
   },
-  transaction_id: {
+  mercado_pago_transaction_id: {
     type: DataTypes.STRING(100),
     allowNull: true
   },

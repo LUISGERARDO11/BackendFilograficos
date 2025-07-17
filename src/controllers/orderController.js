@@ -525,7 +525,7 @@ exports.updateOrderStatus = [
     .withMessage('El nuevo estado debe ser uno de: pending, processing, shipped, delivered'),
 
   async (req, res) => {
-    const adminId = req.user.user_id;
+    const adminId = req.user?.user_id;
     const errors = validationResult(req);
 
     try {
@@ -542,7 +542,7 @@ exports.updateOrderStatus = [
       const orderService = new OrderService();
       const updatedOrder = await orderService.updateOrderStatus(orderId, newStatus, adminId);
 
-      loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado por admin: ID ${orderId}, nuevo estado: ${newStatus}`);
+      loggerUtils.logUserActivity(adminId || 'system', 'update_order_status', `Estado de la orden actualizado: ID ${orderId}, nuevo estado: ${newStatus}`);
 
       res.status(200).json({
         success: true,
