@@ -592,7 +592,9 @@ exports.getShippingOptions = [
 exports.handleMercadoPagoWebhook = [
   async (req, res) => {
     try {
-      const { type, data } = req.body;
+      const { type, id, data } = req.body; 
+      console.log('Webhook received:', req.body);
+
       if (type === 'payment') {
         const paymentId = data.id;
         const payment = await mercadopago.payment.findById(paymentId);
@@ -600,13 +602,18 @@ exports.handleMercadoPagoWebhook = [
 
         if (!paymentData || paymentData.status === 'not_found') {
           console.log(`Payment ID ${paymentId} not found. Skipping update.`);
-          return res.status(200).send('OK'); // Respuesta requerida por Mercado Pago
+          return res.status(200).send('OK');
         }
 
         const orderId = paymentData.external_reference;
         if (orderId) {
           const orderService = new OrderService();
-          const newPaymentStatus = paymentData.status; // e.g., 'approved', 'pending', 'rejected'
+          let newPaymentStatus = paymentData.status;
+          if (newPaymentStatus === 'approved') newPaymentStatus = 'approved';
+          else if (newPaymentStatus === 'pending' || newPaymentStatus === 'in_process') newPaymentStatus = 'pending';
+          else if (newPaymentStatus === 'rejected') newPaymentStatus = 'failed';
+          else newPaymentStatus = 'pending';
+
           const newOrderStatus = newPaymentStatus === 'approved' ? 'processing' : 'pending';
 
           await orderService.updatePaymentStatus(orderId, newPaymentStatus);
@@ -614,8 +621,34 @@ exports.handleMercadoPagoWebhook = [
 
           loggerUtils.logUserActivity('system', 'webhook_payment_update', `Estado de pago actualizado: Order ${orderId}, Status ${newPaymentStatus}`);
         }
+      } else if (type === 'merchant_order') {
+        const merchantOrderId = id;
+        const merchantOrder = await mercadopago.merchant_orders.findById(merchantOrderId);
+        const merchantOrderData = merchantOrder.body;
+
+        if (merchantOrderData) {
+          const payments = merchantOrderData.payments || [];
+          const orderId = merchantOrderData.external_reference;
+
+          if (orderId && payments.length > 0) {
+            const orderService = new OrderService();
+            const lastPayment = payments[payments.length - 1];
+            let newPaymentStatus = lastPayment.status;
+            if (newPaymentStatus === 'approved') newPaymentStatus = 'approved';
+            else if (newPaymentStatus === 'pending' || newPaymentStatus === 'in_process') newPaymentStatus = 'pending';
+            else if (newPaymentStatus === 'rejected') newPaymentStatus = 'failed';
+            else newPaymentStatus = 'pending';
+
+            const newOrderStatus = newPaymentStatus === 'approved' ? 'processing' : 'pending';
+
+            await orderService.updatePaymentStatus(orderId, newPaymentStatus);
+            await orderService.updateOrderStatus(orderId, newOrderStatus, null);
+            loggerUtils.logUserActivity('system', 'webhook_merchant_order_update', `Estado de pedido actualizado: Order ${orderId}, Status ${newPaymentStatus}`);
+          }
+        }
       }
-      res.status(200).send('OK'); // Respuesta requerida por Mercado Pago
+
+      res.status(200).send('OK');
     } catch (error) {
       loggerUtils.logCriticalError(error);
       res.status(500).send('Error processing webhook');
