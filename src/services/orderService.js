@@ -53,7 +53,8 @@ class OrderService {
             include: [
               {
                 model: Product,
-                attributes: ['product_id', 'name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'urgent_delivery_cost', 'standard_delivery_days']
+                attributes: ['product_id', 'name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'urgent_delivery_cost', 'standard_delivery_days'],
+                required: false
               },
               {
                 model: Promotion,
@@ -97,21 +98,22 @@ class OrderService {
       const orderDetailsData = [];
 
       for (const detail of cartDetails) {
-        const product = detail.ProductVariant?.Product || { name: `Producto ID ${detail.variant_id}` };
-        const unitPrice = detail.unit_price || detail.ProductVariant.calculated_price;
+        const variant = detail.ProductVariant;
+        const product = Array.isArray(variant.Product) ? variant.Product[0] : variant.Product; // Maneja array o objeto
+        const unitPrice = detail.unit_price || variant.calculated_price;
         if (!unitPrice) {
-          throw new Error(`Precio no definido para el ítem ${product.name || detail.variant_id}`);
+          throw new Error(`Precio no definido para el ítem ${product?.name || `Producto ID ${detail.variant_id}`}`);
         }
 
         const urgentCost = detail.is_urgent ? parseFloat(detail.urgent_delivery_fee || 0) : 0;
         total_urgent_cost += urgentCost * detail.quantity;
 
-        const deliveryDays = detail.is_urgent ? product.urgent_delivery_days || 0 : product.standard_delivery_days || 0;
+        const deliveryDays = detail.is_urgent ? (product?.urgent_delivery_days || 0) : (product?.standard_delivery_days || 0);
         maxDeliveryDays = Math.max(maxDeliveryDays, deliveryDays);
 
         let itemDiscount = 0;
-        if (detail.ProductVariant.Promotions && detail.ProductVariant.Promotions.length > 0) {
-          itemDiscount = detail.ProductVariant.Promotions.reduce((sum, promo) => {
+        if (variant.Promotions && variant.Promotions.length > 0) {
+          itemDiscount = variant.Promotions.reduce((sum, promo) => {
             if (promo.promotion_type === 'order_count_discount' && promo.is_applicable) {
               return sum + (detail.quantity * unitPrice) * (promo.discount_value / 100);
             }
