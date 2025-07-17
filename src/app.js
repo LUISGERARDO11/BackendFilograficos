@@ -23,7 +23,6 @@ const { BackupConfig } = require('./models/Associations');
 
 // Importar rutas disponibles
 const routes = [
-  { path: '/api/payment', router: require('./routes/paymentRoutes') },
   { path: '/api/auth', router: require('./routes/authRoutes') },
   { path: '/api/company', router: require('./routes/companyRoutes') },
   { path: '/api/email-templates', router: require('./routes/emailTemplateRoutes') },
@@ -94,7 +93,7 @@ app.use((req, res, next) => {
   if (
     req.headers['x-alexa-request'] === 'true' ||
     req.path === '/api/auth/alexa/token' ||
-    req.path === '/api/payment/webhook'//holi le movi yo hai
+    req.path === '/api/order/webhook/mercado-pago' // Ruta completa montada
   ) {
     return next();
   }

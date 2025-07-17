@@ -72,7 +72,7 @@ class OrderService {
         ],
         transaction
       });
-      console.log('Cart Details:', cartDetails);
+
       if (!cartDetails || cartDetails.length === 0) {
         throw new Error('Carrito vacío');
       }
@@ -133,8 +133,6 @@ class OrderService {
           Product: product // Añadir el objeto Product al mapeo
         });
       }
-      console.log('Order Details Data:', orderDetailsData);
-
       // Calcular subtotal, descuento y total
       const subtotal = orderDetailsData.reduce((sum, detail) => sum + (detail.quantity * detail.unit_price), 0);
       const discount = orderDetailsData.reduce((sum, detail) => sum + detail.discount_applied, 0);
@@ -223,7 +221,7 @@ class OrderService {
         },
         auto_return: 'approved',
         external_reference: order.order_id.toString(),
-        notification_url: 'https://backend-filograficos.vercel.app/webhook/mercado-pago'
+        notification_url: 'https://backend-filograficos.vercel.app/api/order/webhook/mercado-pago'
       };
       const mpResponse = await mercadopago.preferences.create(preference);
       const preferenceId = mpResponse.body.id;
@@ -591,8 +589,6 @@ class OrderService {
         distinct: true,
         subQuery: false,
       });
-
-      console.log(`Usuario ${userId}: ${count} órdenes contadas, ${rows.length} órdenes retornadas`);
 
       const orders = rows.map((order) => {
         let deliveryDays = 0;
@@ -972,8 +968,6 @@ class OrderService {
         distinct: true,
         subQuery: false,
       });
-      console.log(`Query took ${Date.now() - startTime}ms`);
-
       if (count === 0) {
         return {
           orders: [],
@@ -991,10 +985,6 @@ class OrderService {
         }
         ordersByDay[dateKey].push(orderUtils.formatOrderDetails(order));
       });
-
-      console.log(`Admin: ${count} órdenes contadas, ${rows.length} órdenes retornadas`);
-      console.log(`Order IDs retornados: ${rows.map(order => order.order_id).join(', ')}`);
-
       const ordersFormatted = rows.map(order => ({
         ...orderUtils.formatOrderDetails(order),
         created_at: moment(order.created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
@@ -1284,6 +1274,20 @@ class OrderService {
       }
       loggerUtils.logCriticalError(error);
       throw new Error(`Error al actualizar el estado de la orden: ${error.message}`);
+    }
+  }
+  async updatePaymentStatus(orderId, newStatus) {
+    const transaction = await Payment.sequelize.transaction();
+    try {
+      const payment = await Payment.findOne({ where: { order_id: orderId }, transaction });
+      if (payment) {
+        await payment.update({ status: newStatus }, { transaction });
+      }
+      await transaction.commit();
+    } catch (error) {
+      await transaction.rollback();
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al actualizar el estado del pago: ${error.message}`);
     }
   }
 

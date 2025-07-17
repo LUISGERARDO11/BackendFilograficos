@@ -2,7 +2,7 @@ const { body, param, query, validationResult } = require('express-validator');
 const OrderService = require('../services/orderService');
 const loggerUtils = require('../utils/loggerUtils');
 const { ShippingOption } = require('../models/Associations');//AQUI
-
+const mercadopago = require('../config/mercado-pago.config');
 // Crear una orden a partir del carrito del usuario AQUI
 exports.createOrder = [
   body('address_id')
@@ -585,6 +585,38 @@ exports.getShippingOptions = [
     } catch (error) {
       loggerUtils.logCriticalError(error);
       res.status(500).json({ success: false, message: 'Error al obtener opciones de envío' });
+    }
+  }
+];
+//ciclo de notificacion ML
+exports.handleMercadoPagoWebhook = [
+  async (req, res) => {
+    try {
+      const { type, data } = req.body;
+      if (type === 'payment') {
+        const paymentId = data.id;
+        const payment = await mercadopago.payment.findById(paymentId);
+        const paymentData = payment.body;
+        const orderId = paymentData.external_reference;
+
+        if (orderId) {
+          const orderService = new OrderService();
+          const newPaymentStatus = paymentData.status; // e.g., 'approved', 'pending', 'rejected'
+          const newOrderStatus = newPaymentStatus === 'approved' ? 'processing' : 'pending';
+
+          // Actualizar Payment.status
+          await orderService.updatePaymentStatus(orderId, newPaymentStatus);
+
+          // Actualizar Order.order_status usando updateOrderStatus (con adminId null)
+          await orderService.updateOrderStatus(orderId, newOrderStatus, null);
+
+          loggerUtils.logUserActivity('system', 'webhook_payment_update', `Estado de pago actualizado: Order ${orderId}, Status ${newPaymentStatus}`);
+        }
+      }
+      res.status(200).send('OK'); // Respuesta requerida por Mercado Pago
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).send('Error processing webhook');
     }
   }
 ];

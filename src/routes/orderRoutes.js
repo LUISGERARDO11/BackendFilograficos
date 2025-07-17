@@ -32,4 +32,7 @@ router.get('/',
   orderController.getOrders
 );
 
+// Webhook de Mercado Pago (sin autenticación ni CSRF)
+router.post('/webhook/mercado-pago', orderController.handleMercadoPagoWebhook);
+
 module.exports = router;
