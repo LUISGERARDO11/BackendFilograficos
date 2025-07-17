@@ -97,7 +97,7 @@ class OrderService {
       const orderDetailsData = [];
 
       for (const detail of cartDetails) {
-        const product = detail.ProductVariant.Product;
+        const product = detail.ProductVariant?.Product || { name: `Producto ID ${detail.variant_id}` };
         const unitPrice = detail.unit_price || detail.ProductVariant.calculated_price;
         if (!unitPrice) {
           throw new Error(`Precio no definido para el ítem ${product.name || detail.variant_id}`);
@@ -106,7 +106,7 @@ class OrderService {
         const urgentCost = detail.is_urgent ? parseFloat(detail.urgent_delivery_fee || 0) : 0;
         total_urgent_cost += urgentCost * detail.quantity;
 
-        const deliveryDays = detail.is_urgent ? product.urgent_delivery_days : product.standard_delivery_days;
+        const deliveryDays = detail.is_urgent ? product.urgent_delivery_days || 0 : product.standard_delivery_days || 0;
         maxDeliveryDays = Math.max(maxDeliveryDays, deliveryDays);
 
         let itemDiscount = 0;
@@ -118,7 +118,6 @@ class OrderService {
             return sum;
           }, 0);
         }
-
         orderDetailsData.push({
           variant_id: detail.variant_id,
           option_id: detail.option_id,
