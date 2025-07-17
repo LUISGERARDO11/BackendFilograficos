@@ -597,17 +597,19 @@ exports.handleMercadoPagoWebhook = [
         const paymentId = data.id;
         const payment = await mercadopago.payment.findById(paymentId);
         const paymentData = payment.body;
-        const orderId = paymentData.external_reference;
 
+        if (!paymentData || paymentData.status === 'not_found') {
+          console.log(`Payment ID ${paymentId} not found. Skipping update.`);
+          return res.status(200).send('OK'); // Respuesta requerida por Mercado Pago
+        }
+
+        const orderId = paymentData.external_reference;
         if (orderId) {
           const orderService = new OrderService();
           const newPaymentStatus = paymentData.status; // e.g., 'approved', 'pending', 'rejected'
           const newOrderStatus = newPaymentStatus === 'approved' ? 'processing' : 'pending';
 
-          // Actualizar Payment.status
           await orderService.updatePaymentStatus(orderId, newPaymentStatus);
-
-          // Actualizar Order.order_status usando updateOrderStatus (con adminId null)
           await orderService.updateOrderStatus(orderId, newOrderStatus, null);
 
           loggerUtils.logUserActivity('system', 'webhook_payment_update', `Estado de pago actualizado: Order ${orderId}, Status ${newPaymentStatus}`);
