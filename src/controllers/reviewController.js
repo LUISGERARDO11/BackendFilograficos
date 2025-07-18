@@ -308,7 +308,7 @@ exports.updateReview = [
     .isString()
     .trim()
     .isLength({ max: 500 })
-    .withMessage('El comentario no puede excedir los 500 caracteres'),
+    .withMessage('El comentario no puede exceder los 500 caracteres'),
   body('media_to_delete')
     .optional()
     .isArray()
@@ -752,7 +752,7 @@ exports.getPendingReviews = [
       const page = parseInt(req.query.page) || 1;
       const pageSize = parseInt(req.query.pageSize) || 20;
 
-      // Obtener pedidos entregados del usuario
+      // Obtener pedidos entregados del usuario, ordenados por created_at DESC
       const orders = await Order.findAll({
         where: { user_id: userId, order_status: 'delivered' },
         attributes: ['order_id', 'created_at'],
@@ -777,6 +777,7 @@ exports.getPendingReviews = [
             ],
           },
         ],
+        order: [['created_at', 'DESC']],
       });
 
       // Identificar productos únicos sin reseñas por orden
@@ -805,6 +806,9 @@ exports.getPendingReviews = [
           }
         }
       }
+
+      // Ordenar las reseñas pendientes por order_date (created_at de la orden) en orden descendente
+      pendingReviews.sort((a, b) => new Date(b.order_date) - new Date(a.order_date));
 
       // Aplicar paginación
       const total = pendingReviews.length;
