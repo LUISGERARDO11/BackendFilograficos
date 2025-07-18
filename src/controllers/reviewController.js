@@ -1,6 +1,6 @@
 const { body, param, query, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
-const { Review, ReviewMedia, User, Order, Product, OrderDetail, ProductVariant } = require('../models/Associations');
+const { Review, ReviewMedia, User, Order, Product, OrderDetail, ProductVariant, ProductImage } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { uploadReviewMediaToCloudinary, deleteFromCloudinary } = require('../services/cloudinaryService');
 
@@ -595,6 +595,206 @@ exports.getReviewsForAdmin = [
       res.status(500).json({
         success: false,
         message: 'Error al obtener las reseñas para administradores',
+        error: error.message,
+      });
+    }
+  },
+];
+
+exports.getUserReviews = [
+  query('page')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('La página debe ser un número entero positivo'),
+  query('pageSize')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('El tamaño de página debe ser un número entero entre 1 y 100'),
+
+  async (req, res) => {
+    const userId = req.user.user_id;
+    const errors = validationResult(req);
+    try {
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array(),
+        });
+      }
+
+      const page = parseInt(req.query.page) || 1;
+      const pageSize = parseInt(req.query.pageSize) || 20;
+
+      const { count, rows: reviews } = await Review.findAndCountAll({
+        where: { user_id: userId },
+        attributes: ['review_id', 'product_id', 'order_id', 'rating', 'comment', 'created_at'],
+        include: [
+          { model: User, attributes: ['name'] },
+          { model: Product, attributes: ['name'] },
+          { model: ReviewMedia, attributes: ['media_id', 'url', 'media_type'] },
+          {
+            model: Order,
+            attributes: ['order_id'],
+            required: false,
+            include: [
+              {
+                model: OrderDetail,
+                attributes: ['variant_id'],
+                required: false,
+                include: [
+                  {
+                    model: ProductVariant,
+                    attributes: ['variant_id'],
+                    required: false,
+                    include: [
+                      {
+                        model: ProductImage,
+                        attributes: ['image_url'],
+                        where: { order: 1 },
+                        required: false,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        order: [['created_at', 'DESC']],
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+      });
+
+      const formattedReviews = reviews.map(review => ({
+        review_id: review.review_id,
+        user_name: review.User?.name || 'Usuario desconocido',
+        product_name: review.Product?.name || 'Producto desconocido',
+        rating: review.rating,
+        comment: review.comment,
+        media: review.ReviewMedia?.map(media => ({
+          media_id: media.media_id,
+          url: media.url,
+          media_type: media.media_type,
+        })) || [],
+        created_at: review.created_at,
+        image_url:
+          review.Order?.OrderDetails?.[0]?.ProductVariant?.ProductImages?.[0]?.image_url || null,
+      }));
+
+      res.status(200).json({
+        success: true,
+        message: 'Reseñas del usuario obtenidas exitosamente',
+        data: {
+          reviews: formattedReviews,
+          total: count,
+          page,
+          pageSize,
+        },
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al obtener las reseñas del usuario',
+        error: error.message,
+      });
+    }
+  },
+];
+
+exports.getPendingReviews = [
+  query('page')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('La página debe ser un número entero positivo'),
+  query('pageSize')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('El tamaño de página debe ser un número entero entre 1 y 100'),
+
+  async (req, res) => {
+    const userId = req.user.user_id;
+    const errors = validationResult(req);
+    try {
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array(),
+        });
+      }
+
+      const page = parseInt(req.query.page) || 1;
+      const pageSize = parseInt(req.query.pageSize) || 20;
+
+      // Obtener pedidos entregados del usuario
+      const orders = await Order.findAll({
+        where: { user_id: userId, order_status: 'delivered' },
+        attributes: ['order_id', 'created_at'],
+        include: [
+          {
+            model: OrderDetail,
+            attributes: ['variant_id'],
+            include: [
+              {
+                model: ProductVariant,
+                attributes: ['product_id', 'variant_id'],
+                include: [
+                  { model: Product, attributes: ['name'] },
+                  {
+                    model: ProductImage,
+                    attributes: ['image_url'],
+                    where: { order: 1 },
+                    required: false,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      // Identificar productos sin reseñas
+      const pendingReviews = [];
+      for (const order of orders) {
+        for (const detail of order.OrderDetails || []) {
+          const productId = detail.ProductVariant?.product_id;
+          if (!productId) continue; // Saltar si no hay product_id
+          const existingReview = await Review.findOne({
+            where: { user_id: userId, product_id: productId, order_id: order.order_id },
+          });
+          if (!existingReview) {
+            pendingReviews.push({
+              order_id: order.order_id,
+              product_id: productId,
+              product_name: detail.ProductVariant?.Product?.name || 'Producto desconocido',
+              order_date: order.created_at,
+              image_url: detail.ProductVariant?.ProductImages?.[0]?.image_url || null,
+            });
+          }
+        }
+      }
+
+      // Aplicar paginación
+      const total = pendingReviews.length;
+      const paginatedPendingReviews = pendingReviews.slice((page - 1) * pageSize, page * pageSize);
+
+      res.status(200).json({
+        success: true,
+        message: 'Compras pendientes de reseña obtenidas exitosamente',
+        data: {
+          pendingReviews: paginatedPendingReviews,
+          total,
+          page,
+          pageSize,
+        },
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al obtener compras pendientes de reseña',
         error: error.message,
       });
     }

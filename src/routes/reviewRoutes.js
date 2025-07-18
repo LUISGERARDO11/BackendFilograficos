@@ -33,6 +33,22 @@ router.delete(
   reviewController.deleteReviewByAdmin
 );
 
+// Nueva ruta: Obtener reseñas realizadas por el usuario autenticado
+router.get(
+  '/my-reviews',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  reviewController.getUserReviews
+);
+
+// Nueva ruta: Obtener compras elegibles para reseñas (pendientes)
+router.get(
+  '/pending',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  reviewController.getPendingReviews
+);
+
 // ====================== Rutas generales después ======================
 
 // Ruta para crear una nueva reseña (autenticado, usuario)
