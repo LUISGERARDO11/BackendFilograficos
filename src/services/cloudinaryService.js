@@ -21,13 +21,13 @@ const uploadFilesToCloudinary = (fileBuffer, options = {}) => {
   return new Promise((resolve, reject) => {
     cloudinary.uploader
       .upload_stream(
-        { resource_type: 'raw', ...options }, // Especifica que es un archivo binario
+        { resource_type: 'raw', ...options },
         (error, result) => {
           if (error) {
             const errorMessage = error.message || 'Unknown error occurred during file upload';
             reject(new Error(`Error uploading file to Cloudinary: ${errorMessage}`));
           } else {
-            resolve(result.secure_url); // Devuelve la URL segura del archivo subido
+            resolve(result.secure_url);
           }
         }
       )
@@ -39,10 +39,10 @@ const uploadFilesToCloudinary = (fileBuffer, options = {}) => {
 const uploadProductImagesToCloudinary = (fileBuffer, fileName = '') => {
   return new Promise((resolve, reject) => {
     const options = {
-      folder: 'ProductImages', // Especifica el folder en Cloudinary
-      resource_type: 'auto', // Detecta automáticamente el tipo de recurso (imagen)
-      public_id: fileName.split('.')[0], // Usa el nombre del archivo sin extensión como public_id
-      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'], // Formatos permitidos
+      folder: 'ProductImages',
+      resource_type: 'auto',
+      public_id: fileName.split('.')[0],
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
     };
 
     cloudinary.uploader
@@ -52,8 +52,8 @@ const uploadProductImagesToCloudinary = (fileBuffer, fileName = '') => {
           reject(new Error(`Error uploading product image to Cloudinary: ${errorMessage}`));
         } else {
           resolve({
-            secure_url: result.secure_url, // URL segura de la imagen
-            public_id: result.public_id // Identificador único en Cloudinary
+            secure_url: result.secure_url,
+            public_id: result.public_id
           });
         }
       })
@@ -83,7 +83,7 @@ const uploadBannerToCloudinary = (fileBuffer, fileName = '') => {
         } else {
           resolve({
             secure_url: result.secure_url,
-            public_id: result.public_id // Devolvemos también el public_id
+            public_id: result.public_id
           });
         }
       })
@@ -95,13 +95,13 @@ const uploadBannerToCloudinary = (fileBuffer, fileName = '') => {
 const uploadCategoryImageToCloudinary = (fileBuffer, fileName = '') => {
   return new Promise((resolve, reject) => {
     const options = {
-      folder: 'CategoryImages', // Carpeta específica para imágenes de categorías
-      resource_type: 'image', // Especifica que es una imagen
-      public_id: fileName.split('.')[0] || `category_${Date.now()}`, // Usa el nombre o un ID único
-      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'], // Formatos permitidos
+      folder: 'CategoryImages',
+      resource_type: 'image',
+      public_id: fileName.split('.')[0] || `category_${Date.now()}`,
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
       transformation: [
-        { width: 800, height: 600, crop: 'fill' }, // Dimensiones optimizadas
-        { quality: 'auto', format: 'webp' } // Optimización automática
+        { width: 800, height: 600, crop: 'fill' },
+        { quality: 'auto', format: 'webp' }
       ]
     };
 
@@ -112,8 +112,8 @@ const uploadCategoryImageToCloudinary = (fileBuffer, fileName = '') => {
           reject(new Error(`Error uploading category image to Cloudinary: ${errorMessage}`));
         } else {
           resolve({
-            secure_url: result.secure_url, // URL segura de la imagen
-            public_id: result.public_id // Identificador único en Cloudinary
+            secure_url: result.secure_url,
+            public_id: result.public_id
           });
         }
       })
@@ -121,17 +121,17 @@ const uploadCategoryImageToCloudinary = (fileBuffer, fileName = '') => {
   });
 };
 
-// Nueva función para subir fotos de perfil a la carpeta ProfilePictures
+// Función para subir fotos de perfil a la carpeta ProfilePictures
 const uploadProfilePictureToCloudinary = (fileBuffer, userId) => {
   return new Promise((resolve, reject) => {
     const options = {
-      folder: 'ProfilePictures', // Carpeta específica para fotos de perfil
-      resource_type: 'image', // Especifica que es una imagen
-      public_id: `user_${userId}_${Date.now()}`, // ID único basado en userId y timestamp
-      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'], // Formatos permitidos
+      folder: 'ProfilePictures',
+      resource_type: 'image',
+      public_id: `user_${userId}_${Date.now()}`,
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
       transformation: [
-        { width: 200, height: 200, crop: 'thumb', gravity: 'face' }, // Optimizado para foto de perfil
-        { quality: 'auto', format: 'webp' } // Optimización automática
+        { width: 200, height: 200, crop: 'thumb', gravity: 'face' },
+        { quality: 'auto', format: 'webp' }
       ]
     };
 
@@ -142,8 +142,39 @@ const uploadProfilePictureToCloudinary = (fileBuffer, userId) => {
           reject(new Error(`Error uploading profile picture to Cloudinary: ${errorMessage}`));
         } else {
           resolve({
-            secure_url: result.secure_url, // URL segura de la imagen
-            public_id: result.public_id // Identificador único en Cloudinary
+            secure_url: result.secure_url,
+            public_id: result.public_id
+          });
+        }
+      })
+      .end(fileBuffer);
+  });
+};
+
+// Nueva función para subir medios de reseñas a la carpeta ReviewMedia
+const uploadReviewMediaToCloudinary = (fileBuffer, reviewId, fileName = '') => {
+  return new Promise((resolve, reject) => {
+    const options = {
+      folder: 'ReviewMedia',
+      resource_type: 'auto', // Detecta automáticamente si es imagen o video
+      public_id: fileName.split('.')[0] || `review_${reviewId}_${Date.now()}`, // ID único basado en reviewId y timestamp
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov'],
+      transformation: [
+        { width: 800, height: 600, crop: 'limit' }, // Limitar dimensiones para imágenes
+        { quality: 'auto', fetch_format: 'auto' } // Optimización automática
+      ]
+    };
+
+    cloudinary.uploader
+      .upload_stream(options, (error, result) => {
+        if (error) {
+          const errorMessage = error.message || 'Unknown error occurred during review media upload';
+          reject(new Error(`Error uploading review media to Cloudinary: ${errorMessage}`));
+        } else {
+          resolve({
+            secure_url: result.secure_url,
+            public_id: result.public_id,
+            resource_type: result.resource_type // Para identificar si es imagen o video
           });
         }
       })
@@ -159,7 +190,7 @@ const deleteFromCloudinary = (publicId) => {
         const errorMessage = error.message || 'Unknown error occurred during deletion';
         reject(new Error(`Error deleting from Cloudinary: ${errorMessage}`));
       } else {
-        resolve(result); // Resultado de la eliminación (ej. { result: 'ok' })
+        resolve(result);
       }
     });
   });
@@ -172,5 +203,6 @@ module.exports = {
   uploadBannerToCloudinary,
   uploadCategoryImageToCloudinary,
   uploadProfilePictureToCloudinary,
+  uploadReviewMediaToCloudinary,
   deleteFromCloudinary
 };

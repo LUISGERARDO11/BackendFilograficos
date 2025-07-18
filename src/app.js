@@ -43,6 +43,7 @@ const routes = [
   { path: '/api/banners', router: require('./routes/bannerRoutes') },
   { path: '/api/order', router: require('./routes/orderRoutes') },
   { path: '/api/admin/orders', router: require('./routes/adminOrderRoutes') },
+  { path: '/api/reviews', router: require('./routes/reviewRoutes') },
   // Hailie
   { path: '/api/collaborators', router: require('./routes/collaboratorsRoutes') },
   { path: '/api/categories', router: require('./routes/categoriesRoutes') },

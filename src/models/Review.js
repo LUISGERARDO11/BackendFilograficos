@@ -13,7 +13,7 @@ const Review = sequelize.define('Review', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'users', // Nombre de la tabla de usuarios en inglés
+      model: 'users',
       key: 'user_id'
     },
     field: 'user_id'
@@ -22,15 +22,22 @@ const Review = sequelize.define('Review', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: 'products', // Nombre de la tabla de productos en inglés
+      model: 'products',
       key: 'product_id'
     },
     field: 'product_id'
   },
+  order_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: { model: 'orders', key: 'order_id' },
+    field: 'order_id'
+  },
   rating: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    field: 'rating'
+    field: 'rating',
+    validate: { min: 1, max: 5 }
   },
   comment: {
     type: DataTypes.TEXT,
@@ -43,22 +50,49 @@ const Review = sequelize.define('Review', {
     field: 'created_at'
   }
 }, {
-  tableName: 'reviews', // Nombre de la tabla en inglés
-  timestamps: false, // No se necesitan campos de timestamp adicionales
+  tableName: 'reviews',
+  timestamps: false,
   indexes: [
-    {
-      name: 'idx_user_id', // Índice para user_id
-      fields: ['user_id']
+    { name: 'idx_user_id', fields: ['user_id'] },
+    { name: 'idx_product_id', fields: ['product_id'] },
+    { name: 'idx_order_id', fields: ['order_id'] },
+    { name: 'idx_rating', fields: ['rating'] }
+  ],
+  hooks: {
+    afterCreate: async (review) => {
+      const product = await sequelize.models.Product.findByPk(review.product_id);
+      const reviews = await sequelize.models.Review.findAll({
+        where: { product_id: review.product_id }
+      });
+      const avgRating = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+      await product.update({
+        average_rating: avgRating,
+        total_reviews: reviews.length
+      });
     },
-    {
-      name: 'idx_product_id', // Índice para product_id
-      fields: ['product_id']
+    afterUpdate: async (review) => {
+      const product = await sequelize.models.Product.findByPk(review.product_id);
+      const reviews = await sequelize.models.Review.findAll({
+        where: { product_id: review.product_id }
+      });
+      const avgRating = reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0;
+      await product.update({
+        average_rating: avgRating,
+        total_reviews: reviews.length
+      });
     },
-    {
-      name: 'idx_rating', // Índice para rating
-      fields: ['rating']
+    afterDestroy: async (review) => {
+      const product = await sequelize.models.Product.findByPk(review.product_id);
+      const reviews = await sequelize.models.Review.findAll({
+        where: { product_id: review.product_id }
+      });
+      const avgRating = reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0;
+      await product.update({
+        average_rating: avgRating,
+        total_reviews: reviews.length
+      });
     }
-  ]
+  }
 });
 
 module.exports = Review;

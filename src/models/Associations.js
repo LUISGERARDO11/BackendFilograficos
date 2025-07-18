@@ -44,6 +44,7 @@ const CouponUsage = require('./CouponUsage');
 const PromotionProduct = require('./PromotionProduct');
 const PromotionCategory = require('./PromotionCategory');
 const Review = require('./Review');
+const ReviewMedia = require('./ReviewMedia');
 const PushSubscription = require('./PushSubscription');
 const NotificationLog = require('./NotificationLog');
 const CategoryAttributes = require('./CategoryAttributes');
@@ -264,8 +265,14 @@ PromotionCategory.belongsTo(Category, { foreignKey: 'category_id' });
 User.hasMany(Review, { foreignKey: 'user_id' });
 Review.belongsTo(User, { foreignKey: 'user_id' });
 
-ProductVariant.hasMany(Review, { foreignKey: 'product_id' });
-Review.belongsTo(ProductVariant, { foreignKey: 'product_id' });
+Product.hasMany(Review, { foreignKey: 'product_id' });
+Review.belongsTo(Product, { foreignKey: 'product_id' });
+
+Order.hasMany(Review, { foreignKey: 'order_id' });
+Review.belongsTo(Order, { foreignKey: 'order_id' });
+
+Review.hasMany(ReviewMedia, { foreignKey: 'review_id' });
+ReviewMedia.belongsTo(Review, { foreignKey: 'review_id' });
 
 // Relaciones de Push Subscriptions
 User.hasMany(PushSubscription, { foreignKey: 'user_id' });
@@ -339,6 +346,7 @@ module.exports = {
   PromotionProduct,
   PromotionCategory,
   Review,
+  ReviewMedia,
   PushSubscription,
   NotificationLog,
   CategoryAttributes,
