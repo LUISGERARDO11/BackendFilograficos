@@ -181,7 +181,7 @@ exports.createReview = [
         where: {
           order_id: order_id,
           user_id: userId,
-          order_status: 'delivered', // Validar estado entregado aquí para optimizar
+          order_status: 'delivered',
         },
       });
 
@@ -645,7 +645,7 @@ exports.getUserReviews = [
                 include: [
                   {
                     model: ProductVariant,
-                    attributes: ['variant_id'],
+                    attributes: ['variant_id', 'product_id'],
                     required: false,
                     include: [
                       {
@@ -664,6 +664,7 @@ exports.getUserReviews = [
         order: [['created_at', 'DESC']],
         limit: pageSize,
         offset: (page - 1) * pageSize,
+        distinct: true, // Ensure unique review counts
       });
 
       const formattedReviews = reviews.map(review => ({
