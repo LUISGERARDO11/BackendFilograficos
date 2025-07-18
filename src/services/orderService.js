@@ -144,8 +144,8 @@ class OrderService {
         }
         shipping_cost = parseFloat(shippingOption.base_cost);
       }
-      const total = Math.max(0, subtotal + shipping_cost - discount);
-
+      const calculatedShippingCost = shipping_cost; 
+      const total = Math.max(0, subtotal + calculatedShippingCost - discount);
       // Calcular fecha estimada de entrega
       const estimated_delivery_date = moment().add(maxDeliveryDays, 'days').toDate();
 
@@ -156,7 +156,7 @@ class OrderService {
         total,
         total_urgent_cost,
         discount,
-        shipping_cost,
+        shipping_cost: calculatedShippingCost,
         payment_status: 'pending',
         payment_method,
         order_status: 'pending',
@@ -208,12 +208,20 @@ class OrderService {
 
       // Generar preferencia de Mercado Pago
       const preference = {
-        items: orderDetailsData.map(detail => ({
-          title: detail.Product?.name || `Producto ID ${detail.variant_id}`, // Accede al Product guardado
-          unit_price: parseFloat(detail.unit_price),
-          quantity: detail.quantity,
-          currency_id: 'MXN'
-        })),
+        items: [
+          ...orderDetailsData.map(detail => ({
+            title: detail.Product?.name || `Producto ID ${detail.variant_id}`,
+            unit_price: parseFloat(detail.unit_price),
+            quantity: detail.quantity,
+            currency_id: 'MXN'
+          })),
+          {
+            title: 'Costo de envío',
+            unit_price: calculatedShippingCost,
+            quantity: 1,
+            currency_id: 'MXN'
+          }
+        ],
         back_urls: {
           success: 'https://ecommerce-filograficos.vercel.app/payment-callback?status=success',
           failure: 'https://ecommerce-filograficos.vercel.app/payment-callback?status=failure',
