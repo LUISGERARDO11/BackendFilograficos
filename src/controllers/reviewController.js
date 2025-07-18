@@ -103,6 +103,25 @@ exports.getReviewById = [
         include: [
           { model: User, attributes: ['name'] },
           { model: ReviewMedia, attributes: ['media_id', 'url', 'media_type'] },
+          {
+            model: Product,
+            attributes: ['name'],
+            include: [
+              {
+                model: ProductVariant,
+                attributes: ['variant_id'],
+                include: [
+                  {
+                    model: ProductImage,
+                    attributes: ['image_url'],
+                    where: { order: 1 },
+                    required: false,
+                  },
+                ],
+                required: false,
+              },
+            ],
+          },
         ],
       });
 
@@ -117,6 +136,8 @@ exports.getReviewById = [
         comment: review.comment,
         product_id: review.product_id,
         order_id: review.order_id,
+        product_name: review.Product?.name || 'Producto desconocido',
+        image_url: review.Product?.ProductVariants?.[0]?.ProductImages?.[0]?.image_url || null,
         media: review.ReviewMedia.map(media => ({
           media_id: media.media_id,
           url: media.url,
