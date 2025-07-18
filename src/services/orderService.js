@@ -285,12 +285,7 @@ class OrderService {
         loggerUtils.logCriticalError(err, 'Error al enviar notificación asíncrona');
       });
 
-      const paymentInstructions = {
-        preference_id: preferenceId,
-        payment_url: paymentUrl
-      };
-
-      return { order, payment, paymentInstructions };
+      return { order, payment };
     } catch (error) {
       if (transaction && !transaction.finished) {
         await transaction.rollback();
@@ -324,8 +319,8 @@ class OrderService {
           'user_id',
           [Sequelize.cast(Sequelize.col('Order.total'), 'FLOAT'), 'total'],
           'order_status',
-          'payment_method',
-          'payment_status',
+          'payment_method', // Asegúrate de incluir payment_status aquí
+          'payment_status', // Añadir payment_status explícitamente
           'created_at',
           'discount',
           'shipping_cost',
@@ -431,7 +426,7 @@ class OrderService {
         order: {
           order_id: order.order_id,
           status: order.order_status,
-          payment_status: order.payment_status,
+          payment_status: order.payment_status, // Usar el payment_status de la tabla orders
           created_at: moment(order.created_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
           estimated_delivery_date: moment(order.estimated_delivery_date).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss'),
           delivery_days: deliveryDays,
@@ -468,7 +463,7 @@ class OrderService {
         } : null,
         payment: {
           method: order.payment_method,
-          status: order.Payments?.[0]?.status || order.payment_status,
+          status: order.Payments?.[0]?.status || order.payment_status, // Usar payment_status como fallback
           amount: order.Payments?.[0] ? parseFloat(order.Payments[0].amount) : parseFloat(order.total) || 0,
           payment_id: order.Payments?.[0]?.payment_id || null,
           created_at: order.Payments?.[0]?.created_at
@@ -476,7 +471,7 @@ class OrderService {
             : null,
           updated_at: order.Payments?.[0]?.updated_at
             ? moment(order.Payments[0].updated_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
-            : null
+            : null,
         },
         history: order.OrderHistories?.map(history => ({
           history_id: history.history_id,
