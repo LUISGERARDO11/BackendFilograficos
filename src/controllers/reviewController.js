@@ -115,6 +115,8 @@ exports.getReviewById = [
         user_name: review.User.name,
         rating: review.rating,
         comment: review.comment,
+        product_id: review.product_id,
+        order_id: review.order_id,
         media: review.ReviewMedia.map(media => ({
           media_id: media.media_id,
           url: media.url,
