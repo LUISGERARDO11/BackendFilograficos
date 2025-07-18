@@ -21,7 +21,7 @@ exports.createOrder = [
     .isString()
     .trim()
     .withMessage('El código de cupón debe ser una cadena de texto'),
-body('delivery_option')
+  body('delivery_option')
     .optional()
     .isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'])
     .withMessage('Opción de envío no válida'),
@@ -49,7 +49,7 @@ body('delivery_option')
 
       const { address_id, payment_method, coupon_code, delivery_option } = req.body;
       const orderService = new OrderService();
-      const { order, payment } = await orderService.createOrder(user_id, {
+      const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
         address_id,
         payment_method,
         coupon_code,
@@ -66,6 +66,7 @@ body('delivery_option')
           total: order.total,
           total_urgent_cost: order.total_urgent_cost || 0.00,
           estimated_delivery_date: order.estimated_delivery_date,
+          payment_instructions: paymentInstructions,
           status: order.order_status
         }
       });

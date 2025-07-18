@@ -144,7 +144,7 @@ class OrderService {
         }
         shipping_cost = parseFloat(shippingOption.base_cost);
       }
-      const calculatedShippingCost = shipping_cost;
+      const calculatedShippingCost = shipping_cost; 
       const total = Math.max(0, subtotal + calculatedShippingCost - discount);
       // Calcular fecha estimada de entrega
       const estimated_delivery_date = moment().add(maxDeliveryDays, 'days').toDate();
@@ -285,7 +285,12 @@ class OrderService {
         loggerUtils.logCriticalError(err, 'Error al enviar notificación asíncrona');
       });
 
-      return { order, payment };
+      const paymentInstructions = {
+        preference_id: preferenceId,
+        payment_url: paymentUrl
+      };
+
+      return { order, payment, paymentInstructions };
     } catch (error) {
       if (transaction && !transaction.finished) {
         await transaction.rollback();
@@ -421,6 +426,12 @@ class OrderService {
         }
       }
 
+      // Generar instrucciones de pago
+      const paymentInstructions = this.generatePaymentInstructions(
+        order.payment_method,
+        parseFloat(order.total) || 0
+      );
+
       // Formatear la respuesta
       const orderDetails = {
         order: {
@@ -472,6 +483,7 @@ class OrderService {
           updated_at: order.Payments?.[0]?.updated_at
             ? moment(order.Payments[0].updated_at).tz('America/Mexico_City').format('YYYY-MM-DD HH:mm:ss')
             : null,
+          instructions: paymentInstructions
         },
         history: order.OrderHistories?.map(history => ({
           history_id: history.history_id,
@@ -1288,6 +1300,29 @@ class OrderService {
       await transaction.rollback();
       loggerUtils.logCriticalError(error);
       throw new Error(`Error al actualizar el estado del pago: ${error.message}`);
+    }
+  }
+
+  /**
+   * Genera instrucciones de pago basadas en el método de pago.
+   * @param {string} paymentMethod - El método de pago elegido por el usuario.
+   * @param {number} amount - El monto total de la orden.
+   * @returns {Object} - Las instrucciones de pago incluyendo método, referencia y detalles.
+   */
+  generatePaymentInstructions(paymentMethod, amount) {
+    switch (paymentMethod) {
+      case 'mercado_pago':
+        return {
+          method: 'Mercado Pago',
+          amount,
+          instructions: 'Serás redirigido a Mercado Pago para completar el pago.'
+        };
+      default:
+        return {
+          method: 'Unknown',
+          amount,
+          instructions: 'Método de pago no soportado.'
+        };
     }
   }
 }
