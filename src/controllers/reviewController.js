@@ -670,6 +670,7 @@ exports.getUserReviews = [
                     model: ProductVariant,
                     attributes: ['variant_id', 'product_id'],
                     required: false,
+                    where: { product_id: { [Op.col]: 'Review.product_id' } }, // Filtrar por product_id de la reseña
                     include: [
                       {
                         model: ProductImage,
@@ -690,21 +691,27 @@ exports.getUserReviews = [
         distinct: true,
       });
 
-      const formattedReviews = reviews.map(review => ({
-        review_id: review.review_id,
-        user_name: review.User?.name || 'Usuario desconocido',
-        product_name: review.Product?.name || 'Producto desconocido',
-        rating: review.rating,
-        comment: review.comment,
-        media: review.ReviewMedia?.map(media => ({
-          media_id: media.media_id,
-          url: media.url,
-          media_type: media.media_type,
-        })) || [],
-        created_at: review.created_at,
-        image_url:
-          review.Order?.OrderDetails?.[0]?.ProductVariant?.ProductImages?.[0]?.image_url || null,
-      }));
+      const formattedReviews = reviews.map(review => {
+        // Buscar la primera variante que coincida con el product_id de la reseña
+        const matchingDetail = review.Order?.OrderDetails?.find(
+          detail => detail.ProductVariant?.product_id === review.product_id
+        );
+
+        return {
+          review_id: review.review_id,
+          user_name: review.User?.name || 'Usuario desconocido',
+          product_name: review.Product?.name || 'Producto desconocido',
+          rating: review.rating,
+          comment: review.comment,
+          media: review.ReviewMedia?.map(media => ({
+            media_id: media.media_id,
+            url: media.url,
+            media_type: media.media_type,
+          })) || [],
+          created_at: review.created_at,
+          image_url: matchingDetail?.ProductVariant?.ProductImages?.[0]?.image_url || null,
+        };
+      });
 
       res.status(200).json({
         success: true,
