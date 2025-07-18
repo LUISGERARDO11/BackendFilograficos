@@ -21,10 +21,18 @@ exports.createOrder = [
     .isString()
     .trim()
     .withMessage('El código de cupón debe ser una cadena de texto'),
-  body('delivery_option')
+body('delivery_option')
     .optional()
     .isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'])
     .withMessage('Opción de envío no válida'),
+  body('shipping_cost')
+    .optional()
+    .isDecimal({ min: 0 })
+    .withMessage('El costo de envío debe ser un número válido'),
+  body('total')
+    .optional()
+    .isDecimal({ min: 0 })
+    .withMessage('El total debe ser un número válido'),
 
   async (req, res) => {
     const user_id = req.user.user_id;
