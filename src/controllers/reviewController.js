@@ -199,7 +199,7 @@ exports.createReview = [
         return res.status(403).json({ success: false, message: 'Usuario no autorizado o cuenta inactiva' });
       }
 
-      // Validar que el pedido existe y pertenece al usuario
+      // Validar que el pedido existe, pertenece al usuario y está entregado
       const order = await Order.findOne({
         where: {
           order_id: order_id,
@@ -215,7 +215,7 @@ exports.createReview = [
         });
       }
 
-      // Validar que el pedido contiene el producto a través de la variante
+      // Validar que el producto está en los detalles de la orden (a través de variantes)
       const orderDetails = await OrderDetail.findAll({
         where: { order_id },
         include: [{
@@ -228,22 +228,22 @@ exports.createReview = [
       if (!orderDetails || orderDetails.length === 0) {
         return res.status(403).json({
           success: false,
-          message: 'El pedido no contiene el producto especificado',
+          message: 'El producto no está incluido en el pedido especificado',
         });
       }
 
-      // Validar que no exista una reseña para este pedido y producto
+      // Validar que no exista una reseña previa para este producto en esta orden
       const existingReview = await Review.findOne({
-        where: { order_id, product_id, user_id: userId },
+        where: { user_id: userId, product_id, order_id },
       });
       if (existingReview) {
         return res.status(400).json({
           success: false,
-          message: 'Ya existe una reseña para este pedido y producto',
+          message: 'Ya existe una reseña para este producto en esta orden',
         });
       }
 
-      // Crear reseña
+      // Crear la reseña
       const review = await Review.create({
         user_id: userId,
         product_id,
@@ -308,7 +308,7 @@ exports.updateReview = [
     .isString()
     .trim()
     .isLength({ max: 500 })
-    .withMessage('El comentario no puede exceder los 500 caracteres'),
+    .withMessage('El comentario no puede excedir los 500 caracteres'),
   body('media_to_delete')
     .optional()
     .isArray()
@@ -687,7 +687,7 @@ exports.getUserReviews = [
         order: [['created_at', 'DESC']],
         limit: pageSize,
         offset: (page - 1) * pageSize,
-        distinct: true, // Ensure unique review counts
+        distinct: true,
       });
 
       const formattedReviews = reviews.map(review => ({
@@ -779,16 +779,22 @@ exports.getPendingReviews = [
         ],
       });
 
-      // Identificar productos sin reseñas
+      // Identificar productos únicos sin reseñas por orden
       const pendingReviews = [];
       for (const order of orders) {
+        // Crear un conjunto para rastrear productos únicos en esta orden
+        const uniqueProductIds = new Set();
         for (const detail of order.OrderDetails || []) {
           const productId = detail.ProductVariant?.product_id;
-          if (!productId) continue; // Saltar si no hay product_id
+          if (!productId || uniqueProductIds.has(productId)) continue; // Saltar si no hay product_id o ya se procesó
+
+          // Verificar si ya existe una reseña para este producto en esta orden
           const existingReview = await Review.findOne({
             where: { user_id: userId, product_id: productId, order_id: order.order_id },
           });
+
           if (!existingReview) {
+            uniqueProductIds.add(productId);
             pendingReviews.push({
               order_id: order.order_id,
               product_id: productId,
