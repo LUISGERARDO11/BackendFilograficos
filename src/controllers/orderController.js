@@ -33,6 +33,16 @@ exports.createOrder = [
     .optional()
     .isDecimal({ min: 0 })
     .withMessage('El total debe ser un número válido'),
+  body('item')
+    .optional()
+    .isObject()
+    .withMessage('El ítem debe ser un objeto')
+    .custom((value) => {
+      if (value && (!value.variant_id || !value.quantity)) {
+        throw new Error('El ítem debe incluir variant_id y quantity');
+      }
+      return true;
+    }),
 
   async (req, res) => {
     const user_id = req.user.user_id;
@@ -47,13 +57,14 @@ exports.createOrder = [
         });
       }
 
-      const { address_id, payment_method, coupon_code, delivery_option } = req.body;
+      const { address_id, payment_method, coupon_code, delivery_option,item } = req.body;
       const orderService = new OrderService();
       const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
         address_id,
         payment_method,
         coupon_code,
-        delivery_option
+        delivery_option,
+        item
       });
 
       loggerUtils.logUserActivity(user_id, 'create_order', `Orden creada: ID ${order.order_id}`);
