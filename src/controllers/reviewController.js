@@ -4,6 +4,87 @@ const { Review, ReviewMedia, User, Order, Product, OrderDetail, ProductVariant, 
 const loggerUtils = require('../utils/loggerUtils');
 const { uploadReviewMediaToCloudinary, deleteFromCloudinary } = require('../services/cloudinaryService');
 
+exports.getReviewsSummaryByProduct = [
+  param('productId')
+    .isInt({ min: 1 })
+    .withMessage('El ID del producto debe ser un número entero positivo'),
+
+  async (req, res) => {
+    const errors = validationResult(req);
+    try {
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array(),
+        });
+      }
+
+      const productId = parseInt(req.params.productId);
+      const product = await Product.findByPk(productId);
+      if (!product) {
+        return res.status(404).json({ success: false, message: 'Producto no encontrado' });
+      }
+
+      // Query to get average rating and total reviews
+      const summary = await Review.findOne({
+        where: { product_id: productId },
+        attributes: [
+          [Review.sequelize.fn('AVG', Review.sequelize.col('rating')), 'averageRating'],
+          [Review.sequelize.fn('COUNT', Review.sequelize.col('review_id')), 'totalReviews'],
+        ],
+        raw: true,
+      });
+
+      // Query to get rating distribution
+      const ratingDistribution = await Review.findAll({
+        where: { product_id: productId },
+        attributes: [
+          'rating',
+          [Review.sequelize.fn('COUNT', Review.sequelize.col('rating')), 'count'],
+        ],
+        group: ['rating'],
+        raw: true,
+      });
+
+      // Format rating distribution as an object
+      const distribution = { '5': 0, '4': 0, '3': 0, '2': 0, '1': 0 };
+      ratingDistribution.forEach(row => {
+        distribution[row.rating.toString()] = parseInt(row.count);
+      });
+
+      if (!summary || summary.totalReviews === '0') {
+        return res.status(200).json({
+          success: true,
+          message: 'Sin reseñas para este producto',
+          data: {
+            averageRating: 0,
+            totalReviews: 0,
+            ratingDistribution: distribution,
+          },
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Resumen de reseñas obtenido exitosamente',
+        data: {
+          averageRating: parseFloat(summary.averageRating).toFixed(1),
+          totalReviews: parseInt(summary.totalReviews),
+          ratingDistribution: distribution,
+        },
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al obtener el resumen de reseñas',
+        error: error.message,
+      });
+    }
+  },
+];
+
 exports.getReviewsByProduct = [
   param('productId')
     .isInt({ min: 1 })
@@ -16,6 +97,22 @@ exports.getReviewsByProduct = [
     .optional()
     .isInt({ min: 1, max: 100 })
     .withMessage('El tamaño de página debe ser un número entero entre 1 y 100'),
+  query('withPhotos')
+    .optional()
+    .isBoolean()
+    .withMessage('El filtro withPhotos debe ser un booleano'),
+  query('withComments')
+    .optional()
+    .isBoolean()
+    .withMessage('El filtro withComments debe ser un booleano'),
+  query('sort')
+    .optional()
+    .isIn(['created_at', 'rating'])
+    .withMessage('El campo sort debe ser "created_at" o "rating"'),
+  query('order')
+    .optional()
+    .isIn(['ASC', 'DESC'])
+    .withMessage('El campo order debe ser "ASC" o "DESC"'),
 
   async (req, res) => {
     const errors = validationResult(req);
@@ -31,19 +128,35 @@ exports.getReviewsByProduct = [
       const productId = parseInt(req.params.productId);
       const page = parseInt(req.query.page) || 1;
       const pageSize = parseInt(req.query.pageSize) || 20;
+      const withPhotos = req.query.withPhotos === 'true';
+      const withComments = req.query.withComments === 'true';
+      const sort = req.query.sort || 'created_at';
+      const order = req.query.order || 'DESC';
 
       const product = await Product.findByPk(productId);
       if (!product) {
         return res.status(404).json({ success: false, message: 'Producto no encontrado' });
       }
 
+      const where = { product_id: productId };
+      if (withComments) {
+        where.comment = { [Op.ne]: null, [Op.ne]: '' };
+      }
+
+      const include = [
+        { model: User, attributes: ['name'] },
+        { model: ReviewMedia, attributes: ['media_id', 'url', 'media_type'] }
+      ];
+
+      if (withPhotos) {
+        include[1].where = { media_type: 'image' };
+        include[1].required = true;
+      }
+
       const { count, rows: reviews } = await Review.findAndCountAll({
-        where: { product_id: productId },
-        include: [
-          { model: User, attributes: ['name'] },
-          { model: ReviewMedia, attributes: ['media_id', 'url', 'media_type'] },
-        ],
-        order: [['created_at', 'DESC']],
+        where,
+        include,
+        order: [[sort, order]],
         limit: pageSize,
         offset: (page - 1) * pageSize,
       });
@@ -79,7 +192,7 @@ exports.getReviewsByProduct = [
         error: error.message,
       });
     }
-  },
+  }
 ];
 
 exports.getReviewById = [

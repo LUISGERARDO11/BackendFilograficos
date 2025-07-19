@@ -10,12 +10,17 @@ const uploadReviewMedia = require('../config/multerUploadReviewMedia');
 // Importar controladores
 const reviewController = require('../controllers/reviewController');
 
-// ====================== Rutas específicas primero ======================
+// ====================== Rutas públicas específicas ======================
 
-// Ruta para obtener todas las reseñas de un producto (pública)
+// Resumen de calificaciones de un producto
+router.get('/product/:productId/summary', reviewController.getReviewsSummaryByProduct);
+
+// Obtener todas las reseñas de un producto
 router.get('/product/:productId', reviewController.getReviewsByProduct);
 
-// Ruta para obtener todas las reseñas con filtros (autenticado, administrador)
+// ====================== Rutas de administrador ======================
+
+// Obtener todas las reseñas con filtros
 router.get(
   '/admin',
   authMiddleware,
@@ -24,7 +29,7 @@ router.get(
   reviewController.getReviewsForAdmin
 );
 
-// Ruta para eliminar una reseña (autenticado, administrador)
+// Eliminar reseña por administrador
 router.delete(
   '/admin/:reviewId',
   authMiddleware,
@@ -33,7 +38,9 @@ router.delete(
   reviewController.deleteReviewByAdmin
 );
 
-// Nueva ruta: Obtener reseñas realizadas por el usuario autenticado
+// ====================== Rutas de usuario autenticado ======================
+
+// Obtener reseñas del usuario autenticado
 router.get(
   '/my-reviews',
   authMiddleware,
@@ -41,7 +48,7 @@ router.get(
   reviewController.getUserReviews
 );
 
-// Nueva ruta: Obtener compras elegibles para reseñas (pendientes)
+// Obtener compras pendientes de reseña
 router.get(
   '/pending',
   authMiddleware,
@@ -49,9 +56,7 @@ router.get(
   reviewController.getPendingReviews
 );
 
-// ====================== Rutas generales después ======================
-
-// Ruta para crear una nueva reseña (autenticado, usuario)
+// Crear nueva reseña
 router.post(
   '/',
   authMiddleware,
@@ -60,10 +65,12 @@ router.post(
   reviewController.createReview
 );
 
-// Ruta para obtener una reseña específica por ID (pública)
+// ====================== Rutas dinámicas al final ======================
+
+// Obtener reseña por ID
 router.get('/:reviewId', reviewController.getReviewById);
 
-// Ruta para actualizar una reseña existente (autenticado, propietario)
+// Actualizar reseña (solo propietario)
 router.put(
   '/:reviewId',
   authMiddleware,
@@ -72,7 +79,7 @@ router.put(
   reviewController.updateReview
 );
 
-// Ruta para eliminar una reseña (autenticado, propietario)
+// Eliminar reseña (solo propietario)
 router.delete(
   '/:reviewId',
   authMiddleware,
