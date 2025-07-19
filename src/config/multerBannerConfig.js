@@ -17,7 +17,7 @@ const uploadBannerImages = multer({
     cb(new Error('Solo se permiten imágenes en formato JPG, JPEG, PNG o WEBP'));
   },
   limits: {
-    fileSize: 1 * 1024 * 1024, // Máximo 1MB por imagen (antes de compresión)
+    fileSize: 5 * 1024 * 1024, // Máximo 1MB por imagen (antes de compresión)
     files: 5 // Máximo 5 imágenes por solicitud
   }
 }).array('bannerImages', 5); // Campo esperado: 'bannerImages', máximo 5 archivos
