@@ -10,6 +10,12 @@ router.post('/create',
   tokenExpirationMiddleware.verifyTokenExpiration,
   orderController.createOrder
 );
+// Crear una orden item
+router.post('/comprar',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  orderController.createOrderFromItem
+);
 
 // Obtener opciones de envío disponibles
 router.get('/shippingOptions',

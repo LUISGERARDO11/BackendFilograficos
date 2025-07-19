@@ -81,6 +81,110 @@ exports.createOrder = [
   }
 ];
 
+exports.createOrderFromItem = [
+  body('address_id')
+    .if(body('delivery_option').equals('Entrega a Domicilio'))
+    .notEmpty()
+    .withMessage('La dirección es obligatoria para Entrega a Domicilio')
+    .isInt({ min: 1 })
+    .withMessage('El ID de la dirección debe ser un número entero positivo'),
+  body('payment_method')
+    .notEmpty()
+    .withMessage('El método de pago es obligatorio')
+    .isIn(['mercado_pago'])
+    .withMessage('Método de pago no válido. Solo se acepta Mercado Pago'),
+  body('coupon_code')
+    .optional()
+    .isString()
+    .trim()
+    .withMessage('El código de cupón debe ser una cadena de texto'),
+  body('delivery_option')
+    .optional()
+    .isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'])
+    .withMessage('Opción de envío no válida'),
+  body('item')
+    .notEmpty()
+    .withMessage('El ítem es obligatorio')
+    .isObject()
+    .withMessage('El ítem debe ser un objeto'),
+  body('item.variant_id')
+    .notEmpty()
+    .withMessage('El variant_id es obligatorio')
+    .isInt({ min: 1 })
+    .withMessage('El variant_id debe ser un número entero positivo'),
+  body('item.quantity')
+    .notEmpty()
+    .withMessage('La cantidad es obligatoria')
+    .isInt({ min: 1 })
+    .withMessage('La cantidad debe ser un número entero positivo'),
+  body('item.is_urgent')
+    .optional()
+    .isBoolean()
+    .withMessage('is_urgent debe ser un booleano'),
+  body('item.unit_price')
+    .optional()
+    .isDecimal({ min: 0 })
+    .withMessage('El precio unitario debe ser un número válido'),
+  body('item.customization_id')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('El customization_id debe ser un número entero positivo'),
+  body('item.option_id')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('El option_id debe ser un número entero positivo'),
+  body('item.unit_measure')
+    .optional()
+    .isDecimal({ min: 0 })
+    .withMessage('La unidad de medida debe ser un número válido'),
+
+  async (req, res) => {
+    const user_id = req.user.user_id;
+    const errors = validationResult(req);
+
+    try {
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array()
+        });
+      }
+
+      const { address_id, payment_method, coupon_code, delivery_option, item } = req.body;
+      const orderService = new OrderService();
+      const { order, payment, paymentInstructions } = await orderService.createOrderFromItem(user_id, {
+        address_id,
+        payment_method,
+        coupon_code,
+        delivery_option,
+        item
+      });
+
+      loggerUtils.logUserActivity(user_id, 'create_order_from_item', `Orden creada desde ítem: ID ${order.order_id}`);
+
+      res.status(201).json({
+        success: true,
+        message: 'Orden creada exitosamente',
+        data: {
+          order_id: order.order_id,
+          total: order.total,
+          total_urgent_cost: order.total_urgent_cost || 0.00,
+          estimated_delivery_date: order.estimated_delivery_date,
+          payment_instructions: paymentInstructions,
+          status: order.order_status
+        }
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al crear la orden',
+        error: error.message
+      });
+    }
+  }
+];
 // Obtener los detalles de un pedido por ID
 exports.getOrderById = [
   param('id')

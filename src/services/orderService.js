@@ -144,7 +144,7 @@ class OrderService {
         }
         shipping_cost = parseFloat(shippingOption.base_cost);
       }
-      const calculatedShippingCost = shipping_cost; 
+      const calculatedShippingCost = shipping_cost;
       const total = Math.max(0, subtotal + calculatedShippingCost - discount);
       // Calcular fecha estimada de entrega
       const estimated_delivery_date = moment().add(maxDeliveryDays, 'days').toDate();
@@ -260,6 +260,248 @@ class OrderService {
       await CartDetail.destroy({ where: { cart_id: cart.cart_id }, transaction });
       await CouponUsage.destroy({ where: { cart_id: cart.cart_id }, transaction });
       await Cart.destroy({ where: { cart_id: cart.cart_id }, transaction });
+
+      await transaction.commit();
+
+      // Obtener detalles de la orden
+      const orderDetails = await OrderDetail.findAll({
+        where: { order_id: order.order_id },
+        include: [
+          {
+            model: ProductVariant,
+            attributes: ['variant_id', 'sku', 'calculated_price'],
+            include: [{ model: Product, attributes: ['name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'standard_delivery_days'] }]
+          }
+        ]
+      });
+
+      // Obtener datos del usuario
+      const user = await User.findOne({
+        where: { user_id: userId },
+        attributes: ['user_id', 'name', 'email']
+      });
+
+      this.notifyOrderCreation(order, user, orderDetails, payment).catch(err => {
+        loggerUtils.logCriticalError(err, 'Error al enviar notificación asíncrona');
+      });
+
+      const paymentInstructions = {
+        preference_id: preferenceId,
+        payment_url: paymentUrl
+      };
+
+      return { order, payment, paymentInstructions };
+    } catch (error) {
+      if (transaction && !transaction.finished) {
+        await transaction.rollback();
+      }
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al crear la orden: ${error.message}`);
+    }
+  }
+  async createOrderFromItem(userId, { address_id, payment_method, coupon_code, delivery_option, item }) {
+    const transaction = await Cart.sequelize.transaction();
+    try {
+      // Validar dirección
+      let address = null;
+      if (delivery_option === 'Entrega a Domicilio' && !address_id) {
+        throw new Error('La dirección es obligatoria para Entrega a Domicilio');
+      }
+      if (address_id) {
+        address = await Address.findOne({ where: { address_id, user_id: userId }, transaction });
+        if (!address) {
+          throw new Error('Dirección no válida');
+        }
+      }
+
+      // Validar ítem
+      if (!item || !item.variant_id || !item.quantity) {
+        throw new Error('Ítem no válido o incompleto');
+      }
+
+      // Obtener detalles de la variante y producto
+      const variant = await ProductVariant.findOne({
+        where: { variant_id: item.variant_id },
+        include: [
+          {
+            model: Product,
+            attributes: ['product_id', 'name', 'urgent_delivery_enabled', 'urgent_delivery_days', 'urgent_delivery_cost', 'standard_delivery_days'],
+            required: false
+          },
+          {
+            model: Promotion,
+            through: { attributes: [] },
+            where: {
+              status: 'active',
+              start_date: { [Op.lte]: new Date() },
+              end_date: { [Op.gte]: new Date() }
+            },
+            required: false
+          }
+        ],
+        transaction
+      });
+
+      if (!variant || !variant.Product) {
+        throw new Error(`Variante o producto no encontrado para el ítem ${item.variant_id}`);
+      }
+
+      // Validar entrega urgente y stock
+      if (item.is_urgent && !variant.Product.urgent_delivery_enabled) {
+        throw new Error(`El producto ${variant.Product.name || 'desconocido'} no permite entrega urgente`);
+      }
+      if (variant.stock < item.quantity) {
+        throw new Error(`Stock insuficiente para el producto ${variant.Product.name || 'desconocido'} (SKU: ${variant.sku}). Disponible: ${variant.stock}, Requerido: ${item.quantity}`);
+      }
+
+      // Calcular costos y días de entrega
+      let total_urgent_cost = 0;
+      let maxDeliveryDays = 0;
+      const unitPrice = item.unit_price || variant.calculated_price;
+      if (!unitPrice) {
+        throw new Error(`Precio no definido para el ítem ${variant.Product?.name || `Producto ID ${item.variant_id}`}`);
+      }
+      const urgentCost = item.is_urgent ? parseFloat(variant.Product.urgent_delivery_cost || 0) : 0;
+      total_urgent_cost = urgentCost * item.quantity;
+      const deliveryDays = item.is_urgent ? (variant.Product?.urgent_delivery_days || 0) : (variant.Product?.standard_delivery_days || 0);
+      maxDeliveryDays = deliveryDays;
+
+      // Calcular descuentos
+      let itemDiscount = 0;
+      if (variant.Promotions && variant.Promotions.length > 0) {
+        itemDiscount = variant.Promotions.reduce((sum, promo) => {
+          if (promo.promotion_type === 'order_count_discount' && promo.is_applicable) {
+            return sum + (item.quantity * unitPrice) * (promo.discount_value / 100);
+          }
+          return sum;
+        }, 0);
+      }
+
+      const orderDetailsData = [{
+        variant_id: item.variant_id,
+        option_id: item.option_id || null,
+        customization_id: item.customization_id || null,
+        quantity: item.quantity,
+        unit_price: unitPrice,
+        subtotal: (item.quantity * unitPrice) + urgentCost,
+        discount_applied: itemDiscount,
+        unit_measure: item.unit_measure || 1.00,
+        is_urgent: item.is_urgent || false,
+        additional_cost: urgentCost,
+        Product: variant.Product
+      }];
+
+      // Calcular subtotal, descuento y total
+      const subtotal = orderDetailsData[0].quantity * orderDetailsData[0].unit_price;
+      const discount = orderDetailsData[0].discount_applied;
+      let shipping_cost = 0.00;
+      if (delivery_option) {
+        const shippingOption = await ShippingOption.findOne({ where: { name: delivery_option, status: 'active' }, transaction });
+        if (!shippingOption) {
+          throw new Error('Opción de envío no válida o inactiva');
+        }
+        shipping_cost = parseFloat(shippingOption.base_cost);
+      }
+      const calculatedShippingCost = shipping_cost;
+      const total = Math.max(0, subtotal + calculatedShippingCost - discount);
+
+      // Calcular fecha estimada de entrega
+      const estimated_delivery_date = moment().add(maxDeliveryDays, 'days').toDate();
+
+      // Crear orden
+      const order = await Order.create({
+        user_id: userId,
+        address_id: address_id || null,
+        total,
+        total_urgent_cost,
+        discount,
+        shipping_cost: calculatedShippingCost,
+        payment_status: 'pending',
+        payment_method,
+        order_status: 'pending',
+        estimated_delivery_date,
+        delivery_option: delivery_option || null
+      }, { transaction });
+
+      // Crear detalle del pedido
+      await OrderDetail.create({
+        ...orderDetailsData[0],
+        order_id: order.order_id
+      }, { transaction });
+
+      // Actualizar stock
+      await variant.update({
+        stock: variant.stock - item.quantity,
+        updated_at: new Date()
+      }, { transaction });
+
+      // Crear historial de la orden
+      await OrderHistory.create({
+        user_id: userId,
+        order_id: order.order_id,
+        purchase_date: new Date(),
+        order_status: 'pending',
+        total
+      }, { transaction });
+
+      // Crear registro de pago
+      const payment = await Payment.create({
+        order_id: order.order_id,
+        payment_method,
+        amount: total,
+        status: 'pending',
+        attempts: 0
+      }, { transaction });
+
+      // Generar preferencia de Mercado Pago
+      const preference = {
+        items: [
+          {
+            title: variant.Product?.name || `Producto ID ${item.variant_id}`,
+            unit_price: parseFloat(unitPrice),
+            quantity: item.quantity,
+            currency_id: 'MXN'
+          },
+          {
+            title: 'Costo de envío',
+            unit_price: calculatedShippingCost,
+            quantity: 1,
+            currency_id: 'MXN'
+          }
+        ],
+        back_urls: {
+          success: 'https://ecommerce-filograficos.vercel.app/payment-callback?status=success',
+          failure: 'https://ecommerce-filograficos.vercel.app/payment-callback?status=failure',
+          pending: 'https://ecommerce-filograficos.vercel.app/payment-callback?status=pending'
+        },
+        auto_return: 'approved',
+        external_reference: order.order_id.toString(),
+        notification_url: 'https://backend-filograficos.vercel.app/api/order/webhook/mercado-pago'
+      };
+      const mpResponse = await mercadopago.preferences.create(preference);
+      const preferenceId = mpResponse.body.id;
+      const paymentUrl = mpResponse.body.init_point;
+
+      // Actualizar payment con preference_id
+      await payment.update({ preference_id: preferenceId }, { transaction });
+
+      // Manejar cupones
+      if (coupon_code) {
+        const coupon = await Coupon.findOne({
+          where: { code: coupon_code, status: 'active', start_date: { [Op.lte]: new Date() }, end_date: { [Op.gte]: new Date() } },
+          transaction
+        });
+        if (coupon) {
+          await CouponUsage.create({
+            user_id: userId,
+            order_id: order.order_id,
+            promotion_id: coupon.promotion_id,
+            usage_date: new Date()
+          }, { transaction });
+        } else {
+          throw new Error('Cupón no válido');
+        }
+      }
 
       await transaction.commit();
 
