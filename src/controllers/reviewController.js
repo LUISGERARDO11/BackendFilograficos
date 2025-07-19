@@ -69,7 +69,7 @@ exports.getReviewsSummaryByProduct = [
         success: true,
         message: 'Resumen de reseñas obtenido exitosamente',
         data: {
-          averageRating: parseFloat(summary.averageRating).toFixed(1),
+          averageRating: parseFloat(summary.averageRating), // Return as number, not string
           totalReviews: parseInt(summary.totalReviews),
           ratingDistribution: distribution,
         },
