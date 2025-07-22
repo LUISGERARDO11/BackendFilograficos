@@ -35,6 +35,29 @@ exports.getHomeData = async (req, res) => {
       urgent_delivery_cost: product.urgent_delivery_cost || null
     }));
 
+    // Función auxiliar para verificar si un producto tiene stock disponible
+    const hasStock = async (productId) => {
+      const variantWithStock = await ProductVariant.findOne({
+        where: {
+          product_id: productId,
+          stock: { [Op.gt]: 0 },
+          is_deleted: false
+        }
+      });
+      return !!variantWithStock;
+    };
+
+    // Filtrar productos que tienen al menos una variante con stock > 0
+    const filterProductsWithStock = async (products) => {
+      const filteredProducts = [];
+      for (const product of products) {
+        if (await hasStock(product.product_id)) {
+          filteredProducts.push(product);
+        }
+      }
+      return filteredProducts;
+    };
+
     // 1. Productos destacados (top 12 por average_rating)
     const featuredProducts = await Product.findAll({
       where: { 
@@ -45,8 +68,11 @@ exports.getHomeData = async (req, res) => {
         {
           model: ProductVariant,
           attributes: [],
-          required: false,
-          where: { is_deleted: false },
+          required: true, // Cambiado a true para asegurar que tenga al menos una variante
+          where: { 
+            is_deleted: false,
+            stock: { [Op.gt]: 0 } // Solo variantes con stock
+          },
           include: [{
             model: ProductImage,
             attributes: [],
@@ -85,6 +111,7 @@ exports.getHomeData = async (req, res) => {
           WHERE pv.product_id = Product.product_id 
           AND pi.order = 1
           AND pv.is_deleted = false
+          AND pv.stock > 0
           LIMIT 1
         )`), 'image_url']
       ],
@@ -101,8 +128,11 @@ exports.getHomeData = async (req, res) => {
         {
           model: ProductVariant,
           attributes: [],
-          required: false,
-          where: { is_deleted: false },
+          required: true, // Cambiado a true para asegurar que tenga al menos una variante
+          where: { 
+            is_deleted: false,
+            stock: { [Op.gt]: 0 } // Solo variantes con stock
+          },
           include: [{
             model: ProductImage,
             attributes: [],
@@ -141,6 +171,7 @@ exports.getHomeData = async (req, res) => {
           WHERE pv.product_id = Product.product_id 
           AND pi.order = 1
           AND pv.is_deleted = false
+          AND pv.stock > 0
           LIMIT 1
         )`), 'image_url']
       ],
@@ -163,8 +194,11 @@ exports.getHomeData = async (req, res) => {
         {
           model: ProductVariant,
           attributes: [],
-          where: { is_deleted: false },
-          required: false,
+          where: { 
+            is_deleted: false,
+            stock: { [Op.gt]: 0 } // Solo variantes con stock
+          },
+          required: true, // Cambiado a true para asegurar que tenga al menos una variante
           include: [
             {
               model: OrderDetail,
@@ -212,6 +246,7 @@ exports.getHomeData = async (req, res) => {
           WHERE pv.product_id = Product.product_id 
           AND pi.order = 1
           AND pv.is_deleted = false
+          AND pv.stock > 0
           LIMIT 1
         )`), 'image_url']
       ],
@@ -228,8 +263,11 @@ exports.getHomeData = async (req, res) => {
           {
             model: ProductVariant,
             attributes: [],
-            where: { is_deleted: false },
-            required: false,
+            where: { 
+              is_deleted: false,
+              stock: { [Op.gt]: 0 } // Solo variantes con stock
+            },
+            required: true, // Cambiado a true para asegurar que tenga al menos una variante
             include: [
               {
                 model: OrderDetail,
@@ -283,6 +321,7 @@ exports.getHomeData = async (req, res) => {
             WHERE pv.product_id = Product.product_id 
             AND pi.order = 1
             AND pv.is_deleted = false
+            AND pv.stock > 0
             LIMIT 1
           )`), 'image_url']
         ],
