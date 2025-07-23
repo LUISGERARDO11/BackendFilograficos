@@ -2,21 +2,21 @@ const axios = require('axios');
 const { Op } = require('sequelize');
 const { Product, ProductVariant, ProductImage, Category } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
-require('dotenv').config(); // Cargar variables de entorno
+require('dotenv').config(); // Load environment variables
 
-// Configuración desde variables de entorno
+// Configuration from environment variables
 const RECOMMENDER_API_URL = process.env.RECOMMENDER_API_URL || 'https://m3-r8j0.onrender.com';
 const REQUEST_TIMEOUT = parseInt(process.env.REQUEST_TIMEOUT, 10) || 10000;
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES, 10) || 3;
 const RETRY_DELAY = parseInt(process.env.RETRY_DELAY, 10) || 1000;
 
 /**
- * Realiza una solicitud HTTP con reintentos para errores transitorios.
- * @param {string} url - URL de la solicitud.
- * @param {object} options - Opciones de axios (método, datos, parámetros, etc.).
- * @param {number} retries - Número de reintentos.
- * @param {number} delay - Retraso inicial entre reintentos (ms).
- * @returns {Promise<object>} Respuesta de axios o error en caso de fallo.
+ * Performs an HTTP request with retries for transient errors.
+ * @param {string} url - Request URL.
+ * @param {object} options - Axios options (method, data, params, etc.).
+ * @param {number} retries - Number of retries.
+ * @param {number} delay - Initial delay between retries (ms).
+ * @returns {Promise<object>} Axios response or error on failure.
  */
 const fetchWithRetry = async (url, options, retries = MAX_RETRIES, delay = RETRY_DELAY) => {
   for (let i = 0; i < retries; i++) {
@@ -24,21 +24,21 @@ const fetchWithRetry = async (url, options, retries = MAX_RETRIES, delay = RETRY
       return await axios({ url, ...options, timeout: REQUEST_TIMEOUT });
     } catch (error) {
       const isLastAttempt = i === retries - 1;
-      const retryableStatusCodes = [502, 503, 504]; // Códigos de error transitorios
+      const retryableStatusCodes = [502, 503, 504]; // Transient error codes
       if (isLastAttempt || !error.response || !retryableStatusCodes.includes(error.response.status)) {
         throw error;
       }
-      loggerUtils.logCriticalError(`Intento ${i + 1} fallido para ${url} con status ${error.response.status}, reintentando en ${delay}ms...`);
+      loggerUtils.logCriticalError(`Attempt ${i + 1} failed for ${url} with status ${error.response.status}, retrying in ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
-      delay *= 2; // Backoff exponencial
+      delay *= 2; // Exponential backoff
     }
   }
 };
 
 /**
- * Busca productos en la base de datos por nombre y los formatea.
- * @param {Array<string>} productNames - Lista de nombres de productos.
- * @returns {Promise<Array<object>>} Productos formateados.
+ * Fetches products from the database by name and formats them.
+ * @param {Array<string>} productNames - List of product names.
+ * @returns {Promise<Array<object>>} Formatted products.
  */
 const fetchAndFormatProducts = async (productNames) => {
   try {
@@ -51,7 +51,7 @@ const fetchAndFormatProducts = async (productNames) => {
         {
           model: ProductVariant,
           attributes: [],
-          required: true, // Asegura que tenga al menos una variante
+          required: true, // Ensure at least one variant
           where: { 
             is_deleted: false
           },
@@ -85,7 +85,6 @@ const fetchAndFormatProducts = async (productNames) => {
         [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
         [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
         [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock'],
-        [Product.sequelize.fn('COUNT', Product.sequelize.col('ProductVariants.variant_id')), 'variantCount'],
         [Product.sequelize.literal(`(
           SELECT pi.image_url 
           FROM product_images pi
@@ -123,79 +122,89 @@ const fetchAndFormatProducts = async (productNames) => {
       urgent_delivery_cost: product.urgent_delivery_cost || null
     }));
   } catch (error) {
-    loggerUtils.logCriticalError(`Error al buscar productos por nombre: ${error.message}`);
+    loggerUtils.logCriticalError(`Error fetching products by name: ${error.message}`);
     return [];
   }
 };
 
 /**
- * Obtiene recomendaciones para el usuario autenticado y enriquece con datos de productos.
- * @param {object} req - Objeto de solicitud.
- * @param {object} res - Objeto de respuesta.
+ * Gets recommendations for the authenticated user and enriches with product data.
+ * @param {object} req - Request object.
+ * @param {object} res - Response object.
  */
 exports.getRecommendations = async (req, res) => {
-  const product = req.body.product || req.query.product; // Soporte para POST o GET
+  const product = req.body.product || req.query.product;
+  const cart = req.body.cart || req.query.cart;
 
-  if (!product) {
-    loggerUtils.logCriticalError('Solicitud sin campo product');
+  if (!product && !cart) {
+    loggerUtils.logCriticalError('Request missing product or cart field');
     return res.status(400).json({
-      message: 'El producto es requerido',
-      error: 'Missing product',
+      success: false,
+      message: 'Se requiere un producto o carrito',
+      error: 'Missing product or cart',
       data: { recommendations: [] }
     });
   }
 
   try {
+    // Construct payload for Flask API
+    const payload = product ? { product } : { cart };
+    const inputType = product ? 'product' : 'cart';
+    const inputValue = product || cart;
+
     const response = await fetchWithRetry(`${RECOMMENDER_API_URL}/recommend`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json'
       },
-      data: JSON.stringify({ product })
+      data: JSON.stringify(payload)
     });
 
-    const { success, recommendations, count, message, error } = response.data;
+    const { success, recommendations, count, message, error, input } = response.data;
 
     if (!success) {
-      loggerUtils.logCriticalError(`Error en la API Flask: ${error}`);
+      loggerUtils.logCriticalError(`Error from Flask API: ${error}`);
       return res.status(400).json({
+        success: false,
         message: error || 'No se pudieron obtener recomendaciones',
         error: error || 'API error',
-        data: { product, recommendations: [] }
+        data: { [inputType]: inputValue, recommendations: [] }
       });
     }
 
-    // Enriquecer recomendaciones con datos de la base de datos
+    // Enrich recommendations with database data
     const formattedRecommendations = await fetchAndFormatProducts(recommendations || []);
 
     const formattedResponse = {
+      success: true,
       message: message || 'Recomendaciones obtenidas exitosamente',
       data: {
-        product,
+        [inputType]: inputValue,
         recommendations: formattedRecommendations,
-        count: formattedRecommendations.length // Actualizar count con los productos encontrados
+        count: formattedRecommendations.length // Use actual number of enriched products
       }
     };
 
-    loggerUtils.logUserActivity('fetch_recommendations', `Recommendations fetched for product ${product}`);
+    loggerUtils.logUserActivity('fetch_recommendations', `Recommendations fetched for ${inputType} ${JSON.stringify(inputValue)}`);
     return res.status(200).json(formattedResponse);
   } catch (error) {
     const status = error.response?.status || 500;
     const errorMessage = error.response?.data?.error || error.message;
-    loggerUtils.logCriticalError(`Error fetching recommendations for ${product}: ${errorMessage}`);
+    loggerUtils.logCriticalError(`Error fetching recommendations for ${product || cart}: ${errorMessage}`);
     
     return res.status(status).json({
+      success: false,
       message: 'No se pudieron obtener recomendaciones',
       error: errorMessage || 'Intenta de nuevo más tarde',
-      data: { product, recommendations: [] }
+      data: { [product ? 'product' : 'cart']: product || cart, recommendations: [] }
     });
   }
 };
 
 /**
- * Verifica el estado del servicio de recomendaciones.
- * @param {object} req - Objeto de solicitud.
- * @param {object} res - Objeto de respuesta.
+ * Checks the status of the recommendation service.
+ * @param {object} req - Request object.
+ * @param {object} res - Response object.
  */
 exports.healthCheck = async (req, res) => {
   try {
@@ -206,6 +215,7 @@ exports.healthCheck = async (req, res) => {
 
     const { status, model_loaded, rules_count } = response.data;
     return res.status(200).json({
+      success: true,
       message: 'Estado del servicio verificado',
       data: {
         status,
@@ -215,8 +225,9 @@ exports.healthCheck = async (req, res) => {
     });
   } catch (error) {
     const status = error.response?.status || 500;
-    loggerUtils.logCriticalError(`Error en health check: ${error.message}`);
+    loggerUtils.logCriticalError(`Error in health check: ${error.message}`);
     return res.status(status).json({
+      success: false,
       message: 'Error al verificar el estado del servicio',
       error: error.message,
       data: { status: 'ERROR', model_loaded: false, rules_count: 0 }

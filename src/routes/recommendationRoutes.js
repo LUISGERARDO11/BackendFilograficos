@@ -1,16 +1,16 @@
 const express = require('express');
 const router = express.Router();
 
-// Importar controladores
+// Import controllers
 const recommendationController = require('../controllers/recommendationController');
 
-// Ruta para obtener recomendaciones basadas en un producto (POST /recommendations)
+// Route for getting recommendations based on a product or cart (POST /recommendations)
 router.post(
   '/',
   recommendationController.getRecommendations
 );
 
-// Ruta para verificar el estado del servicio (GET /health)
+// Route for checking the service status (GET /health)
 router.get(
   '/health',
   recommendationController.healthCheck
