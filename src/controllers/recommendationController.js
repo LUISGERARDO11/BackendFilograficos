@@ -135,14 +135,13 @@ const fetchAndFormatProducts = async (productNames) => {
  */
 exports.getRecommendations = async (req, res) => {
   const product = req.body.product || req.query.product; // Soporte para POST o GET
-  const userId = req.user?.user_id;
 
   if (!product) {
     loggerUtils.logCriticalError('Solicitud sin campo product');
     return res.status(400).json({
       message: 'El producto es requerido',
       error: 'Missing product',
-      data: { user_id: userId, recommendations: [] }
+      data: { recommendations: [] }
     });
   }
 
@@ -162,7 +161,7 @@ exports.getRecommendations = async (req, res) => {
       return res.status(400).json({
         message: error || 'No se pudieron obtener recomendaciones',
         error: error || 'API error',
-        data: { user_id: userId, product, recommendations: [] }
+        data: { product, recommendations: [] }
       });
     }
 
@@ -172,14 +171,13 @@ exports.getRecommendations = async (req, res) => {
     const formattedResponse = {
       message: message || 'Recomendaciones obtenidas exitosamente',
       data: {
-        user_id: userId,
         product,
         recommendations: formattedRecommendations,
         count: formattedRecommendations.length // Actualizar count con los productos encontrados
       }
     };
 
-    loggerUtils.logUserActivity(userId, 'fetch_recommendations', `Recommendations fetched for product ${product}`);
+    loggerUtils.logUserActivity('fetch_recommendations', `Recommendations fetched for product ${product}`);
     return res.status(200).json(formattedResponse);
   } catch (error) {
     const status = error.response?.status || 500;
@@ -189,7 +187,7 @@ exports.getRecommendations = async (req, res) => {
     return res.status(status).json({
       message: 'No se pudieron obtener recomendaciones',
       error: errorMessage || 'Intenta de nuevo más tarde',
-      data: { user_id: userId, product, recommendations: [] }
+      data: { product, recommendations: [] }
     });
   }
 };
@@ -222,141 +220,6 @@ exports.healthCheck = async (req, res) => {
       message: 'Error al verificar el estado del servicio',
       error: error.message,
       data: { status: 'ERROR', model_loaded: false, rules_count: 0 }
-    });
-  }
-};
-
-module.exports = exports;
-/**
- * Obtiene recomendaciones basadas en productos comprados.
- * @param {object} req - Objeto de solicitud.
- * @param {object} res - Objeto de respuesta.
- */
-exports.getRecommendationsWithProducts = async (req, res) => {
-  const userId = req.user.user_id;
-  const { purchased_products = [], user_data } = req.body;
-
-  try {
-    if (!userId) {
-      return res.status(400).json({
-        message: 'El user_id es requerido',
-        error: 'Missing user_id',
-        data: { user_id: null, cluster: null, recommendations: [] }
-      });
-    }
-
-    const response = await fetchWithRetry(`${RECOMMENDER_API_URL}/recommend`, {
-      method: 'POST',
-      data: { user_id: userId, purchased_products, user_data }
-    });
-
-    const data = response.data;
-
-    if (!data.data || !data.data.recommendations || !Array.isArray(data.data.recommendations)) {
-      throw new Error('Respuesta inválida del API de recomendaciones');
-    }
-
-    const formattedResponse = {
-      message: data.message || 'Recomendaciones obtenidas exitosamente',
-      data: {
-        user_id: data.data.user_id || userId,
-        cluster: data.data.cluster !== undefined ? parseInt(data.data.cluster) : null,
-        recommendations: formatRecommendations(data.data.recommendations)
-      }
-    };
-
-    loggerUtils.logUserActivity(userId, 'fetch_recommendations_with_products', `Recommendations fetched for user ${userId}, cluster ${data.data.cluster}`);
-    res.status(200).json(formattedResponse);
-  } catch (error) {
-    const status = error.response ? error.response.status : 500;
-    let message = 'No se pudieron obtener recomendaciones';
-    let errorMessage = error.message;
-
-    if (status === 400) {
-      message = 'Solicitud inválida';
-      errorMessage = error.response?.data?.error || 'Parámetros inválidos';
-      loggerUtils.logCriticalError(`Error fetching recommendations with products for user ${userId}: ${errorMessage}`);
-      return res.status(400).json({
-        message,
-        error: errorMessage,
-        data: { user_id: userId, cluster: null, recommendations: [] }
-      });
-    } else if (status === 404) {
-      message = 'Sin recomendaciones disponibles';
-      errorMessage = error.response?.data?.error || 'No recommendations available';
-      loggerUtils.logCriticalError(`Error fetching recommendations with products for user ${userId}: ${errorMessage}`);
-      return res.status(200).json({
-        message,
-        error: errorMessage,
-        data: { user_id: userId, cluster: null, recommendations: [] }
-      });
-    } else {
-      // Manejo de errores 500 o no manejados
-      loggerUtils.logCriticalError(`Error fetching recommendations with products for user ${userId}: ${errorMessage}`);
-      return res.status(200).json({
-        message: 'No se pudieron obtener recomendaciones en este momento',
-        error: 'Recomendaciones no disponibles, intenta de nuevo más tarde',
-        data: { user_id: userId, cluster: null, recommendations: [] }
-      });
-    }
-  }
-};
-
-/**
- * Obtiene el resumen de clústeres.
- * @param {object} req - Objeto de solicitud.
- * @param {object} res - Objeto de respuesta.
- */
-exports.getClusters = async (req, res) => {
-  try {
-    const response = await fetchWithRetry(`${RECOMMENDER_API_URL}/clusters`, {
-      method: 'GET'
-    });
-
-    const data = response.data;
-
-    if (!data.data || typeof data.data !== 'object') {
-      throw new Error('Respuesta inválida del API de clústeres');
-    }
-
-    // Formatear los datos de los clústeres
-    const formattedClusters = Object.keys(data.data).reduce((acc, clusterId) => {
-      acc[clusterId] = {
-        Average_order_quantity: parseFloat(data.data[clusterId].average_order_quantity) || 0,
-        total_spent: parseFloat(data.data[clusterId].total_spent) || 0,
-        number_of_orders: parseFloat(data.data[clusterId].number_of_orders) || 0,
-        total_units: parseFloat(data.data[clusterId].total_units) || 0,
-        number_of_users: data.data[clusterId].number_of_users || 0
-      };
-      return acc;
-    }, {});
-
-    const formattedResponse = {
-      message: data.message || 'Resumen de clústeres obtenido exitosamente',
-      data: formattedClusters
-    };
-
-    loggerUtils.logUserActivity(req.user.user_id, 'fetch_clusters', 'Cluster summary fetched');
-    res.status(200).json(formattedResponse);
-  } catch (error) {
-    const status = error.response ? error.response.status : 500;
-    let message = 'No se pudo obtener el resumen de clústeres';
-    let errorMessage = error.message;
-
-    if (status === 500) {
-      loggerUtils.logCriticalError(`Error fetching clusters: ${errorMessage}`);
-      return res.status(200).json({
-        message: 'No se pudo obtener el resumen de clústeres en este momento',
-        error: 'Resumen no disponible, intenta de nuevo más tarde',
-        data: {}
-      });
-    }
-
-    loggerUtils.logCriticalError(`Error fetching clusters: ${errorMessage}`);
-    res.status(status).json({
-      message,
-      error: errorMessage,
-      data: {}
     });
   }
 };
