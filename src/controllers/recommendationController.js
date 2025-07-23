@@ -69,71 +69,46 @@ const formatRecommendations = (recommendations) => {
  * @param {object} req - Objeto de solicitud.
  * @param {object} res - Objeto de respuesta.
  */
-exports.getRecommendations = async (req, res) => {
-  const userId = req.user.user_id;
-  try {
-    if (!userId) {
-      return res.status(400).json({
-        message: 'El user_id es requerido',
-        error: 'Missing user_id',
-        data: { user_id: null, cluster: null, recommendations: [] }
-      });
-    }
 
-    const response = await fetchWithRetry(`${RECOMMENDER_API_URL}/recommendations`, {
-      method: 'GET',
-      params: { user_id: userId }
+exports.getRecommendations = async (req, res) => {
+  const product = req.query.product; 
+  const userId = req.user?.user_id;
+
+  if (!product) {
+    return res.status(400).json({
+      message: 'El producto es requerido',
+      error: 'Missing product',
+      data: { user_id: userId, recommendations: [] }
+    });
+  }
+
+  try {
+    const response = await fetchWithRetry(`${RECOMMENDER_API_URL}/recommend`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      data: `product=${encodeURIComponent(product)}`
     });
 
-    const data = response.data;
-
-    if (!data.data || !data.data.recommendations || !Array.isArray(data.data.recommendations)) {
-      throw new Error('Respuesta inválida del API de recomendaciones');
-    }
-
+    const data = response.data.recommendations || [];
     const formattedResponse = {
-      message: data.message || 'Recomendaciones obtenidas exitosamente',
+      message: 'Recomendaciones obtenidas exitosamente',
       data: {
-        user_id: data.data.user_id || userId,
-        cluster: data.data.cluster !== undefined ? parseInt(data.data.cluster) : null,
-        recommendations: formatRecommendations(data.data.recommendations)
+        user_id: userId,
+        product: product,
+        recommendations: formatRecommendations(data)
       }
     };
 
-    loggerUtils.logUserActivity(userId, 'fetch_recommendations', `Recommendations fetched for user ${userId}, cluster ${data.data.cluster}`);
+    loggerUtils.logUserActivity(userId, 'fetch_recommendations', `Recommendations fetched for product ${product}`);
     res.status(200).json(formattedResponse);
   } catch (error) {
-    const status = error.response ? error.response.status : 500;
-    let message = 'No se pudieron obtener recomendaciones';
-    let errorMessage = error.message;
-
-    if (status === 400) {
-      message = 'Solicitud inválida';
-      errorMessage = error.response?.data?.error || 'Parámetros inválidos';
-      loggerUtils.logCriticalError(`Error fetching recommendations for user ${userId}: ${errorMessage}`);
-      return res.status(400).json({
-        message,
-        error: errorMessage,
-        data: { user_id: userId, cluster: null, recommendations: [] }
-      });
-    } else if (status === 404) {
-      message = 'Usuario no encontrado o sin recomendaciones';
-      errorMessage = error.response?.data?.error || 'No recommendations available';
-      loggerUtils.logCriticalError(`Error fetching recommendations for user ${userId}: ${errorMessage}`);
-      return res.status(200).json({
-        message,
-        error: errorMessage,
-        data: { user_id: userId, cluster: null, recommendations: [] }
-      });
-    } else {
-      // Manejo de errores 500 o no manejados
-      loggerUtils.logCriticalError(`Error fetching recommendations for user ${userId}: ${errorMessage}`);
-      return res.status(200).json({
-        message: 'No se pudieron obtener recomendaciones en este momento',
-        error: 'Recomendaciones no disponibles, intenta de nuevo más tarde',
-        data: { user_id: userId, cluster: null, recommendations: [] }
-      });
-    }
+    const status = error.response?.status || 500;
+    loggerUtils.logCriticalError(`Error fetching recommendations for ${product}: ${error.message}`);
+    res.status(200).json({
+      message: 'No se pudieron obtener recomendaciones',
+      error: 'Intenta de nuevo más tarde',
+      data: { user_id: userId, product, recommendations: [] }
+    });
   }
 };
 
@@ -232,7 +207,7 @@ exports.getClusters = async (req, res) => {
     // Formatear los datos de los clústeres
     const formattedClusters = Object.keys(data.data).reduce((acc, clusterId) => {
       acc[clusterId] = {
-       Average_order_quantity: parseFloat(data.data[clusterId].average_order_quantity) || 0,
+        Average_order_quantity: parseFloat(data.data[clusterId].average_order_quantity) || 0,
         total_spent: parseFloat(data.data[clusterId].total_spent) || 0,
         number_of_orders: parseFloat(data.data[clusterId].number_of_orders) || 0,
         total_units: parseFloat(data.data[clusterId].total_units) || 0,
