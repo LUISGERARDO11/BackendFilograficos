@@ -7,31 +7,19 @@ const recommendationController = require('../controllers/recommendationControlle
 // Importar middlewares
 const authMiddleware = require('../middlewares/authMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
-const roleMiddleware = require('../middlewares/roleMiddleware');
 
-// Ruta para obtener recomendaciones basadas en historial de usuario (GET /recommendations)
-router.get(
+// Ruta para obtener recomendaciones basadas en un producto (POST /recommendations)
+router.post(
   '/',
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   recommendationController.getRecommendations
 );
 
-// Ruta para obtener recomendaciones basadas en productos comprados (POST /recommendations/with-products)
-router.post(
-  '/with-products',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  recommendationController.getRecommendationsWithProducts
-);
-
-// Ruta para obtener resumen de clústeres (GET /recommendations/clusters)
+// Ruta para verificar el estado del servicio (GET /health)
 router.get(
-  '/clusters',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  roleMiddleware(['administrador']),
-  recommendationController.getClusters
+  '/health',
+  recommendationController.healthCheck
 );
 
 module.exports = router;
