@@ -14,8 +14,9 @@ const getProductsWithFilters = async ({ page, pageSize, sort, categoryId, search
         order = sortParams.map(([column, direction]) => {
             if (!validColumns.includes(column)) throw new Error(`Columna de ordenamiento inválida: ${column}`);
             if (!direction || !validDirections.includes(direction.toUpperCase())) throw new Error(`Dirección de ordenamiento inválida: ${direction}`);
+            // Usar las columnas calculadas min_price y max_price directamente
             if (column === 'min_price' || column === 'max_price') {
-                return [ProductVariant, 'calculated_price', direction.toUpperCase()];
+                return [column, direction.toUpperCase()];
             }
             return [column, direction.toUpperCase()];
         });
