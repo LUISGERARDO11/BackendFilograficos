@@ -165,6 +165,11 @@ const validateGetAllProducts = [
   query('sort').optional()
     .matches(/^[a-z_]+:(ASC|DESC)(,[a-z_]+:(ASC|DESC))*$/i)
     .withMessage('El parámetro sort debe tener el formato "column:direction,column:direction"'),
+  query('averageRating')
+    .optional()
+    .isInt({ min: 0, max: 5 })
+    .withMessage('La calificación promedio debe ser un número entero entre 0 y 5')
+    .toInt(),
 ];
 
 // Nuevas validaciones para productPriceController

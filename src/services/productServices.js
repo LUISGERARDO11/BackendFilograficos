@@ -3,19 +3,18 @@ const { Product, ProductVariant, Category, Collaborator, ProductAttributeValue, 
 const { Op } = require('sequelize');
 const { buildCategoryBreadcrumb } = require('../utils/breadcrumbs');
 
-const getProductsWithFilters = async ({ page, pageSize, sort, categoryId, search, minPrice, maxPrice, collaboratorId, includeCollaborator = false }) => {
+const getProductsWithFilters = async ({ page, pageSize, sort, categoryId, search, minPrice, maxPrice, collaboratorId, averageRating, includeCollaborator = false }) => {
     const offset = (page - 1) * pageSize;
 
     let order = [['product_id', 'ASC']];
     if (sort) {
         const sortParams = sort.split(',').map(param => param.trim().split(':'));
-        const validColumns = ['name', 'product_id', 'min_price', 'max_price', 'total_stock'];
+        const validColumns = ['name', 'product_id', 'min_price', 'max_price', 'total_stock', 'average_rating'];
         const validDirections = ['ASC', 'DESC'];
         order = sortParams.map(([column, direction]) => {
             if (!validColumns.includes(column)) throw new Error(`Columna de ordenamiento inválida: ${column}`);
             if (!direction || !validDirections.includes(direction.toUpperCase())) throw new Error(`Dirección de ordenamiento inválida: ${direction}`);
-            // Usar las columnas calculadas min_price y max_price directamente
-            if (column === 'min_price' || column === 'max_price') {
+            if (column === 'min_price' || column === 'max_price' || column === 'average_rating') {
                 return [column, direction.toUpperCase()];
             }
             return [column, direction.toUpperCase()];
@@ -51,6 +50,20 @@ const getProductsWithFilters = async ({ page, pageSize, sort, categoryId, search
     if (minPrice) variantWhereClause.calculated_price = { [Op.gte]: parseFloat(minPrice) };
     if (maxPrice) variantWhereClause.calculated_price = { ...variantWhereClause.calculated_price, [Op.lte]: parseFloat(maxPrice) };
     if (collaboratorId) whereClause.collaborator_id = parseInt(collaboratorId, 10);
+    if (averageRating !== undefined) {
+        const rating = parseInt(averageRating, 10);
+        if (![0, 1, 2, 3, 4, 5].includes(rating)) throw new Error('El filtro de calificación debe ser un número entero entre 0 y 5');
+        if (rating === 0) {
+            // Handle unrated products (null or 0)
+            whereClause.average_rating = { [Op.or]: [{ [Op.eq]: 0 }, { [Op.is]: null }] };
+        } else {
+            // Filter for ratings in the range [rating, rating + 1)
+            whereClause.average_rating = {
+                [Op.gte]: rating,
+                [Op.lt]: rating + 1
+            };
+        }
+    }
 
     if (search) {
         whereClause[Op.or] = [
@@ -66,6 +79,8 @@ const getProductsWithFilters = async ({ page, pageSize, sort, categoryId, search
             'product_id',
             'name',
             'product_type',
+            'average_rating',
+            'total_reviews',
             [Product.sequelize.fn('MIN', Product.sequelize.col('ProductVariants.calculated_price')), 'min_price'],
             [Product.sequelize.fn('MAX', Product.sequelize.col('ProductVariants.calculated_price')), 'max_price'],
             [Product.sequelize.fn('SUM', Product.sequelize.col('ProductVariants.stock')), 'total_stock'],
@@ -109,6 +124,8 @@ const formatProductList = async (products) => {
             variant_count: parseInt(product.get('variantCount')) || 0,
             image_url: firstVariant && firstVariant.ProductImages.length > 0 ? firstVariant.ProductImages[0].image_url : null,
             collaborator: product.Collaborator ? { id: product.Collaborator.collaborator_id, name: product.Collaborator.name } : null,
+            average_rating: product.average_rating ? parseFloat(parseFloat(product.average_rating).toFixed(2)) : 0,
+            total_reviews: product.total_reviews || 0,
         };
     }));
 };

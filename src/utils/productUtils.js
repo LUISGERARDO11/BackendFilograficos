@@ -18,8 +18,8 @@ const validatePagination = (page, pageSize) => {
 const parseQueryParams = (query) => {
     const page = parseInt(query.page, 10) || 1;
     const pageSize = parseInt(query.pageSize, 10) || 10;
-    const { sort, categoryId, search, minPrice, maxPrice, collaboratorId } = query;
-    return { page, pageSize, sort, categoryId, search, minPrice, maxPrice, collaboratorId };
+    const { sort, categoryId, search, minPrice, maxPrice, collaboratorId, averageRating } = query;
+    return { page, pageSize, sort, categoryId, search, minPrice, maxPrice, collaboratorId, averageRating };
 };
 
 const formatVariant = (variant) => {
