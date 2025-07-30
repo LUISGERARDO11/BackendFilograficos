@@ -1,6 +1,6 @@
 const { body, param, query, validationResult } = require('express-validator');
 const backupService = require('../services/backupService');
-const { BackupConfig, BackupLog } = require('../models/Associations');
+const { BackupConfig, BackupLog, BackupFiles} = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 
 // Validaciones para configurar respaldos
@@ -85,7 +85,7 @@ exports.configureBackup = [
         message: 'Configuración de respaldo actualizada',
         config: {
           ...updatedConfig.toJSON(),
-          data_types: updatedConfig.data_types // Ya es un arreglo gracias a DataTypes.JSON
+          data_types: updatedConfig.data_types
         }
       });
     } catch (error) {
@@ -174,7 +174,7 @@ exports.handleGoogleAuthCallback = [
 // Ejecutar respaldo manual
 exports.runBackup = [
   param('backup_type')
-    .isIn(['full', 'differential', 'transactional']) // Agregamos 'transactional'
+    .isIn(['full', 'differential', 'transactional'])
     .withMessage('El backup_type debe ser "full", "differential" o "transactional"'),
   async (req, res) => {
     const userId = req.user.user_id;
@@ -252,26 +252,69 @@ exports.restoreBackup = [
 exports.listBackups = [
   query('backup_type')
     .optional()
-    .isIn(['full', 'differential', 'transactional', 'static']) // Agregamos 'transactional'
+    .isIn(['full', 'differential', 'transactional', 'static'])
     .withMessage('El backup_type debe ser "full", "differential", "transactional" o "static"'),
+  query('page')
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage('La página debe ser un número entero positivo'),
+  query('pageSize')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('El tamaño de página debe ser un número entero entre 1 y 100'),
   async (req, res) => {
     const userId = req.user.user_id;
     const { backup_type } = req.query;
+    const page = parseInt(req.query.page) || 1;
+    const pageSize = parseInt(req.query.pageSize) || 20;
 
     try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Errores de validación',
+          errors: errors.array(),
+        });
+      }
+
       const where = backup_type ? { data_type: backup_type } : {};
-      const backups = await backupService.listBackups(where);
+      const { count, rows: backups } = await BackupLog.findAndCountAll({
+        where,
+        include: [{ model: BackupFiles, attributes: ['file_name', 'file_size', 'checksum'] }],
+        order: [['backup_datetime', 'DESC']],
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+      });
+
+      const formattedBackups = backups.map(backup => ({
+        backup_id: backup.backup_id,
+        backup_datetime: backup.backup_datetime,
+        data_type: backup.data_type,
+        location: backup.location,
+        file_size: backup.BackupFiles[0]?.file_size,
+        file_name: backup.BackupFiles[0]?.file_name,
+        checksum: backup.BackupFiles[0]?.checksum,
+        status: backup.status,
+        performed_by: backup.performed_by,
+      }));
 
       res.status(200).json({
         success: true,
-        backups
+        message: 'Respaldos obtenidos exitosamente',
+        data: {
+          backups: formattedBackups,
+          total: count,
+          page,
+          pageSize,
+        },
       });
     } catch (error) {
       loggerUtils.logCriticalError(error);
       res.status(500).json({
         success: false,
         message: 'Error al listar los respaldos',
-        error: error.message
+        error: error.message,
       });
     }
   }
