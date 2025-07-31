@@ -15,14 +15,14 @@ const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration'
 //Crear tipo de email 
 router.post('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,roleMiddleware(['administrador']), emailTypeController.createEmailType);
 
+// Obtener todos los tipos activos con paginacion
+router.get('/pag', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), emailTypeController.getEmailTypes);
+
 // Obtener tipo por ID
 router.get('/:id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), emailTypeController.getEmailTypeById);
 
 // Obtener todos los tipos activos
 router.get('/', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), emailTypeController.getAllEmailTypes);
-
-// Obtener todos los tipos activos con paginacion
-router.get('/pag', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), emailTypeController.getEmailTypes);
 
 // Actualizar tipo de email
 router.put('/:id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration,  roleMiddleware(['administrador']), emailTypeController.updateEmailType);
