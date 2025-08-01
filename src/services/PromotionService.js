@@ -381,12 +381,19 @@ class PromotionService {
    */
   async getPromotions({ where = {}, order = [['promotion_id', 'ASC']], page = 1, pageSize = 10 } = {}) {
     const offset = (page - 1) * pageSize;
+    
+    // Asegurar que where tenga los filtros correctos
+    const finalWhere = {
+      ...where,
+      status: 'active',
+      start_date: { [Op.lte]: new Date() },
+      end_date: { [Op.gte]: new Date() }
+    };
 
     const { count, rows } = await Promotion.findAndCountAll({
-      where,
+      where: finalWhere, // Usar los mismos filtros para count y rows
       include: [
-        { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id', 'sku'] },
-        { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id', 'name'] }
+        // ... tus includes
       ],
       order,
       limit: pageSize,

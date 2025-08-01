@@ -24,6 +24,14 @@ exports.logSecurityEvent = (userId, resource, action, message) => {
     });
 };
 
+exports.logInfo = (message) => {
+    logger.info({
+        message,
+        timestamp: moment().tz('UTC').toISOString() // Almacenar en UTC
+    });
+};
+
+
 // Función para registrar errores críticos
 exports.logCriticalError = (error) => {
     logger.error({
