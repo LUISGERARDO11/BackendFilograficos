@@ -2,7 +2,7 @@ const { Op } = require('sequelize');
 const { body, query, validationResult } = require('express-validator');
 const PromotionService = require('../services/PromotionService');
 const loggerUtils = require('../utils/loggerUtils');
-const { Product, ProductVariant, ProductImage, Cart, CartDetail, CouponUsage, Coupon } = require('../models/Associations');
+const { Product, ProductVariant, ProductImage, Cart, CartDetail, CouponUsage, Coupon, Promotion, PromotionProduct, PromotionCategory, Category } = require('../models/Associations');
 
 const promotionService = new PromotionService();
 
@@ -11,7 +11,8 @@ const validateGetAllPromotions = [
   query('page').optional().isInt({ min: 1 }).withMessage('La página debe ser un número entero positivo.'),
   query('pageSize').optional().isInt({ min: 1 }).withMessage('El tamaño de página debe ser un número entero positivo.'),
   query('sort').optional().isString().withMessage('El parámetro sort debe ser una cadena (ej. "promotion_id:ASC,start_date:DESC").'),
-  query('search').optional().isString().withMessage('El término de búsqueda debe ser una cadena.')
+  query('search').optional().isString().withMessage('El término de búsqueda debe ser una cadena.'),
+  query('statusFilter').optional().isIn(['current', 'future', 'expired', 'all']).withMessage('El filtro de estado debe ser "current", "future", "expired" o "all".')
 ];
 
 // Validations for createPromotion
@@ -158,7 +159,7 @@ exports.createPromotion = [
           promotion_id: newPromotion.promotion_id,
           name: newPromotion.name,
           coupon_type: newPromotion.coupon_type,
-          discount_value: newPromotion.discount_value,
+          discount_value: parseFloat(newPromotion.discount_value),
           max_uses: newPromotion.max_uses,
           max_uses_per_user: newPromotion.max_uses_per_user,
           min_order_value: newPromotion.min_order_value,
@@ -187,7 +188,7 @@ exports.getAllPromotions = [
         return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
       }
 
-      const { search, page: pageParam = 1, pageSize: pageSizeParam = 10, sort } = req.query;
+      const { search, page: pageParam = 1, pageSize: pageSizeParam = 10, sort, statusFilter = 'all' } = req.query;
       const page = parseInt(pageParam);
       const pageSize = parseInt(pageSizeParam);
       const isAdmin = req.user.user_type.includes('administrador');
@@ -196,7 +197,8 @@ exports.getAllPromotions = [
         return res.status(400).json({ message: 'Parámetros de paginación inválidos' });
       }
 
-      const where = { status: 'active', start_date: { [Op.lte]: new Date() }, end_date: { [Op.gte]: new Date() } };
+      const now = new Date();
+      const where = { status: 'active' };
       if (search) {
         where[Op.or] = [
           { name: { [Op.like]: `%${search}%` } },
@@ -205,6 +207,18 @@ exports.getAllPromotions = [
         ];
         if (!isNaN(parseFloat(search))) {
           where[Op.or].push({ discount_value: { [Op.between]: [parseFloat(search) - 0.01, parseFloat(search) + 0.01] } });
+        }
+      }
+
+      // Aplicar filtro de estado
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'current') {
+          where.start_date = { [Op.lte]: now };
+          where.end_date = { [Op.gte]: now };
+        } else if (statusFilter === 'future') {
+          where.start_date = { [Op.gt]: now };
+        } else if (statusFilter === 'expired') {
+          where.end_date = { [Op.lt]: now };
         }
       }
 
@@ -220,32 +234,48 @@ exports.getAllPromotions = [
         order,
         page,
         pageSize,
-        include: [{ model: Coupon, attributes: ['code'] }]
+        include: [
+          { model: Coupon, attributes: ['code'] },
+          { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id', 'sku'] },
+          { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id', 'name'] }
+        ]
       });
 
-      const formattedPromotions = promotions.map(promo => ({
-        promotion_id: promo.promotion_id,
-        name: promo.name,
-        coupon_type: promo.coupon_type,
-        discount_value: promo.discount_value,
-        max_uses: promo.max_uses,
-        max_uses_per_user: promo.max_uses_per_user,
-        min_order_value: promo.min_order_value,
-        free_shipping_enabled: promo.free_shipping_enabled,
-        applies_to: promo.applies_to,
-        is_exclusive: promo.is_exclusive,
-        start_date: promo.start_date,
-        end_date: promo.end_date,
-        coupon_code: promo.Coupon?.code || null,
-        ...(isAdmin && {
-          created_by: promo.created_by,
-          created_at: promo.created_at,
-          updated_by: promo.updated_by,
-          updated_at: promo.updated_at,
-          product_variants_count: promo.ProductVariants ? promo.ProductVariants.length : 0,
-          category_count: promo.Categories ? promo.Categories.length : 0
-        })
-      }));
+      const formattedPromotions = promotions.map(promo => {
+        const startDate = new Date(promo.start_date);
+        const endDate = new Date(promo.end_date);
+        let statusType = 'current';
+        if (startDate > now) {
+          statusType = 'future';
+        } else if (endDate < now) {
+          statusType = 'expired';
+        }
+
+        return {
+          promotion_id: promo.promotion_id,
+          name: promo.name,
+          coupon_type: promo.coupon_type,
+          discount_value: parseFloat(promo.discount_value),
+          max_uses: promo.max_uses,
+          max_uses_per_user: promo.max_uses_per_user,
+          min_order_value: promo.min_order_value,
+          free_shipping_enabled: promo.free_shipping_enabled,
+          applies_to: promo.applies_to,
+          is_exclusive: promo.is_exclusive,
+          start_date: promo.start_date,
+          end_date: promo.end_date,
+          coupon_code: promo.Coupon?.code || null,
+          status_type: statusType,
+          ...(isAdmin && {
+            created_by: promo.created_by,
+            created_at: promo.created_at,
+            updated_by: promo.updated_by,
+            updated_at: promo.updated_at,
+            product_variants_count: promo.ProductVariants ? promo.ProductVariants.length : 0,
+            category_count: promo.Categories ? promo.Categories.length : 0
+          })
+        };
+      });
 
       res.status(200).json({
         message: 'Promociones obtenidas exitosamente',
@@ -275,7 +305,7 @@ exports.getPromotionById = async (req, res) => {
       promotion_id: promotion.promotion_id,
       name: promotion.name,
       coupon_type: promotion.coupon_type,
-      discount_value: promotion.discount_value,
+      discount_value: parseFloat(promotion.discount_value),
       max_uses: promotion.max_uses,
       max_uses_per_user: promotion.max_uses_per_user,
       min_order_value: promotion.min_order_value,
@@ -335,7 +365,7 @@ exports.updatePromotion = [
           promotion_id: promotion.promotion_id,
           name: promotion.name,
           coupon_type: promotion.coupon_type,
-          discount_value: promotion.discount_value,
+          discount_value: parseFloat(promotion.discount_value),
           max_uses: promotion.max_uses,
           max_uses_per_user: promotion.max_uses_per_user,
           min_order_value: promotion.min_order_value,
@@ -365,7 +395,7 @@ exports.deletePromotion = async (req, res) => {
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al desactivar la promoción', error: error.message });
-    }
+  }
 };
 
 // Aplicar una promoción o cupón al carrito
@@ -503,7 +533,7 @@ exports.applyPromotion = [
           promotion_id: selectedPromotion.promotion_id,
           name: selectedPromotion.name,
           coupon_type: selectedPromotion.coupon_type,
-          discount_value: selectedPromotion.discount_value,
+          discount_value: parseFloat(selectedPromotion.discount_value),
           coupon_code: selectedPromotion.coupon_code || null
         },
         promotion_progress: progress
@@ -564,7 +594,7 @@ exports.getAvailablePromotions = async (req, res) => {
         promotion_id: promo.promotion_id,
         name: promo.name,
         coupon_type: promo.coupon_type,
-        discount_value: parseFloat(promo.discount_value).toFixed(2),
+        discount_value: parseFloat(promo.discount_value),
         is_applicable: promotions.some(p => p.promotion_id === promo.promotion_id),
         coupon_code: promo.Coupon?.code || null,
         progress_message: progress.message
@@ -578,10 +608,10 @@ exports.getAvailablePromotions = async (req, res) => {
         promotion_id: p.promotion_id,
         name: p.name,
         coupon_type: p.coupon_type,
-        discount_value: parseFloat(p.discount_value).toFixed(2),
+        discount_value: parseFloat(p.discount_value),
         coupon_code: p.coupon_code || null
       })),
-      promotionProgress // Fixed typo from promotion_progress to promotionProgress
+      promotionProgress
     });
   } catch (error) {
     await transaction.rollback();

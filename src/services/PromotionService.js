@@ -105,7 +105,7 @@ class PromotionService {
           promotion_id: promotion.promotion_id,
           name: promotion.name,
           coupon_type: promotion.coupon_type,
-          discount_value: promotion.discount_value,
+          discount_value: parseFloat(promotion.discount_value),
           applies_to: promotion.applies_to,
           is_exclusive: promotion.is_exclusive,
           free_shipping_enabled: promotion.free_shipping_enabled,
@@ -169,7 +169,6 @@ class PromotionService {
       attributes: ['variant_id'],
       transaction
     });
-    console.log('PromotionProduct.findAll result:', variantResults); // Debugging
     const variantIds = Array.isArray(variantResults) ? variantResults.map(p => p.variant_id) : [];
 
     const categoryResults = await PromotionCategory.findAll({
@@ -177,7 +176,6 @@ class PromotionService {
       attributes: ['category_id'],
       transaction
     });
-    console.log('PromotionCategory.findAll result:', categoryResults); // Debugging
     const categoryIds = Array.isArray(categoryResults) ? categoryResults.map(c => c.category_id) : [];
 
     return cartDetails.some(detail => (
@@ -200,7 +198,7 @@ class PromotionService {
   async applyPromotions(cartDetails, promotions, userId, cartId, couponCode = null, transaction = null) {
     let totalDiscount = 0;
     let shippingCost = 0;
-    let validCouponCode = null; // Track valid coupon code
+    let validCouponCode = null;
     const updatedOrderDetails = cartDetails.map(detail => ({ ...detail, discount_applied: 0 }));
 
     let coupon = null;
@@ -211,10 +209,9 @@ class PromotionService {
         transaction
       });
       if (!coupon) {
-        // Don't throw error, just skip coupon application
         console.warn(`Coupon code ${couponCode} is invalid or inactive`);
       } else {
-        validCouponCode = couponCode; // Only set if coupon is valid
+        validCouponCode = couponCode;
       }
     }
 
@@ -224,7 +221,6 @@ class PromotionService {
         attributes: ['variant_id'],
         transaction
       });
-      console.log('PromotionProduct.findAll result:', variantResults);
       const variantIds = Array.isArray(variantResults) ? variantResults.map(p => p.variant_id) : [];
 
       const categoryResults = await PromotionCategory.findAll({
@@ -232,7 +228,6 @@ class PromotionService {
         attributes: ['category_id'],
         transaction
       });
-      console.log('PromotionCategory.findAll result:', categoryResults);
       const categoryIds = Array.isArray(categoryResults) ? categoryResults.map(c => c.category_id) : [];
 
       for (const detail of updatedOrderDetails) {
@@ -271,7 +266,6 @@ class PromotionService {
       detail.discount_applied = Math.min(detail.discount_applied, detail.subtotal);
     }
 
-    // Only update coupon_code if it's valid
     await Cart.update(
       { total_discount: totalDiscount, coupon_code: validCouponCode },
       { where: { cart_id: cartId }, transaction }
@@ -413,26 +407,17 @@ class PromotionService {
    * @param {Object|null} transaction - Transacción de Sequelize (opcional).
    * @returns {Object} Promociones y conteo total.
    */
-  async getPromotions({ where = {}, order = [['promotion_id', 'ASC']], page = 1, pageSize = 10 } = {}, transaction = null) {
+  async getPromotions({ where = {}, order = [['promotion_id', 'ASC']], page = 1, pageSize = 10, include = [] } = {}, transaction = null) {
     const offset = (page - 1) * pageSize;
     
-    const finalWhere = {
-      ...where,
-      status: 'active',
-      start_date: { [Op.lte]: new Date() },
-      end_date: { [Op.gte]: new Date() }
-    };
-
     const { count, rows } = await Promotion.findAndCountAll({
-      where: finalWhere,
-      include: [
-        { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id', 'sku'] },
-        { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id', 'name'] },
-        { model: Coupon, attributes: ['coupon_id', 'code', 'status'] }
-      ],
+      where,
+      include,
       order,
       limit: pageSize,
       offset,
+      distinct: true, // Ensure distinct counting on promotion_id
+      col: 'promotion_id', // Count distinct promotion_id
       transaction
     });
 
