@@ -8,35 +8,39 @@ const Promotion = sequelize.define('Promotion', {
     autoIncrement: true,
     allowNull: false
   },
-  name: { // Nuevo campo para identificar la promoción fácilmente
+  name: {
     type: DataTypes.STRING(100),
     allowNull: false
   },
-  promotion_type: {
-    type: DataTypes.ENUM('quantity_discount', 'order_count_discount', 'unit_discount'), // Tipos genéricos
+  coupon_type: {
+    type: DataTypes.ENUM('percentage_discount', 'fixed_discount', 'free_shipping'),
     allowNull: false
   },
   discount_value: {
-    type: DataTypes.DECIMAL(5, 2), // Porcentaje o valor fijo (10% = 10.00)
+    type: DataTypes.DECIMAL(5, 2),
     allowNull: false
   },
-  min_quantity: { // Cantidad mínima de productos/unidades
+  max_uses: {
     type: DataTypes.INTEGER,
     allowNull: true
   },
-  min_order_count: { // Cantidad mínima de pedidos previos
+  max_uses_per_user: {
     type: DataTypes.INTEGER,
     allowNull: true
   },
-  min_unit_measure: { // Para metros (DTF UV)
+  min_order_value: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true
   },
-  applies_to: { // Qué afecta la promoción
+  free_shipping_enabled: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  applies_to: {
     type: DataTypes.ENUM('specific_products', 'specific_categories', 'all'),
     allowNull: false
   },
-  is_exclusive: { // No acumulable con otras promociones
+  is_exclusive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true
   },

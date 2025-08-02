@@ -79,5 +79,4 @@ router.delete(
   promotionController.deletePromotion
 );
 
-
 module.exports = router;

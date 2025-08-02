@@ -1,78 +1,119 @@
-/* The `PromotionService` class contains methods for managing promotions, checking their applicability,
-applying discounts, creating, updating, and deleting promotions in an e-commerce system. */
 const { Op } = require('sequelize');
-const { Promotion, Order, PromotionProduct, PromotionCategory, ProductVariant, Product, Category } = require('../models/Associations');
+const { Promotion, Coupon, CouponUsage, Order, PromotionProduct, PromotionCategory, ProductVariant, Product, Category, Cart } = require('../models/Associations');
 
 class PromotionService {
   /**
-   * Obtiene todas las promociones aplicables al carrito del usuario con detalles por ítem.
-   * @param {Array} cartDetails - Detalles del carrito (variant_id, quantity, unit_measure, subtotal, category_id).
+   * Obtiene todas las promociones y cupones aplicables al carrito del usuario con detalles por ítem.
+   * @param {Array} cartDetails - Detalles del carrito (variant_id, quantity, subtotal, category_id).
    * @param {number} userId - ID del usuario autenticado.
-   * @returns {Array} Promociones aplicables con ítems asociados.
+   * @param {string|null} couponCode - Código de cupón opcional.
+   * @param {Object|null} transaction - Transacción de Sequelize (opcional).
+   * @returns {Array} Promociones/cupones aplicables con ítems asociados.
    */
-  async getApplicablePromotions(cartDetails, userId) {
+  async getApplicablePromotions(cartDetails, userId, couponCode = null, transaction = null) {
     const now = new Date();
-    const promotions = await Promotion.findAll({
-      where: {
-        status: 'active',
-        start_date: { [Op.lte]: now },
-        end_date: { [Op.gte]: now }
-      },
-      include: [
-        { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id'] },
-        { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id'] }
-      ]
-    });
+    const whereClause = {
+      status: 'active',
+      start_date: { [Op.lte]: now },
+      end_date: { [Op.gte]: now }
+    };
+
+    let promotions = [];
+    let coupon = null;
+
+    if (couponCode) {
+      coupon = await Coupon.findOne({
+        where: { code: couponCode, status: 'active' },
+        include: [
+          {
+            model: Promotion,
+            where: whereClause,
+            include: [
+              { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id'] },
+              { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id'] }
+            ]
+          }
+        ],
+        transaction
+      });
+      if (coupon && coupon.Promotion) {
+        promotions = [coupon.Promotion];
+      }
+    } else {
+      promotions = await Promotion.findAll({
+        where: whereClause,
+        include: [
+          { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id'] },
+          { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id'] }
+        ],
+        transaction
+      });
+    }
 
     const applicablePromotions = [];
+    const cartTotal = cartDetails.reduce((sum, detail) => sum + detail.subtotal, 0);
 
     for (const promotion of promotions) {
-      const variantIds = promotion.ProductVariants.map(v => v.variant_id);
-      const categoryIds = promotion.Categories.map(c => c.category_id);
+      const variantIds = Array.isArray(promotion.ProductVariants)
+        ? promotion.ProductVariants.map(v => v.variant_id)
+        : [];
+      const categoryIds = Array.isArray(promotion.Categories)
+        ? promotion.Categories.map(c => c.category_id)
+        : [];
       let applicableItems = [];
       let isEligible = false;
 
-      if (promotion.promotion_type === 'order_count_discount') {
-        // Para order_count_discount, verificar solo el conteo de pedidos
-        const orderCount = await this.countOrders(userId);
-        isEligible = orderCount >= (promotion.min_order_count || 0);
-        // Incluir todos los ítems del carrito si es elegible, ya que aplica al total
-        if (isEligible) {
-          applicableItems = cartDetails;
-        }
-      } else {
-        // Para otros tipos de promociones, verificar ítems del carrito
-        applicableItems = cartDetails.filter(detail => {
-          const isItemEligible =
-            (promotion.applies_to === 'all') ||
-            (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
-            (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id));
-
-          if (!isItemEligible) return false;
-
-          if (promotion.promotion_type === 'quantity_discount') {
-            return detail.quantity >= (promotion.min_quantity || 0);
-          } else if (promotion.promotion_type === 'unit_discount') {
-            return detail.unit_measure >= (promotion.min_unit_measure || 0);
-          }
-          return false;
-        });
-        isEligible = applicableItems.length > 0;
+      // Validar restricciones de la promoción
+      if (promotion.min_order_value && cartTotal < promotion.min_order_value) {
+        continue;
       }
+
+      // Verificar usos máximos por usuario si aplica un cupón
+      if (couponCode && promotion.max_uses_per_user) {
+        const usageCount = await CouponUsage.count({
+          where: { user_id: userId, promotion_id: promotion.promotion_id, coupon_id: coupon?.coupon_id },
+          transaction
+        });
+        if (usageCount >= promotion.max_uses_per_user) {
+          continue;
+        }
+      }
+
+      // Verificar usos máximos totales si aplica un cupón
+      if (couponCode && promotion.max_uses) {
+        const totalUsage = await CouponUsage.count({
+          where: { promotion_id: promotion.promotion_id, coupon_id: coupon?.coupon_id },
+          transaction
+        });
+        if (totalUsage >= promotion.max_uses) {
+          continue;
+        }
+      }
+
+      // Verificar ítems aplicables
+      applicableItems = cartDetails.filter(detail => {
+        return (
+          (promotion.applies_to === 'all') ||
+          (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
+          (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id))
+        );
+      });
+      isEligible = applicableItems.length > 0 || promotion.applies_to === 'all';
 
       if (isEligible) {
         applicablePromotions.push({
           promotion_id: promotion.promotion_id,
           name: promotion.name,
-          promotion_type: promotion.promotion_type,
+          coupon_type: promotion.coupon_type,
           discount_value: promotion.discount_value,
           applies_to: promotion.applies_to,
           is_exclusive: promotion.is_exclusive,
-          min_order_count: promotion.min_order_count,
+          free_shipping_enabled: promotion.free_shipping_enabled,
+          coupon_code: couponCode || null,
           applicable_items: applicableItems.map(item => ({
             variant_id: item.variant_id,
             quantity: item.quantity,
-            unit_measure: item.unit_measure
+            subtotal: item.subtotal
           }))
         });
       }
@@ -88,73 +129,111 @@ class PromotionService {
    * @param {Object} promotion - Promoción.
    * @param {Array} cartDetails - Detalles del carrito.
    * @param {number} userId - ID del usuario.
-   * @returns {boolean} True si la promoción es aplicable.
+   * @param {string|null} couponCode - Código de cupón opcional.
+   * @param {Object|null} transaction - Transacción de Sequelize (opcional).
+   * @returns {boolean} True si la promoción/cupón es aplicable.
    */
-  async isPromotionApplicable(promotion, cartDetails, userId) {
-    switch (promotion.promotion_type) {
-      case 'quantity_discount':
-        return await this.checkQuantityDiscount(promotion, cartDetails);
-      case 'order_count_discount':
-        return await this.checkOrderCountDiscount(promotion, userId);
-      case 'unit_discount':
-        return await this.checkUnitDiscount(promotion, cartDetails);
-      default:
-        return false;
+  async isPromotionApplicable(promotion, cartDetails, userId, couponCode = null, transaction = null) {
+    const cartTotal = cartDetails.reduce((sum, detail) => sum + detail.subtotal, 0);
+    if (promotion.min_order_value && cartTotal < promotion.min_order_value) {
+      return false;
     }
+
+    if (couponCode) {
+      const coupon = await Coupon.findOne({
+        where: { code: couponCode, status: 'active' },
+        include: [{ model: Promotion, where: { promotion_id: promotion.promotion_id } }],
+        transaction
+      });
+      if (!coupon) return false;
+
+      if (promotion.max_uses_per_user) {
+        const usageCount = await CouponUsage.count({
+          where: { user_id: userId, promotion_id: promotion.promotion_id, coupon_id: coupon.coupon_id },
+          transaction
+        });
+        if (usageCount >= promotion.max_uses_per_user) return false;
+      }
+
+      if (promotion.max_uses) {
+        const totalUsage = await CouponUsage.count({
+          where: { promotion_id: promotion.promotion_id, coupon_id: coupon.coupon_id },
+          transaction
+        });
+        if (totalUsage >= promotion.max_uses) return false;
+      }
+    }
+
+    const variantResults = await PromotionProduct.findAll({
+      where: { promotion_id: promotion.promotion_id },
+      attributes: ['variant_id'],
+      transaction
+    });
+    console.log('PromotionProduct.findAll result:', variantResults); // Debugging
+    const variantIds = Array.isArray(variantResults) ? variantResults.map(p => p.variant_id) : [];
+
+    const categoryResults = await PromotionCategory.findAll({
+      where: { promotion_id: promotion.promotion_id },
+      attributes: ['category_id'],
+      transaction
+    });
+    console.log('PromotionCategory.findAll result:', categoryResults); // Debugging
+    const categoryIds = Array.isArray(categoryResults) ? categoryResults.map(c => c.category_id) : [];
+
+    return cartDetails.some(detail => (
+      (promotion.applies_to === 'all') ||
+      (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
+      (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id))
+    ));
   }
 
   /**
-   * Verifica si aplica un descuento por cantidad.
-   * @param {Object} promotion - Promoción.
+   * Aplica descuentos de promociones o cupones a los detalles del carrito.
    * @param {Array} cartDetails - Detalles del carrito.
-   * @returns {boolean} True si la cantidad total es suficiente.
-   */
-  async checkQuantityDiscount(promotion, cartDetails) {
-    const totalQuantity = await this.getTotalQuantityEligible(promotion, cartDetails);
-    return totalQuantity >= (promotion.min_quantity || 0);
-  }
-
-  /**
-   * Verifica si aplica un descuento por número de pedidos.
-   * @param {Object} promotion - Promoción.
+   * @param {Array} promotions - Promociones/cupones a aplicar.
    * @param {number} userId - ID del usuario.
-   * @returns {boolean} True si el número de pedidos es suficiente.
+   * @param {number} cartId - ID del carrito.
+   * @param {string|null} couponCode - Código de cupón opcional.
+   * @param {Object|null} transaction - Transacción de Sequelize (opcional).
+   * @returns {Object} Detalles actualizados, descuento total y costo de envío.
    */
-  async checkOrderCountDiscount(promotion, userId) {
-    const orderCount = await this.countOrders(userId);
-    return orderCount >= (promotion.min_order_count || 0);
-  }
-
-  /**
-   * Verifica si aplica un descuento por unidades (metros).
-   * @param {Object} promotion - Promoción.
-   * @param {Array} cartDetails - Detalles del carrito.
-   * @returns {boolean} True si la medida total es suficiente.
-   */
-  async checkUnitDiscount(promotion, cartDetails) {
-    const totalUnits = await this.getTotalUnitsEligible(promotion, cartDetails);
-    return totalUnits >= (promotion.min_unit_measure || 0);
-  }
-
-  /**
-   * Aplica descuentos de promociones a los detalles del carrito.
-   * @param {Array} cartDetails - Detalles del carrito.
-   * @param {Array} promotions - Promociones a aplicar.
-   * @returns {Object} Detalles actualizados y descuento total.
-   */
-  async applyPromotions(cartDetails, promotions) {
+  async applyPromotions(cartDetails, promotions, userId, cartId, couponCode = null, transaction = null) {
     let totalDiscount = 0;
+    let shippingCost = 0;
+    let validCouponCode = null; // Track valid coupon code
     const updatedOrderDetails = cartDetails.map(detail => ({ ...detail, discount_applied: 0 }));
 
+    let coupon = null;
+    if (couponCode) {
+      coupon = await Coupon.findOne({
+        where: { code: couponCode, status: 'active' },
+        include: [{ model: Promotion }],
+        transaction
+      });
+      if (!coupon) {
+        // Don't throw error, just skip coupon application
+        console.warn(`Coupon code ${couponCode} is invalid or inactive`);
+      } else {
+        validCouponCode = couponCode; // Only set if coupon is valid
+      }
+    }
+
     for (const promotion of promotions) {
-      const variantIds = await PromotionProduct.findAll({
+      const variantResults = await PromotionProduct.findAll({
         where: { promotion_id: promotion.promotion_id },
-        attributes: ['variant_id']
-      }).map(p => p.variant_id);
-      const categoryIds = await PromotionCategory.findAll({
+        attributes: ['variant_id'],
+        transaction
+      });
+      console.log('PromotionProduct.findAll result:', variantResults);
+      const variantIds = Array.isArray(variantResults) ? variantResults.map(p => p.variant_id) : [];
+
+      const categoryResults = await PromotionCategory.findAll({
         where: { promotion_id: promotion.promotion_id },
-        attributes: ['category_id']
-      }).map(c => c.category_id);
+        attributes: ['category_id'],
+        transaction
+      });
+      console.log('PromotionCategory.findAll result:', categoryResults);
+      const categoryIds = Array.isArray(categoryResults) ? categoryResults.map(c => c.category_id) : [];
 
       for (const detail of updatedOrderDetails) {
         const isEligible =
@@ -164,30 +243,41 @@ class PromotionService {
 
         if (!isEligible) continue;
 
-        let isApplicable = false;
-        if (promotion.promotion_type === 'quantity_discount' && detail.quantity >= (promotion.min_quantity || 0)) {
-          isApplicable = true;
-        } else if (promotion.promotion_type === 'unit_discount' && detail.unit_measure >= (promotion.min_unit_measure || 0)) {
-          isApplicable = true;
-        } else if (promotion.promotion_type === 'order_count_discount' && promotion.min_order_count) {
-          const orderCount = await this.countOrders(detail.user_id || userId);
-          isApplicable = orderCount >= promotion.min_order_count;
+        let discount = 0;
+        if (promotion.coupon_type === 'percentage_discount') {
+          discount = detail.subtotal * (promotion.discount_value / 100);
+        } else if (promotion.coupon_type === 'fixed_discount') {
+          discount = Math.min(promotion.discount_value, detail.subtotal);
+        } else if (promotion.coupon_type === 'free_shipping' && promotion.free_shipping_enabled) {
+          shippingCost = 0;
         }
 
-        if (isApplicable) {
-          const discount = detail.subtotal * (promotion.discount_value / 100);
-          detail.discount_applied = (detail.discount_applied || 0) + discount;
-          totalDiscount += discount;
-        }
+        detail.discount_applied = (detail.discount_applied || 0) + discount;
+        totalDiscount += discount;
+      }
+
+      if (validCouponCode && coupon) {
+        await CouponUsage.create({
+          promotion_id: promotion.promotion_id,
+          coupon_id: coupon.coupon_id,
+          user_id: userId,
+          cart_id: cartId,
+          applied_at: new Date()
+        }, { transaction });
       }
     }
 
-    // Asegurar que el descuento no exceda el subtotal
     for (const detail of updatedOrderDetails) {
       detail.discount_applied = Math.min(detail.discount_applied, detail.subtotal);
     }
 
-    return { updatedOrderDetails, totalDiscount };
+    // Only update coupon_code if it's valid
+    await Cart.update(
+      { total_discount: totalDiscount, coupon_code: validCouponCode },
+      { where: { cart_id: cartId }, transaction }
+    );
+
+    return { updatedOrderDetails, totalDiscount, shippingCost, validCouponCode };
   }
 
   /**
@@ -195,167 +285,99 @@ class PromotionService {
    * @param {Object} promotion - Promoción.
    * @param {number} variantId - ID de la variante.
    * @param {number} categoryId - ID de la categoría.
+   * @param {Object|null} transaction - Transacción de Sequelize (opcional).
    * @returns {boolean} True si la variante es elegible.
    */
-  async isVariantEligible(promotion, variantId, categoryId) {
+  async isVariantEligible(promotion, variantId, categoryId, transaction = null) {
     if (promotion.applies_to === 'all') return true;
     if (promotion.applies_to === 'specific_products') {
-      const promoProduct = await PromotionProduct.findOne({ 
-        where: { promotion_id: promotion.promotion_id, variant_id: variantId } 
+      const promoProduct = await PromotionProduct.findOne({
+        where: { promotion_id: promotion.promotion_id, variant_id: variantId },
+        transaction
       });
       return !!promoProduct;
     }
     if (promotion.applies_to === 'specific_categories') {
-      const categoryIds = await PromotionCategory.findAll({
+      const categoryResults = await PromotionCategory.findAll({
         where: { promotion_id: promotion.promotion_id },
-        attributes: ['category_id']
-      }).map(c => c.category_id);
+        attributes: ['category_id'],
+        transaction
+      });
+      const categoryIds = Array.isArray(categoryResults) ? categoryResults.map(c => c.category_id) : [];
       return categoryIds.includes(categoryId);
     }
     return false;
   }
 
   /**
-   * Genera un mensaje indicando el progreso hacia una promoción.
+   * Genera un mensaje indicando el progreso hacia una promoción o cupón.
    * @param {Object} promotion - Promoción.
    * @param {Array} cartDetails - Detalles del carrito.
    * @param {number} userId - ID del usuario.
+   * @param {string|null} couponCode - Código de cupón opcional.
+   * @param {Object|null} transaction - Transacción de Sequelize (opcional).
    * @returns {Object} Mensaje de progreso.
    */
-  async getPromotionProgress(promotion, cartDetails, userId) {
+  async getPromotionProgress(promotion, cartDetails, userId, couponCode = null, transaction = null) {
     let message = '';
-    const isEligible = await this.isPromotionApplicable(promotion, cartDetails, userId);
+    const isEligible = await this.isPromotionApplicable(promotion, cartDetails, userId, couponCode, transaction);
+    const cartTotal = cartDetails.reduce((sum, detail) => sum + detail.subtotal, 0);
 
-    if (promotion.promotion_type === 'quantity_discount') {
-      const totalQuantity = await this.getTotalQuantityEligible(promotion, cartDetails);
-      const remaining = (promotion.min_quantity || 0) - totalQuantity;
-      if (remaining > 0) {
-        message = `Te faltan ${remaining} productos para obtener un ${promotion.discount_value}% de descuento (Compra ≥${promotion.min_quantity} piezas).`;
-      } else {
-        message = `¡Promoción válida! Aplica un ${promotion.discount_value}% por comprar ${totalQuantity} piezas (≥${promotion.min_quantity}).`;
-      }
-    } else if (promotion.promotion_type === 'order_count_discount') {
-      const orderCount = await this.countOrders(userId);
-      const remaining = (promotion.min_order_count || 0) - orderCount;
-      if (remaining > 0) {
-        message = `Te faltan ${remaining} pedidos completados para obtener un ${promotion.discount_value}% de descuento (≥${promotion.min_order_count} pedidos).`;
-      } else {
-        message = `¡Promoción válida! Este es tu ${orderCount}º pedido, aplica un ${promotion.discount_value}% de descuento.`;
-      }
-    } else if (promotion.promotion_type === 'unit_discount') {
-      const totalUnits = await this.getTotalUnitsEligible(promotion, cartDetails);
-      const remaining = (promotion.min_unit_measure || 0) - totalUnits;
-      if (remaining > 0) {
-        message = `Te faltan ${remaining.toFixed(2)} metros para obtener un ${promotion.discount_value}% de descuento (≥${promotion.min_unit_measure} metros).`;
-      } else {
-        message = `¡Promoción válida! Aplica un ${promotion.discount_value}% por comprar ${totalUnits.toFixed(2)} metros (≥${promotion.min_unit_measure}).`;
-      }
+    if (!isEligible && promotion.min_order_value && cartTotal < promotion.min_order_value) {
+      const remaining = promotion.min_order_value - cartTotal;
+      message = `Te faltan $${remaining.toFixed(2)} en tu carrito para aplicar ${couponCode ? `el cupón ${couponCode}` : 'la promoción'}.`;
+    } else if (promotion.coupon_type === 'percentage_discount') {
+      message = isEligible
+        ? `¡${couponCode ? `Cupón ${couponCode}` : 'Promoción'} válida! Aplica un ${promotion.discount_value}% de descuento.`
+        : `El ${couponCode ? `cupón ${couponCode}` : 'promoción'} no es aplicable a los ítems en tu carrito.`;
+    } else if (promotion.coupon_type === 'fixed_discount') {
+      message = isEligible
+        ? `¡${couponCode ? `Cupón ${couponCode}` : 'Promoción'} válida! Aplica un descuento fijo de $${promotion.discount_value}.`
+        : `El ${couponCode ? `cupón ${couponCode}` : 'promoción'} no es aplicable a los ítems en tu carrito.`;
+    } else if (promotion.coupon_type === 'free_shipping') {
+      message = isEligible
+        ? `¡${couponCode ? `Cupón ${couponCode}` : 'Promoción'} válida! Obtén envío gratis.`
+        : `El ${couponCode ? `cupón ${couponCode}` : 'promoción'} no es aplicable a los ítems en tu carrito.`;
     }
 
     return { message, is_eligible: isEligible };
   }
 
   /**
-   * Calcula la cantidad total de ítems elegibles para una promoción.
-   * @param {Object} promotion - Promoción.
-   * @param {Array} cartDetails - Detalles del carrito.
-   * @returns {number} Cantidad total.
-   */
-  async getTotalQuantityEligible(promotion, cartDetails) {
-    const variantIds = await PromotionProduct.findAll({
-      where: { promotion_id: promotion.promotion_id },
-      attributes: ['variant_id']
-    }).map(p => p.variant_id);
-
-    const categoryIds = await PromotionCategory.findAll({
-      where: { promotion_id: promotion.promotion_id },
-      attributes: ['category_id']
-    }).map(c => c.category_id);
-
-    return cartDetails.reduce((sum, detail) => {
-      if (
-        (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
-        (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id)) ||
-        promotion.applies_to === 'all'
-      ) {
-        return sum + detail.quantity;
-      }
-      return sum;
-    }, 0);
-  }
-
-  /**
-   * Calcula el número de pedidos completados por el usuario.
-   * @param {number} userId - ID del usuario.
-   * @returns {number} Número de pedidos.
-   */
-  async countOrders(userId) {
-    return await Order.count({
-      where: { user_id: userId, order_status: 'delivered' }
-    });
-  }
-
-  /**
-   * Calcula la medida total (metros) elegible para una promoción.
-   * @param {Object} promotion - Promoción.
-   * @param {Array} cartDetails - Detalles del carrito.
-   * @returns {number} Medida total.
-   */
-  async getTotalUnitsEligible(promotion, cartDetails) {
-    const variantIds = await PromotionProduct.findAll({
-      where: { promotion_id: promotion.promotion_id },
-      attributes: ['variant_id']
-    }).map(p => p.variant_id);
-
-    const categoryIds = await PromotionCategory.findAll({
-      where: { promotion_id: promotion.promotion_id },
-      attributes: ['category_id']
-    }).map(c => c.category_id);
-
-    return cartDetails.reduce((sum, detail) => {
-      if (
-        (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
-        (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id)) ||
-        promotion.applies_to === 'all'
-      ) {
-        return sum + (detail.unit_measure || 0);
-      }
-      return sum;
-    }, 0);
-  }
-
-  /**
-   * Crea una nueva promoción.
+   * Crea una nueva promoción y opcionalmente un cupón asociado.
    * @param {Object} promotionData - Datos de la promoción.
-   * @returns {Object} Promoción creada.
+   * @param {string|null} couponCode - Código de cupón opcional.
+   * @param {Object|null} transaction - Transacción de Sequelize (opcional).
+   * @returns {Object} Promoción y cupón creados.
    */
-  async createPromotion(promotionData) {
+  async createPromotion(promotionData, couponCode = null, transaction = null) {
     const { 
-      name, promotion_type, discount_value, min_quantity, min_order_count, min_unit_measure,
+      name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled,
       applies_to, is_exclusive, start_date, end_date, created_by, status, variantIds, categoryIds 
     } = promotionData;
 
     const promotion = await Promotion.create({
       name,
-      promotion_type,
+      coupon_type,
       discount_value,
-      min_quantity: promotion_type === 'quantity_discount' ? min_quantity : null,
-      min_order_count: promotion_type === 'order_count_discount' ? min_order_count : null,
-      min_unit_measure: promotion_type === 'unit_discount' ? min_unit_measure : null,
+      max_uses,
+      max_uses_per_user,
+      min_order_value,
+      free_shipping_enabled: coupon_type === 'free_shipping' ? free_shipping_enabled : false,
       applies_to,
       is_exclusive,
       start_date,
       end_date,
       created_by,
       status
-    });
+    }, { transaction });
 
     if (variantIds && variantIds.length > 0 && applies_to === 'specific_products') {
       const promotionProducts = variantIds.map(variant_id => ({
         promotion_id: promotion.promotion_id,
         variant_id
       }));
-      await PromotionProduct.bulkCreate(promotionProducts);
+      await PromotionProduct.bulkCreate(promotionProducts, { transaction });
     }
 
     if (categoryIds && categoryIds.length > 0 && applies_to === 'specific_categories') {
@@ -363,26 +385,37 @@ class PromotionService {
         promotion_id: promotion.promotion_id,
         category_id
       }));
-      await PromotionCategory.bulkCreate(promotionCategories);
+      await PromotionCategory.bulkCreate(promotionCategories, { transaction });
+    }
+
+    let coupon = null;
+    if (couponCode) {
+      coupon = await Coupon.create({
+        code: couponCode,
+        promotion_id: promotion.promotion_id,
+        status: 'active'
+      }, { transaction });
     }
 
     return await Promotion.findByPk(promotion.promotion_id, {
       include: [
         { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id', 'sku'] },
-        { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id', 'name'] }
-      ]
+        { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id', 'name'] },
+        { model: Coupon, attributes: ['coupon_id', 'code', 'status'] }
+      ],
+      transaction
     });
   }
 
   /**
    * Obtiene promociones con paginación y filtros.
    * @param {Object} options - Opciones de consulta (where, order, page, pageSize).
+   * @param {Object|null} transaction - Transacción de Sequelize (opcional).
    * @returns {Object} Promociones y conteo total.
    */
-  async getPromotions({ where = {}, order = [['promotion_id', 'ASC']], page = 1, pageSize = 10 } = {}) {
+  async getPromotions({ where = {}, order = [['promotion_id', 'ASC']], page = 1, pageSize = 10 } = {}, transaction = null) {
     const offset = (page - 1) * pageSize;
     
-    // Asegurar que where tenga los filtros correctos
     const finalWhere = {
       ...where,
       status: 'active',
@@ -391,13 +424,16 @@ class PromotionService {
     };
 
     const { count, rows } = await Promotion.findAndCountAll({
-      where: finalWhere, // Usar los mismos filtros para count y rows
+      where: finalWhere,
       include: [
-        // ... tus includes
+        { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id', 'sku'] },
+        { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id', 'name'] },
+        { model: Coupon, attributes: ['coupon_id', 'code', 'status'] }
       ],
       order,
       limit: pageSize,
-      offset
+      offset,
+      transaction
     });
 
     return { count, rows };
@@ -406,70 +442,88 @@ class PromotionService {
   /**
    * Obtiene una promoción por ID.
    * @param {number} id - ID de la promoción.
+   * @param {Object|null} transaction - Transacción de Sequelize (opcional).
    * @returns {Object|null} Promoción encontrada o null.
    */
-  async getPromotionById(id) {
+  async getPromotionById(id, transaction = null) {
     const promotion = await Promotion.findByPk(id, {
       include: [
         { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id', 'sku'] },
-        { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id', 'name'] }
-      ]
+        { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id', 'name'] },
+        { model: Coupon, attributes: ['coupon_id', 'code', 'status'] }
+      ],
+      transaction
     });
     if (!promotion || promotion.status !== 'active') return null;
     return promotion;
   }
 
   /**
-   * Actualiza una promoción existente.
+   * Actualiza una promoción existente y sus cupones asociados.
    * @param {number} id - ID de la promoción.
    * @param {Object} data - Datos a actualizar.
    * @param {Array} variantIds - IDs de variantes asociadas.
    * @param {Array} categoryIds - IDs de categorías asociadas.
+   * @param {string|null} couponCode - Código de cupón opcional para crear/actualizar.
+   * @param {Object|null} transaction - Transacción de Sequelize (opcional).
    * @returns {Object} Promoción actualizada.
    */
-  async updatePromotion(id, data, variantIds = [], categoryIds = []) {
-    const promotion = await Promotion.findByPk(id);
+  async updatePromotion(id, data, variantIds = [], categoryIds = [], couponCode = null, transaction = null) {
+    const promotion = await Promotion.findByPk(id, { transaction });
     if (!promotion) throw new Error('Promoción no encontrada');
     if (promotion.status !== 'active') throw new Error('No se puede actualizar una promoción inactiva');
 
-    const { promotion_type, min_quantity, min_order_count, min_unit_measure, applies_to } = data;
-    data.min_quantity = promotion_type === 'quantity_discount' ? min_quantity : null;
-    data.min_order_count = promotion_type === 'order_count_discount' ? min_order_count : null;
-    data.min_unit_measure = promotion_type === 'unit_discount' ? min_unit_measure : null;
+    const { coupon_type, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled, applies_to } = data;
+    data.free_shipping_enabled = coupon_type === 'free_shipping' ? free_shipping_enabled : false;
 
-    await promotion.update(data);
+    await promotion.update(data, { transaction });
 
-    await PromotionProduct.destroy({ where: { promotion_id: id } });
+    await PromotionProduct.destroy({ where: { promotion_id: id }, transaction });
     if (variantIds.length > 0 && applies_to === 'specific_products') {
       await PromotionProduct.bulkCreate(variantIds.map(variantId => ({
         promotion_id: id,
         variant_id: variantId
-      })));
+      })), { transaction });
     }
 
-    await PromotionCategory.destroy({ where: { promotion_id: id } });
+    await PromotionCategory.destroy({ where: { promotion_id: id }, transaction });
     if (categoryIds.length > 0 && applies_to === 'specific_categories') {
       await PromotionCategory.bulkCreate(categoryIds.map(categoryId => ({
         promotion_id: id,
         category_id: categoryId
-      })));
+      })), { transaction });
     }
 
-    return await this.getPromotionById(id);
+    if (couponCode) {
+      const existingCoupon = await Coupon.findOne({ where: { promotion_id: id }, transaction });
+      if (existingCoupon) {
+        await existingCoupon.update({ code: couponCode, status: 'active' }, { transaction });
+      } else {
+        await Coupon.create({
+          code: couponCode,
+          promotion_id: id,
+          status: 'active'
+        }, { transaction });
+      }
+    }
+
+    return await this.getPromotionById(id, transaction);
   }
 
   /**
-   * Desactiva una promoción (eliminación lógica).
+   * Desactiva una promoción y sus cupones asociados (eliminación lógica).
    * @param {number} id - ID de la promoción.
+   * @param {Object|null} transaction - Transacción de Sequelize (opcional).
    * @returns {Object} Mensaje de confirmación.
    */
-  async deletePromotion(id) {
-    const promotion = await Promotion.findByPk(id);
+  async deletePromotion(id, transaction = null) {
+    const promotion = await Promotion.findByPk(id, { transaction });
     if (!promotion) throw new Error('Promoción no encontrada');
 
-    await promotion.update({ status: 'inactive' });
+    await promotion.update({ status: 'inactive' }, { transaction });
+    await Coupon.update({ status: 'inactive' }, { where: { promotion_id: id }, transaction });
 
-    return { message: 'Promoción desactivada exitosamente' };
+    return { message: 'Promoción y cupones asociados desactivados exitosamente' };
   }
 }
 

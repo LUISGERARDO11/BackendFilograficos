@@ -1,9 +1,10 @@
 const { body, param, query, validationResult } = require('express-validator');
 const OrderService = require('../services/orderService');
 const loggerUtils = require('../utils/loggerUtils');
-const { ShippingOption } = require('../models/Associations');//AQUI
+const { ShippingOption } = require('../models/Associations');
 const mercadopago = require('../config/mercado-pago.config');
-// Crear una orden a partir del carrito del usuario AQUI
+
+// Crear una orden a partir del carrito del usuario o un ítem único
 exports.createOrder = [
   body('address_id')
     .if(body('delivery_option').equals('Entrega a Domicilio'))
@@ -25,14 +26,6 @@ exports.createOrder = [
     .optional()
     .isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'])
     .withMessage('Opción de envío no válida'),
-  body('shipping_cost')
-    .optional()
-    .isDecimal({ min: 0 })
-    .withMessage('El costo de envío debe ser un número válido'),
-  body('total')
-    .optional()
-    .isDecimal({ min: 0 })
-    .withMessage('El total debe ser un número válido'),
   body('item')
     .optional()
     .isObject()
@@ -43,89 +36,12 @@ exports.createOrder = [
       }
       return true;
     }),
-
-  async (req, res) => {
-    const user_id = req.user.user_id;
-    const errors = validationResult(req);
-
-    try {
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          message: 'Errores de validación',
-          errors: errors.array()
-        });
-      }
-
-      const { address_id, payment_method, coupon_code, delivery_option,item } = req.body;
-      const orderService = new OrderService();
-      const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
-        address_id,
-        payment_method,
-        coupon_code,
-        delivery_option,
-        item
-      });
-
-      loggerUtils.logUserActivity(user_id, 'create_order', `Orden creada: ID ${order.order_id}`);
-
-      res.status(201).json({
-        success: true,
-        message: 'Orden creada exitosamente',
-        data: {
-          order_id: order.order_id,
-          total: order.total,
-          total_urgent_cost: order.total_urgent_cost || 0.00,
-          estimated_delivery_date: order.estimated_delivery_date,
-          payment_instructions: paymentInstructions,
-          status: order.order_status
-        }
-      });
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al crear la orden',
-        error: error.message
-      });
-    }
-  }
-];
-
-exports.createOrderFromItem = [
-  body('address_id')
-    .if(body('delivery_option').equals('Entrega a Domicilio'))
-    .notEmpty()
-    .withMessage('La dirección es obligatoria para Entrega a Domicilio')
-    .isInt({ min: 1 })
-    .withMessage('El ID de la dirección debe ser un número entero positivo'),
-  body('payment_method')
-    .notEmpty()
-    .withMessage('El método de pago es obligatorio')
-    .isIn(['mercado_pago'])
-    .withMessage('Método de pago no válido. Solo se acepta Mercado Pago'),
-  body('coupon_code')
-    .optional()
-    .isString()
-    .trim()
-    .withMessage('El código de cupón debe ser una cadena de texto'),
-  body('delivery_option')
-    .optional()
-    .isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'])
-    .withMessage('Opción de envío no válida'),
-  body('item')
-    .notEmpty()
-    .withMessage('El ítem es obligatorio')
-    .isObject()
-    .withMessage('El ítem debe ser un objeto'),
   body('item.variant_id')
-    .notEmpty()
-    .withMessage('El variant_id es obligatorio')
+    .optional()
     .isInt({ min: 1 })
     .withMessage('El variant_id debe ser un número entero positivo'),
   body('item.quantity')
-    .notEmpty()
-    .withMessage('La cantidad es obligatoria')
+    .optional()
     .isInt({ min: 1 })
     .withMessage('La cantidad debe ser un número entero positivo'),
   body('item.is_urgent')
@@ -134,7 +50,7 @@ exports.createOrderFromItem = [
     .withMessage('is_urgent debe ser un booleano'),
   body('item.unit_price')
     .optional()
-    .isDecimal({ min: 0 })
+    .isFloat({ min: 0 })
     .withMessage('El precio unitario debe ser un número válido'),
   body('item.customization_id')
     .optional()
@@ -146,7 +62,7 @@ exports.createOrderFromItem = [
     .withMessage('El option_id debe ser un número entero positivo'),
   body('item.unit_measure')
     .optional()
-    .isDecimal({ min: 0 })
+    .isFloat({ min: 0 })
     .withMessage('La unidad de medida debe ser un número válido'),
 
   async (req, res) => {
@@ -164,7 +80,7 @@ exports.createOrderFromItem = [
 
       const { address_id, payment_method, coupon_code, delivery_option, item } = req.body;
       const orderService = new OrderService();
-      const { order, payment, paymentInstructions } = await orderService.createOrderFromItem(user_id, {
+      const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
         address_id,
         payment_method,
         coupon_code,
@@ -172,18 +88,21 @@ exports.createOrderFromItem = [
         item
       });
 
-      loggerUtils.logUserActivity(user_id, 'create_order_from_item', `Orden creada desde ítem: ID ${order.order_id}`);
+      loggerUtils.logUserActivity(user_id, 'create_order', `Orden creada: ID ${order.order_id}`);
 
       res.status(201).json({
         success: true,
         message: 'Orden creada exitosamente',
         data: {
           order_id: order.order_id,
-          total: order.total,
-          total_urgent_cost: order.total_urgent_cost || 0.00,
+          total: parseFloat(order.total),
+          total_urgent_cost: parseFloat(order.total_urgent_cost) || 0.00,
+          discount: parseFloat(order.discount) || 0.00,
+          shipping_cost: parseFloat(order.shipping_cost) || 0.00,
           estimated_delivery_date: order.estimated_delivery_date,
           payment_instructions: paymentInstructions,
-          status: order.order_status
+          status: order.order_status,
+          coupon_code: order.coupon_code || null
         }
       });
     } catch (error) {
@@ -196,6 +115,7 @@ exports.createOrderFromItem = [
     }
   }
 ];
+
 // Obtener los detalles de un pedido por ID
 exports.getOrderById = [
   param('id')
@@ -245,27 +165,20 @@ exports.getOrderById = [
 
 // Obtener todas las órdenes del usuario
 exports.getOrders = [
-  // Validar page
   query('page')
     .optional()
     .isInt({ min: 1 })
     .withMessage('La página debe ser un número entero positivo'),
-
-  // Validar pageSize
   query('pageSize')
     .optional()
     .isInt({ min: 1, max: 100 })
     .withMessage('El tamaño de página debe ser un número entero entre 1 y 100'),
-
-  // Validar searchTerm
   query('searchTerm')
     .optional()
     .isString()
     .trim()
     .isLength({ min: 1, max: 100 })
     .withMessage('El término de búsqueda debe ser una cadena entre 1 y 100 caracteres'),
-
-  // Validar dateFilter (aceptar año, fecha única o rango de fechas)
   query('dateFilter')
     .optional()
     .custom((value) => {
@@ -273,7 +186,6 @@ exports.getOrders = [
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       const parts = value.split(',');
       if (parts.length === 1) {
-        // Validar como año de 4 dígitos o fecha única en formato YYYY-MM-DD
         if (/^\d{4}$/.test(value)) {
           const year = parseInt(value);
           return year >= 1000 && year <= 9999;
@@ -283,7 +195,6 @@ exports.getOrders = [
         }
         throw new Error('El filtro de fecha debe ser un año válido (número de 4 dígitos) o una fecha en formato YYYY-MM-DD');
       } else if (parts.length === 2) {
-        // Validar como rango de fechas (YYYY-MM-DD,YYYY-MM-DD)
         const [startDate, endDate] = parts;
         if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
           throw new Error('El rango de fechas debe estar en formato YYYY-MM-DD,YYYY-MM-DD');
@@ -340,13 +251,9 @@ exports.getOrders = [
 // Obtener un resumen de las órdenes para el administrador
 exports.getOrderSummary = [
   async (req, res) => {
-    //const adminId = req.user.user_id;
-
     try {
       const orderService = new OrderService();
       const summary = await orderService.getOrderSummary();
-
-      //loggerUtils.logUserActivity(adminId, 'get_order_summary', 'Resumen de órdenes obtenido por admin');
 
       res.status(200).json({
         success: true,
@@ -438,6 +345,7 @@ exports.getOrderSummaryForAlexa = [
   }
 ];
 
+// Obtener órdenes por fecha para administradores
 exports.getOrdersByDateForAdmin = [
   query('date')
     .notEmpty()
@@ -451,7 +359,6 @@ exports.getOrdersByDateForAdmin = [
     .withMessage('El campo de fecha debe ser uno de: delivery, creation'),
 
   async (req, res) => {
-    //const adminId = req.user.user_id;
     const errors = validationResult(req);
 
     try {
@@ -465,10 +372,7 @@ exports.getOrdersByDateForAdmin = [
 
       const { date, dateField } = req.query;
       const orderService = new OrderService();
-      //const orders = await orderService.getOrdersByDateForAdmin(date, dateField, adminId);
       const orders = await orderService.getOrdersByDateForAdmin(date, dateField);
-
-      //loggerUtils.logUserActivity(adminId, 'get_orders_by_date_admin', `Órdenes obtenidas para la fecha ${date}, campo: ${dateField}`);
 
       res.status(200).json({
         success: true,
@@ -527,7 +431,6 @@ exports.getOrdersForAdmin = [
   query('isUrgent').optional().isBoolean().withMessage('El filtro de urgencia debe ser un booleano'),
 
   async (req, res) => {
-    // [Lógica existente permanece igual]
     const errors = validationResult(req);
 
     try {
@@ -586,7 +489,7 @@ exports.getOrdersForAdmin = [
         error: error.message,
       });
     }
-  },
+  }
 ];
 
 // Obtener detalles de una orden por ID para administradores
@@ -596,7 +499,6 @@ exports.getOrderDetailsByIdForAdmin = [
     .withMessage('El ID de la orden debe ser un número entero positivo'),
 
   async (req, res) => {
-    //const adminId = req.user.user_id;
     const errors = validationResult(req);
 
     try {
@@ -611,8 +513,6 @@ exports.getOrderDetailsByIdForAdmin = [
       const orderId = parseInt(req.params.id);
       const orderService = new OrderService();
       const orderDetails = await orderService.getOrderDetailsByIdForAdmin(orderId);
-
-      //loggerUtils.logUserActivity(adminId, 'get_order_details_admin', `Detalles de la orden obtenidos por admin: ID ${orderId}`);
 
       res.status(200).json({
         success: true,
@@ -636,7 +536,7 @@ exports.getOrderDetailsByIdForAdmin = [
   }
 ];
 
-// Actualizar el estado de una orden AQUI 
+// Actualizar el estado de una orden
 exports.updateOrderStatus = [
   param('id')
     .isInt({ min: 1 })
@@ -646,6 +546,10 @@ exports.updateOrderStatus = [
     .withMessage('El nuevo estado es obligatorio')
     .isIn(['pending', 'processing', 'shipped', 'delivered'])
     .withMessage('El nuevo estado debe ser uno de: pending, processing, shipped, delivered'),
+  body('paymentStatus')
+    .optional()
+    .isIn(['pending', 'approved', 'failed'])
+    .withMessage('El estado del pago debe ser uno de: pending, approved, failed'),
 
   async (req, res) => {
     const adminId = req.user?.user_id;
@@ -661,9 +565,9 @@ exports.updateOrderStatus = [
       }
 
       const orderId = parseInt(req.params.id);
-      const { newStatus } = req.body;
+      const { newStatus, paymentStatus } = req.body;
       const orderService = new OrderService();
-      const updatedOrder = await orderService.updateOrderStatus(orderId, newStatus, adminId);
+      const updatedOrder = await orderService.updateOrderStatus(orderId, newStatus, adminId, paymentStatus);
 
       loggerUtils.logUserActivity(adminId || 'system', 'update_order_status', `Estado de la orden actualizado: ID ${orderId}, nuevo estado: ${newStatus}`);
 
@@ -689,7 +593,7 @@ exports.updateOrderStatus = [
   }
 ];
 
-//obtener opciones de envio
+// Obtener opciones de envío
 exports.getShippingOptions = [
   async (req, res) => {
     try {
@@ -711,7 +615,8 @@ exports.getShippingOptions = [
     }
   }
 ];
-//ciclo de notificacion ML
+
+// Manejar notificaciones de Mercado Pago
 exports.handleMercadoPagoWebhook = [
   async (req, res) => {
     try {
@@ -741,9 +646,7 @@ exports.handleMercadoPagoWebhook = [
           const newOrderStatus = newPaymentStatus === 'approved' ? 'processing' : 'pending';
           console.log(`Updating order ${orderId}: paymentStatus=${newPaymentStatus}, orderStatus=${newOrderStatus}`);
 
-          // Actualizar Payments.status primero
           await orderService.updatePaymentStatus(orderId, newPaymentStatus);
-          // Luego actualizar orders
           await orderService.updateOrderStatus(orderId, newOrderStatus, null, newPaymentStatus);
 
           loggerUtils.logUserActivity('system', 'webhook_payment_update', `Estado actualizado: Order ${orderId}, PaymentStatus ${newPaymentStatus}, OrderStatus ${newOrderStatus}`);
@@ -770,9 +673,7 @@ exports.handleMercadoPagoWebhook = [
             const newOrderStatus = newPaymentStatus === 'approved' ? 'processing' : 'pending';
             console.log(`Updating order ${orderId}: paymentStatus=${newPaymentStatus}, orderStatus=${newOrderStatus}`);
 
-            // Actualizar Payments.status primero
             await orderService.updatePaymentStatus(orderId, newPaymentStatus);
-            // Luego actualizar orders
             await orderService.updateOrderStatus(orderId, newOrderStatus, null, newPaymentStatus);
 
             loggerUtils.logUserActivity('system', 'webhook_merchant_order_update', `Estado actualizado: Order ${orderId}, PaymentStatus ${newPaymentStatus}, OrderStatus ${newOrderStatus}`);

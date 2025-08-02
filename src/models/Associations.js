@@ -41,6 +41,7 @@ const CartDetail = require('./CartDetail');
 const OrderDetail = require('./OrderDetail');
 const Promotion = require('./Promotion');
 const CouponUsage = require('./CouponUsage');
+const Coupon = require('./Coupon');
 const PromotionProduct = require('./PromotionProduct');
 const PromotionCategory = require('./PromotionCategory');
 const Review = require('./Review');
@@ -217,12 +218,18 @@ ProductVariant.hasMany(CartDetail, { foreignKey: 'variant_id' });
 Cart.belongsTo(Promotion, { foreignKey: 'promotion_id' });
 Promotion.hasMany(Cart, { foreignKey: 'promotion_id' });
 
+Cart.belongsTo(Coupon, { foreignKey: 'coupon_code', targetKey: 'code' });
+Coupon.hasMany(Cart, { foreignKey: 'coupon_code', targetKey: 'code' });
+
 // Relaciones de Pedidos
 Order.hasMany(OrderDetail, { foreignKey: 'order_id' });
 OrderDetail.belongsTo(Order, { foreignKey: 'order_id' });
 
 OrderDetail.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
 ProductVariant.hasMany(OrderDetail, { foreignKey: 'variant_id' });
+
+Order.belongsTo(Coupon, { foreignKey: 'coupon_code', targetKey: 'code' });
+Coupon.hasMany(Order, { foreignKey: 'coupon_code', targetKey: 'code' });
 
 // Relaciones de Promociones
 Promotion.belongsToMany(ProductVariant, { through: PromotionProduct, foreignKey: 'promotion_id', otherKey: 'variant_id' });
@@ -234,9 +241,16 @@ Category.belongsToMany(Promotion, { through: PromotionCategory, foreignKey: 'cat
 User.hasMany(Promotion, { foreignKey: 'created_by' });
 Promotion.belongsTo(User, { foreignKey: 'created_by' });
 
+// Relaciones de Coupons
+Promotion.hasMany(Coupon, { foreignKey: 'promotion_id' });
+Coupon.belongsTo(Promotion, { foreignKey: 'promotion_id' });
+
 // Relaciones de CouponUsage
 Promotion.hasMany(CouponUsage, { foreignKey: 'promotion_id' });
 CouponUsage.belongsTo(Promotion, { foreignKey: 'promotion_id' });
+
+Coupon.hasMany(CouponUsage, { foreignKey: 'coupon_id' });
+CouponUsage.belongsTo(Coupon, { foreignKey: 'coupon_id' });
 
 User.hasMany(CouponUsage, { foreignKey: 'user_id' });
 CouponUsage.belongsTo(User, { foreignKey: 'user_id' });
@@ -342,6 +356,7 @@ module.exports = {
   CartDetail,
   OrderDetail,
   Promotion,
+  Coupon,
   CouponUsage,
   PromotionProduct,
   PromotionCategory,

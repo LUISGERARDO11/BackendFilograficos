@@ -4,17 +4,11 @@ const orderController = require('../controllers/orderController');
 const authMiddleware = require('../middlewares/authMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 
-// Crear una orden
+// Crear una orden (soporta órdenes desde carrito o item único)
 router.post('/create',
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   orderController.createOrder
-);
-// Crear una orden item
-router.post('/comprar',
-  authMiddleware,
-  tokenExpirationMiddleware.verifyTokenExpiration,
-  orderController.createOrderFromItem
 );
 
 // Obtener opciones de envío disponibles

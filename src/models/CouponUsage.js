@@ -18,6 +18,15 @@ const CouponUsage = sequelize.define('CouponUsage', {
     },
     field: 'promotion_id'
   },
+  coupon_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'coupons',
+      key: 'coupon_id'
+    },
+    field: 'coupon_id'
+  },
   user_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -29,7 +38,7 @@ const CouponUsage = sequelize.define('CouponUsage', {
   },
   order_id: {
     type: DataTypes.INTEGER,
-    allowNull: false,
+    allowNull: true,
     references: {
       model: 'orders',
       key: 'order_id'
@@ -57,6 +66,9 @@ const CouponUsage = sequelize.define('CouponUsage', {
   indexes: [
     {
       fields: ['user_id', 'promotion_id']
+    },
+    {
+      fields: ['coupon_id']
     }
   ]
 });

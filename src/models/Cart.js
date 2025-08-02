@@ -30,6 +30,15 @@ const Cart = sequelize.define('Cart', {
     },
     field: 'promotion_id'
   },
+  coupon_code: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    references: {
+      model: 'coupons',
+      key: 'code'
+    },
+    field: 'coupon_code'
+  },
   total_discount: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,

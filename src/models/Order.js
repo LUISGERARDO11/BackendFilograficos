@@ -24,6 +24,15 @@ const Order = sequelize.define('Order', {
       key: 'address_id'
     }
   },
+  coupon_code: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    references: {
+      model: 'coupons',
+      key: 'code'
+    },
+    field: 'coupon_code'
+  },
   total: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false
