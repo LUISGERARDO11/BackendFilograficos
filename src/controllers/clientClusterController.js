@@ -35,8 +35,32 @@ exports.setClientCluster = [
 // Obtener todos los registros de clústeres
 exports.getAllClientClusters = async (req, res) => {
   try {
-    const clusters = await ClientCluster.findAll();
-    res.status(200).json(clusters);
+    // Obtener todos los registros de clústeres con sus detalles
+    const clientClusters = await ClientCluster.findAll({
+      attributes: ['user_id', 'cluster', 'created_at', 'updated_at'],
+      order: [['cluster', 'ASC'], ['user_id', 'ASC']],
+      raw: true
+    });
+
+    // Agrupar los clústeres manualmente
+    const groupedClusters = clientClusters.reduce((acc, client) => {
+      const { cluster } = client;
+      if (!acc[cluster]) {
+        acc[cluster] = {
+          clusterId: cluster,
+          count: 0,
+          clients: []
+        };
+      }
+      acc[cluster].count += 1;
+      acc[cluster].clients.push(client);
+      return acc;
+    }, {});
+
+    // Convertir el objeto agrupado en un array para una respuesta más limpia
+    const response = Object.values(groupedClusters);
+
+    res.status(200).json(response);
   } catch (error) {
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener clústeres', error: error.message });
