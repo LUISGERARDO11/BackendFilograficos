@@ -39,7 +39,10 @@ const validateCreatePromotion = [
         if (value === undefined || value === null) {
           throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
         }
-        const clusterExists = await ClientCluster.findOne({ where: { cluster: value } });
+        const clusterExists = await ClientCluster.findOne({
+          where: { cluster: value },
+          raw: true // Para evitar problemas con instancias de modelo
+        });
         if (!clusterExists) {
           throw new Error(`El cluster_id ${value} no existe en client_clusters`);
         }

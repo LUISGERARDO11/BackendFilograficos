@@ -418,15 +418,6 @@ class PromotionService {
         status: 'active'
       }, { transaction });
     }
-    // Validación manual (recomendada)
-    if (applies_to === 'cluster') {
-      const clusterExists = await ClientCluster.findOne({
-        where: { cluster: cluster_id },
-        transaction
-      });
-      if (!clusterExists) throw new Error(`El cluster ${cluster_id} no existe`);
-    }
-
     return await this.getPromotionById(promotion.promotion_id, transaction);
   }
 
