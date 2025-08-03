@@ -55,6 +55,7 @@ const BackupConfig = require('./BackupConfig');
 const BackupFiles = require('./BackupFiles');
 const RevokedToken = require('./RevokedToken');
 const AlexaAuthCode = require('./AlexaAuthCode');
+const ClientCluster = require('./ClientCluster');
 
 // Relaciones de Usuarios
 User.hasOne(Account, { foreignKey: 'user_id' });
@@ -95,6 +96,9 @@ RevokedToken.belongsTo(User, { foreignKey: 'user_id' });
 
 User.hasMany(AlexaAuthCode, { foreignKey: 'user_id' });
 AlexaAuthCode.belongsTo(User, { foreignKey: 'user_id' });
+
+User.hasMany(ClientCluster, { foreignKey: 'user_id' });
+ClientCluster.belongsTo(User, { foreignKey: 'user_id' });
 
 // Relaciones de Cuentas
 Account.hasMany(TwoFactorConfig, { foreignKey: 'account_id' });
@@ -372,5 +376,6 @@ module.exports = {
   BackupConfig,
   BackupFiles,
   RevokedToken,
-  AlexaAuthCode
+  AlexaAuthCode,
+  ClientCluster
 };

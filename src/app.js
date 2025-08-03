@@ -52,6 +52,7 @@ const routes = [
   { path: '/api/cart', router: require('./routes/cartRoutes') },
   { path: '/api/customizations', router: require('./routes/customizationRoutes') },
   { path: '/api/backups', router: require('./routes/backupRoutes') },
+  { path: '/api/client-cluster', router: require('./routes/clientClusterRoutes') },
 ];
 
 // Inicializar la aplicación Express
