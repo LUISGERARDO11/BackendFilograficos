@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const { Promotion, Coupon, CouponUsage, Order, PromotionProduct, PromotionCategory, ProductVariant, Product, Category, Cart, ClientCluster } = require('../models/Associations');
-
+const loggerUtils = require('../utils/loggerUtils');
 class PromotionService {
   /**
    * Obtiene todas las promociones y cupones aplicables al carrito del usuario con detalles por ítem.
