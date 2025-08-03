@@ -64,7 +64,6 @@ const Promotion = sequelize.define('Promotion', {
   cluster_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    references: { model: 'client_clusters', key: 'cluster' }
   }
 }, {
   tableName: 'promotions',
