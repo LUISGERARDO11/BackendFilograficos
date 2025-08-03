@@ -344,10 +344,10 @@ class PromotionService {
    * @param {Object|null} transaction - Transacción de Sequelize (opcional).
    * @returns {Object} Promoción y cupón creados.
    */
-  async createPromotion(promotionData, couponCode = null, transaction = null) {
+  async createPromotion(promotionData, transaction = null) {
     const { 
       name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled,
-      applies_to, is_exclusive, start_date, end_date, created_by, status, variantIds, categoryIds 
+      applies_to, is_exclusive, start_date, end_date, created_by, status, variantIds, categoryIds, coupon_code
     } = promotionData;
 
     const promotion = await Promotion.create({
@@ -382,23 +382,25 @@ class PromotionService {
       await PromotionCategory.bulkCreate(promotionCategories, { transaction });
     }
 
-    let coupon = null;
-    if (couponCode) {
-      coupon = await Coupon.create({
-        code: couponCode,
+    if (coupon_code) {
+      const existingCoupon = await Coupon.findOne({
+        where: { code: coupon_code },
+        transaction
+      });
+      if (existingCoupon) {
+        throw new Error('El código de cupón ya está en uso');
+      }
+    }
+
+    if (coupon_code) {
+      await Coupon.create({
+        code: coupon_code,
         promotion_id: promotion.promotion_id,
         status: 'active'
       }, { transaction });
     }
 
-    return await Promotion.findByPk(promotion.promotion_id, {
-      include: [
-        { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id', 'sku'] },
-        { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id', 'name'] },
-        { model: Coupon, attributes: ['coupon_id', 'code', 'status'] }
-      ],
-      transaction
-    });
+    return await this.getPromotionById(promotion.promotion_id, transaction);
   }
 
   /**
@@ -453,12 +455,12 @@ class PromotionService {
    * @param {Object|null} transaction - Transacción de Sequelize (opcional).
    * @returns {Object} Promoción actualizada.
    */
-  async updatePromotion(id, data, variantIds = [], categoryIds = [], couponCode = null, transaction = null) {
+  async updatePromotion(id, data, variantIds = [], categoryIds = [], transaction = null) {
     const promotion = await Promotion.findByPk(id, { transaction });
     if (!promotion) throw new Error('Promoción no encontrada');
     if (promotion.status !== 'active') throw new Error('No se puede actualizar una promoción inactiva');
 
-    const { coupon_type, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled, applies_to } = data;
+    const { coupon_type, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled, applies_to, coupon_code } = data;
     data.free_shipping_enabled = coupon_type === 'free_shipping' ? free_shipping_enabled : false;
 
     await promotion.update(data, { transaction });
@@ -478,18 +480,31 @@ class PromotionService {
         category_id: categoryId
       })), { transaction });
     }
+    
+    if (coupon_code) {
+      const existingCoupon = await Coupon.findOne({
+        where: { code: coupon_code, promotion_id: { [Op.ne]: id } },
+        transaction
+      });
+      if (existingCoupon) {
+        throw new Error('El código de cupón ya está en uso por otra promoción');
+      }
+    }
 
-    if (couponCode) {
+    if (coupon_code) {
       const existingCoupon = await Coupon.findOne({ where: { promotion_id: id }, transaction });
       if (existingCoupon) {
-        await existingCoupon.update({ code: couponCode, status: 'active' }, { transaction });
+        await existingCoupon.update({ code: coupon_code, status: 'active' }, { transaction });
       } else {
         await Coupon.create({
-          code: couponCode,
+          code: coupon_code,
           promotion_id: id,
           status: 'active'
         }, { transaction });
       }
+    } else {
+      // Eliminar el cupón si coupon_code es null o vacío
+      await Coupon.destroy({ where: { promotion_id: id }, transaction });
     }
 
     return await this.getPromotionById(id, transaction);

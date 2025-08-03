@@ -246,7 +246,7 @@ User.hasMany(Promotion, { foreignKey: 'created_by' });
 Promotion.belongsTo(User, { foreignKey: 'created_by' });
 
 // Relaciones de Coupons
-Promotion.hasMany(Coupon, { foreignKey: 'promotion_id' });
+Promotion.hasOne(Coupon, { foreignKey: 'promotion_id' });
 Coupon.belongsTo(Promotion, { foreignKey: 'promotion_id' });
 
 // Relaciones de CouponUsage

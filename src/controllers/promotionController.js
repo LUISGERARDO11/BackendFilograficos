@@ -129,6 +129,7 @@ exports.createPromotion = [
   validateCreatePromotion,
   async (req, res) => {
     try {
+      loggerUtils.logInfo(`Parámetros recibidos en body para crear promoción: ${JSON.stringify(req.body)}`);
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
@@ -168,7 +169,7 @@ exports.createPromotion = [
           is_exclusive: newPromotion.is_exclusive,
           start_date: newPromotion.start_date,
           end_date: newPromotion.end_date,
-          coupon_code: newPromotion.Coupon?.code || null
+          coupon_code: newPromotion.Coupon ? newPromotion.Coupon.code : null
         }
       });
     } catch (error) {
@@ -334,6 +335,9 @@ exports.getPromotionById = async (req, res) => {
 exports.updatePromotion = [
   validateUpdatePromotion,
   async (req, res) => {
+    loggerUtils.logInfo(`Parámetros recibidos en params para actualizar promoción: ${JSON.stringify(req.params)}`);
+    loggerUtils.logInfo(`Parámetros recibidos en body para actualizar promoción: ${JSON.stringify(req.body)}`);
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
@@ -358,7 +362,8 @@ exports.updatePromotion = [
         return res.status(404).json({ message: 'Promoción no encontrada' });
       }
 
-      loggerUtils.logUserActivity(req.user.user_id, 'update', `Promoción actualizada: ${id}`);
+      loggerUtils.logInfo(`Objeto promotion devuelto por updatePromotion: ${JSON.stringify(promotion, null, 2)}`);
+
       res.status(200).json({
         message: 'Promoción actualizada exitosamente',
         promotion: {
@@ -374,7 +379,7 @@ exports.updatePromotion = [
           is_exclusive: promotion.is_exclusive,
           start_date: promotion.start_date,
           end_date: promotion.end_date,
-          coupon_code: promotion.Coupon?.code || null
+          coupon_code: promotion.Coupon ? promotion.Coupon.code : null
         }
       });
     } catch (error) {
