@@ -24,21 +24,27 @@ const validateCreatePromotion = [
   body('max_uses_per_user').optional().isInt({ min: 1 }).withMessage('El número máximo de usos por usuario debe ser un entero positivo'),
   body('min_order_value').optional().isFloat({ min: 0 }).withMessage('El valor mínimo de la orden debe ser un número mayor o igual a 0'),
   body('free_shipping_enabled').optional().isBoolean().withMessage('El campo "free_shipping_enabled" debe ser un booleano'),
-  body('applies_to').isIn(['specific_products', 'specific_categories', 'all']).withMessage('El campo "applies_to" debe ser "specific_products", "specific_categories" o "all"'),
+  body('applies_to').isIn(['specific_products', 'specific_categories', 'all', 'cluster']).withMessage('El campo "applies_to" debe ser "specific_products", "specific_categories", "all" o "cluster"'),
   body('is_exclusive').optional().isBoolean().withMessage('El campo "is_exclusive" debe ser un booleano'),
   body('start_date').isISO8601().withMessage('La fecha de inicio debe ser una fecha válida en formato ISO8601'),
   body('end_date').isISO8601().withMessage('La fecha de fin debe ser una fecha válida en formato ISO8601'),
   body('variantIds').optional().isArray().withMessage('variantIds debe ser un arreglo'),
   body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un arreglo'),
-  body('cluster_id')
+body('cluster_id')
     .optional()
     .isInt({ min: 0 })
     .withMessage('El cluster_id debe ser un entero no negativo')
-    .custom((value, { req }) => {
-      if (req.body.applies_to === 'cluster' && !value) {
-        throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
+    .custom(async (value, { req }) => {
+      if (req.body.applies_to === 'cluster') {
+        if (value === undefined || value === null) {
+          throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
+        }
+        const clusterExists = await ClientCluster.findOne({ where: { cluster: value } });
+        if (!clusterExists) {
+          throw new Error(`El cluster_id ${value} no existe en client_clusters`);
+        }
       }
-      if (req.body.applies_to !== 'cluster' && value) {
+      if (req.body.applies_to !== 'cluster' && value !== undefined && value !== null) {
         throw new Error('El cluster_id no debe proporcionarse si applies_to no es "cluster"');
       }
       return true;
@@ -151,7 +157,7 @@ exports.createPromotion = [
       const {
         name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
         free_shipping_enabled, applies_to, is_exclusive = true, start_date, end_date,
-        variantIds = [], categoryIds = [], coupon_code
+        variantIds = [], categoryIds = [], cluster_id, coupon_code
       } = req.body;
 
       const created_by = req.user.user_id;
