@@ -368,7 +368,7 @@ class PromotionService {
   async createPromotion(promotionData, transaction = null) {
     const { 
       name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled,
-      applies_to, is_exclusive, start_date, end_date, created_by, status, variantIds, categoryIds, coupon_code
+      applies_to, is_exclusive, start_date, end_date, created_by, status, variantIds, categoryIds, cluster_id, coupon_code
     } = promotionData;
 
     const promotion = await Promotion.create({
