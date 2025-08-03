@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Promotion, Coupon, CouponUsage, Order, PromotionProduct, PromotionCategory, ProductVariant, Product, Category, Cart } = require('../models/Associations');
+const { Promotion, Coupon, CouponUsage, Order, PromotionProduct, PromotionCategory, ProductVariant, Product, Category, Cart, ClientCluster } = require('../models/Associations');
 
 class PromotionService {
   /**
