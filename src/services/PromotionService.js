@@ -366,9 +366,9 @@ class PromotionService {
    * @returns {Object} Promoción y cupón creados.
    */
   async createPromotion(promotionData, transaction = null) {
-    const {
+    const { 
       name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled,
-      applies_to, is_exclusive, start_date, end_date, created_by, status, variantIds, categoryIds, cluster_id, coupon_code
+      applies_to, is_exclusive, start_date, end_date, created_by, status, variantIds, categoryIds, coupon_code
     } = promotionData;
 
     const promotion = await Promotion.create({
@@ -384,8 +384,7 @@ class PromotionService {
       start_date,
       end_date,
       created_by,
-      status,
-      cluster_id: applies_to === 'cluster' ? cluster_id : null
+      status
     }, { transaction });
 
     if (variantIds && variantIds.length > 0 && applies_to === 'specific_products') {
@@ -418,6 +417,7 @@ class PromotionService {
         status: 'active'
       }, { transaction });
     }
+
     return await this.getPromotionById(promotion.promotion_id, transaction);
   }
 
@@ -429,7 +429,7 @@ class PromotionService {
    */
   async getPromotions({ where = {}, order = [['promotion_id', 'ASC']], page = 1, pageSize = 10, include = [] } = {}, transaction = null) {
     const offset = (page - 1) * pageSize;
-
+    
     const { count, rows } = await Promotion.findAndCountAll({
       where,
       include,
@@ -498,7 +498,7 @@ class PromotionService {
         category_id: categoryId
       })), { transaction });
     }
-
+    
     if (coupon_code) {
       const existingCoupon = await Coupon.findOne({
         where: { code: coupon_code, promotion_id: { [Op.ne]: id } },
