@@ -23,7 +23,8 @@ exports.createOrder = [
     .trim()
     .withMessage('El código de cupón debe ser una cadena de texto'),
   body('delivery_option')
-    .optional()
+    .notEmpty()
+    .withMessage('La opción de envío es obligatoria')
     .isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda'])
     .withMessage('Opción de envío no válida'),
   body('item')
@@ -64,6 +65,21 @@ exports.createOrder = [
     .optional()
     .isFloat({ min: 0 })
     .withMessage('La unidad de medida debe ser un número válido'),
+  body('precalculatedTotals')
+    .optional()
+    .isObject()
+    .withMessage('Los totales precalculados deben ser un objeto')
+    .custom((value) => {
+      if (!value) return true;
+      return (
+        typeof value.total === 'number' &&
+        typeof value.total_discount === 'number' &&
+        typeof value.shipping_cost === 'number' &&
+        typeof value.total_urgent_delivery_fee === 'number' &&
+        typeof value.estimated_delivery_days === 'number' &&
+        (value.applied_promotions === undefined || Array.isArray(value.applied_promotions))
+      );
+    }).withMessage('Los totales precalculados tienen un formato inválido'),
 
   async (req, res) => {
     const user_id = req.user.user_id;
@@ -78,14 +94,15 @@ exports.createOrder = [
         });
       }
 
-      const { address_id, payment_method, coupon_code, delivery_option, item } = req.body;
+      const { address_id, payment_method, coupon_code, delivery_option, item, precalculatedTotals } = req.body;
       const orderService = new OrderService();
       const { order, payment, paymentInstructions } = await orderService.createOrder(user_id, {
         address_id,
         payment_method,
         coupon_code,
         delivery_option,
-        item
+        item,
+        precalculatedTotals
       });
 
       loggerUtils.logUserActivity(user_id, 'create_order', `Orden creada: ID ${order.order_id}`);
@@ -95,14 +112,15 @@ exports.createOrder = [
         message: 'Orden creada exitosamente',
         data: {
           order_id: order.order_id,
-          total: parseFloat(order.total),
-          total_urgent_cost: parseFloat(order.total_urgent_cost) || 0.00,
-          discount: parseFloat(order.discount) || 0.00,
-          shipping_cost: parseFloat(order.shipping_cost) || 0.00,
+          total: parseFloat(order.total.toFixed(2)),
+          total_urgent_cost: parseFloat(order.total_urgent_cost.toFixed(2)) || 0.00,
+          discount: parseFloat(order.discount.toFixed(2)) || 0.00,
+          shipping_cost: parseFloat(order.shipping_cost.toFixed(2)) || 0.00,
           estimated_delivery_date: order.estimated_delivery_date,
           payment_instructions: paymentInstructions,
           status: order.order_status,
-          coupon_code: order.coupon_code || null
+          coupon_code: order.coupon_code || null,
+          applied_promotions: precalculatedTotals ? precalculatedTotals.applied_promotions || [] : []
         }
       });
     } catch (error) {
@@ -425,7 +443,7 @@ exports.getOrdersForAdmin = [
   }),
   query('dateField').optional().isIn(['delivery', 'creation']).withMessage('El campo de fecha debe ser uno de: delivery, creation'),
   query('paymentMethod').optional().isIn(['mercado_pago']).withMessage('El método de pago debe ser válido'),
-  query('deliveryOption').optional().isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda']).withMessage('La opción de entrega debe ser válida'),
+  query('deliveryOption').optional().isIn(['Entrega a Domicilio', 'Puntos de Entrega', 'Recoger en Tienda']).withMessage('La opción de entrega debe be válida'),
   query('minTotal').optional().isFloat({ min: 0 }).withMessage('El total mínimo debe ser un número positivo'),
   query('maxTotal').optional().isFloat({ min: 0 }).withMessage('El total máximo debe ser un número positivo'),
   query('isUrgent').optional().isBoolean().withMessage('El filtro de urgencia debe ser un booleano'),

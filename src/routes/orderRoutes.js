@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const orderController = require('../controllers/orderController');
+const couponController = require('../controllers/CouponController');
 const authMiddleware = require('../middlewares/authMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 
@@ -9,6 +10,13 @@ router.post('/create',
   authMiddleware,
   tokenExpirationMiddleware.verifyTokenExpiration,
   orderController.createOrder
+);
+
+// Aplicar un cupón
+router.post('/coupons/apply',
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  couponController.applyCoupon
 );
 
 // Obtener opciones de envío disponibles

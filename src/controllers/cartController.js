@@ -1,4 +1,4 @@
-const { Cart, CartDetail, Product, ProductVariant, ProductImage, CustomizationOption, User, Promotion, Coupon } = require('../models/Associations');
+const { Cart, CartDetail, Product, ProductVariant, ProductImage, CustomizationOption, User, Promotion, Coupon, CouponUsage } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');
 const { body, param, validationResult } = require('express-validator');
@@ -12,16 +12,14 @@ const validateAddToCart = [
   body('variant_id').notEmpty().isInt({ min: 1 }).withMessage('El variant_id debe ser un número entero positivo'),
   body('quantity').notEmpty().isInt({ min: 1 }).withMessage('La cantidad debe ser un número entero mayor que 0'),
   body('option_id').optional().isInt({ min: 1 }).withMessage('El option_id debe ser un número entero positivo'),
-  body('is_urgent').optional().isBoolean().withMessage('El campo is_urgent debe ser un booleano'),
-  body('coupon_code').optional().isString().trim().withMessage('El código de cupón debe ser una cadena de texto')
+  body('is_urgent').optional().isBoolean().withMessage('El campo is_urgent debe ser un booleano')
 ];
 
 // Validaciones para updateCartItem
 const validateUpdateCartItem = [
   body('cart_detail_id').notEmpty().isInt({ min: 1 }).withMessage('El cart_detail_id debe ser un número entero positivo'),
   body('quantity').notEmpty().isInt({ min: 1 }).withMessage('La cantidad debe ser un número entero mayor que 0'),
-  body('is_urgent').optional().isBoolean().withMessage('El campo is_urgent debe ser un booleano'),
-  body('coupon_code').optional().isString().trim().withMessage('El código de cupón debe ser una cadena de texto')
+  body('is_urgent').optional().isBoolean().withMessage('El campo is_urgent debe ser un booleano')
 ];
 
 // Validaciones para removeCartItem
@@ -40,7 +38,7 @@ exports.addToCart = [
         return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
       }
 
-      const { product_id, variant_id, quantity, option_id, is_urgent, coupon_code } = req.body;
+      const { product_id, variant_id, quantity, option_id, is_urgent } = req.body;
       const user_id = req.user?.user_id;
       if (!user_id) {
         await transaction.rollback();
@@ -148,7 +146,7 @@ exports.addToCart = [
         );
       }
 
-      // Recalcular promociones
+      // Recalcular promociones automáticas
       const cartDetails = await CartDetail.findAll({
         where: { cart_id: cart.cart_id },
         include: [{ model: ProductVariant, include: [{ model: Product, attributes: ['category_id'] }] }],
@@ -163,44 +161,16 @@ exports.addToCart = [
         category_id: detail.ProductVariant?.Product?.category_id || null
       }));
 
-      const applicablePromotions = await promotionService.getApplicablePromotions(formattedCartDetails, user_id, coupon_code, transaction);
+      const applicablePromotions = await promotionService.getApplicablePromotions(formattedCartDetails, user_id, null, transaction);
       let totalDiscount = 0;
-      let appliedCouponCode = null;
 
       if (applicablePromotions.length > 0) {
-        const { updatedOrderDetails, totalDiscount: calculatedDiscount, validCouponCode } = await promotionService.applyPromotions(formattedCartDetails, applicablePromotions, user_id, cart.cart_id, coupon_code, transaction);
+        const { updatedOrderDetails, totalDiscount: calculatedDiscount } = await promotionService.applyPromotions(formattedCartDetails, applicablePromotions, user_id, cart.cart_id, null, transaction);
         totalDiscount = calculatedDiscount;
-        appliedCouponCode = validCouponCode;
 
         for (const detail of cartDetails) {
           const updatedDetail = updatedOrderDetails.find(d => d.variant_id === detail.variant_id);
           await detail.update({ discount_applied: updatedDetail.discount_applied }, { transaction });
-        }
-
-        // Registrar uso del cupón si aplica
-        if (validCouponCode) {
-          const selectedPromotion = applicablePromotions.find(p => p.coupon_code === validCouponCode);
-          if (selectedPromotion) {
-            await CouponUsage.create({
-              promotion_id: selectedPromotion.promotion_id,
-              user_id,
-              cart_id: cart.cart_id,
-              order_id: null,
-              coupon_id: selectedPromotion.coupon_id || null,
-              created_at: new Date(),
-              updated_at: new Date()
-            }, { transaction });
-          }
-        }
-      } else if (coupon_code) {
-        // If no promotions are applicable but a coupon_code was provided, check if it's valid
-        const coupon = await Coupon.findOne({
-          where: { code: coupon_code, status: 'active' },
-          transaction
-        });
-        if (!coupon) {
-          await transaction.rollback();
-          return res.status(400).json({ message: `El cupón ${coupon_code} es inválido o inactivo` });
         }
       }
 
@@ -208,7 +178,7 @@ exports.addToCart = [
       const total = cartDetails.reduce((sum, detail) => sum + parseFloat(detail.subtotal), 0);
       const total_urgent_delivery_fee = cartDetails.reduce((sum, detail) => sum + parseFloat(detail.urgent_delivery_fee || 0), 0);
       await cart.update(
-        { total, total_urgent_delivery_fee, total_discount: totalDiscount, coupon_code: appliedCouponCode },
+        { total, total_urgent_delivery_fee, total_discount: totalDiscount },
         { transaction }
       );
 
@@ -217,8 +187,7 @@ exports.addToCart = [
         message: 'Producto añadido al carrito exitosamente',
         cart_id: cart.cart_id,
         total,
-        total_discount: totalDiscount,
-        coupon_code: appliedCouponCode
+        total_discount: totalDiscount
       });
     } catch (error) {
       await transaction.rollback();
@@ -262,6 +231,7 @@ exports.getCart = async (req, res) => {
     });
 
     if (!cart) {
+      // Fetch only automatic order count promotions (not tied to a Coupon)
       const orderCountPromotions = await Promotion.findAll({
         where: {
           status: 'active',
@@ -269,11 +239,20 @@ exports.getCart = async (req, res) => {
           start_date: { [Op.lte]: new Date() },
           end_date: { [Op.gte]: new Date() }
         },
-        include: [{ model: Coupon, attributes: ['code'] }],
+        include: [
+          {
+            model: Coupon,
+            required: false,
+            where: { status: 'active' },
+            attributes: ['coupon_id', 'code']
+          }
+        ],
         transaction
       });
 
-      const promotionProgress = await Promise.all(orderCountPromotions.map(async (promo) => {
+      const automaticOrderCountPromotions = orderCountPromotions.filter(promo => !promo.Coupon);
+
+      const promotionProgress = await Promise.all(automaticOrderCountPromotions.map(async (promo) => {
         const { message, is_eligible } = await promotionService.getPromotionProgress(promo, [], user_id, null, transaction);
         return {
           promotion_id: promo.promotion_id,
@@ -281,8 +260,7 @@ exports.getCart = async (req, res) => {
           coupon_type: promo.coupon_type,
           discount_value: parseFloat(promo.discount_value).toFixed(2),
           is_applicable: is_eligible,
-          progress_message: message,
-          coupon_code: promo.Coupon?.code || null
+          progress_message: message
         };
       }));
 
@@ -293,7 +271,6 @@ exports.getCart = async (req, res) => {
         total_discount: 0,
         total_urgent_delivery_fee: 0,
         estimated_delivery_days: 0,
-        coupon_code: null,
         promotions: promotionProgress
       });
     }
@@ -328,7 +305,7 @@ exports.getCart = async (req, res) => {
         image_url: img.image_url,
         order: img.order
       })),
-      applicable_promotions: []
+      applicable_promotions: [] // Initialize empty, will be populated for automatic promotions
     }));
 
     const maxDeliveryDays = Math.max(...items.map(item =>
@@ -343,36 +320,11 @@ exports.getCart = async (req, res) => {
       category_id: item.category_id
     }));
 
-    const applicablePromotions = await promotionService.getApplicablePromotions(cartDetails, user_id, cart.coupon_code, transaction);
-
-    const orderCountPromotions = await Promotion.findAll({
-      where: {
-        status: 'active',
-        coupon_type: 'order_count_discount',
-        start_date: { [Op.lte]: new Date() },
-        end_date: { [Op.gte]: new Date() }
-      },
-      include: [{ model: Coupon, attributes: ['code'] }],
-      transaction
-    });
-
-    const allPromotions = [
-      ...applicablePromotions,
-      ...orderCountPromotions.filter(op => !applicablePromotions.some(ap => ap.promotion_id === op.promotion_id)).map(op => ({
-        promotion_id: op.promotion_id,
-        name: op.name,
-        coupon_type: op.coupon_type,
-        discount_value: op.discount_value,
-        applies_to: op.applies_to,
-        is_exclusive: op.is_exclusive,
-        min_order_count: op.min_order_count,
-        coupon_code: op.Coupon?.code || null,
-        applicable_items: []
-      }))
-    ];
+    // Fetch only automatic promotions
+    const applicablePromotions = await promotionService.getApplicablePromotions(cartDetails, user_id, null, transaction);
 
     const promotionProgress = [];
-    for (const promo of allPromotions) {
+    for (const promo of applicablePromotions) {
       const { message, is_eligible } = await promotionService.getPromotionProgress(
         {
           promotion_id: promo.promotion_id,
@@ -382,12 +334,11 @@ exports.getCart = async (req, res) => {
           max_uses_per_user: promo.max_uses_per_user,
           min_order_value: promo.min_order_value,
           free_shipping_enabled: promo.free_shipping_enabled,
-          applies_to: promo.applies_to,
-          Coupon: promo.coupon_code ? { code: promo.coupon_code } : null
+          applies_to: promo.applies_to
         },
         cartDetails,
         user_id,
-        promo.coupon_code,
+        null,
         transaction
       );
 
@@ -402,8 +353,7 @@ exports.getCart = async (req, res) => {
             promotion_id: promo.promotion_id,
             name: promo.name,
             discount_value: parseFloat(promo.discount_value),
-            coupon_type: promo.coupon_type,
-            coupon_code: promo.coupon_code || null
+            coupon_type: promo.coupon_type
           });
         });
       }
@@ -414,8 +364,7 @@ exports.getCart = async (req, res) => {
         coupon_type: promo.coupon_type,
         discount_value: parseFloat(promo.discount_value).toFixed(2),
         is_applicable: is_eligible,
-        progress_message: message,
-        coupon_code: promo.coupon_code || null
+        progress_message: message
       });
     }
 
@@ -430,13 +379,13 @@ exports.getCart = async (req, res) => {
       total_discount,
       total_urgent_delivery_fee,
       estimated_delivery_days: maxDeliveryDays,
-      coupon_code: cart.coupon_code || null,
       promotions: promotionProgress
     });
   } catch (error) {
     await transaction.rollback();
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al obtener el carrito', error: error.message });
+    throw error;
   }
 };
 
@@ -451,7 +400,7 @@ exports.updateCartItem = [
         return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
       }
 
-      const { cart_detail_id, quantity, is_urgent, coupon_code } = req.body;
+      const { cart_detail_id, quantity, is_urgent } = req.body;
       const user_id = req.user?.user_id;
 
       if (!user_id) {
@@ -505,7 +454,7 @@ exports.updateCartItem = [
         { transaction }
       );
 
-      // Recalcular promociones
+      // Recalcular promociones automáticas
       const cartDetails = await CartDetail.findAll({
         where: { cart_id: cartDetail.cart_id },
         include: [{ model: ProductVariant, include: [{ model: Product, attributes: ['category_id'] }] }],
@@ -520,58 +469,27 @@ exports.updateCartItem = [
         category_id: detail.ProductVariant?.Product?.category_id || null
       }));
 
-      const applicablePromotions = await promotionService.getApplicablePromotions(formattedCartDetails, user_id, coupon_code, transaction);
+      const applicablePromotions = await promotionService.getApplicablePromotions(formattedCartDetails, user_id, null, transaction);
       let totalDiscount = 0;
-      let appliedCouponCode = null;
 
       if (applicablePromotions.length > 0) {
-        const { updatedOrderDetails, totalDiscount: calculatedDiscount, validCouponCode } = await promotionService.applyPromotions(formattedCartDetails, applicablePromotions, user_id, cartDetail.cart_id, coupon_code, transaction);
+        const { updatedOrderDetails, totalDiscount: calculatedDiscount } = await promotionService.applyPromotions(formattedCartDetails, applicablePromotions, user_id, cartDetail.cart_id, null, transaction);
         totalDiscount = calculatedDiscount;
-        appliedCouponCode = validCouponCode;
 
         for (const detail of cartDetails) {
           const updatedDetail = updatedOrderDetails.find(d => d.variant_id === detail.variant_id);
           await detail.update({ discount_applied: updatedDetail.discount_applied }, { transaction });
         }
-
-        // Registrar uso del cupón si aplica
-        if (validCouponCode) {
-          const selectedPromotion = applicablePromotions.find(p => p.coupon_code === validCouponCode);
-          if (selectedPromotion) {
-            await CouponUsage.create({
-              promotion_id: selectedPromotion.promotion_id,
-              user_id,
-              cart_id: cartDetail.cart_id,
-              order_id: null,
-              coupon_id: selectedPromotion.coupon_id || null,
-              created_at: new Date(),
-              updated_at: new Date()
-            }, { transaction });
-          }
-        }
       } else {
-        // If no promotions are applicable, clear any existing coupon
-        await Cart.update({ coupon_code: null, total_discount: 0 }, { where: { cart_id: cartDetail.cart_id }, transaction });
-        await CouponUsage.destroy({ where: { cart_id: cartDetail.cart_id, user_id }, transaction });
         for (const detail of cartDetails) {
           await detail.update({ discount_applied: 0 }, { transaction });
-        }
-        if (coupon_code) {
-          const coupon = await Coupon.findOne({
-            where: { code: coupon_code, status: 'active' },
-            transaction
-          });
-          if (!coupon) {
-            await transaction.rollback();
-            return res.status(400).json({ message: `El cupón ${coupon_code} es inválido o inactivo` });
-          }
         }
       }
 
       const total = cartDetails.reduce((sum, detail) => sum + parseFloat(detail.subtotal), 0);
       const total_urgent_delivery_fee = cartDetails.reduce((sum, detail) => sum + parseFloat(detail.urgent_delivery_fee || 0), 0);
       await cartDetail.Cart.update(
-        { total, total_urgent_delivery_fee, total_discount: totalDiscount, coupon_code: appliedCouponCode },
+        { total, total_urgent_delivery_fee, total_discount: totalDiscount },
         { transaction }
       );
 
@@ -580,8 +498,7 @@ exports.updateCartItem = [
         message: 'Ítem actualizado exitosamente',
         cart_id: cartDetail.cart_id,
         total,
-        total_discount: totalDiscount,
-        coupon_code: appliedCouponCode
+        total_discount: totalDiscount
       });
     } catch (error) {
       await transaction.rollback();
@@ -623,7 +540,7 @@ exports.removeCartItem = [
       const cart_id = cartDetail.cart_id;
       await cartDetail.destroy({ transaction });
 
-      // Recalcular promociones
+      // Recalcular promociones automáticas
       const cartDetails = await CartDetail.findAll({
         where: { cart_id },
         include: [{ model: ProductVariant, include: [{ model: Product, attributes: ['category_id'] }] }],
@@ -639,43 +556,27 @@ exports.removeCartItem = [
       }));
 
       const cart = await Cart.findByPk(cart_id, { transaction });
-      const coupon_code = cart.coupon_code || null;
-      const applicablePromotions = await promotionService.getApplicablePromotions(formattedCartDetails, user_id, coupon_code, transaction);
+      const applicablePromotions = await promotionService.getApplicablePromotions(formattedCartDetails, user_id, null, transaction);
       let totalDiscount = 0;
-      let appliedCouponCode = null;
 
       if (applicablePromotions.length > 0) {
-        const { updatedOrderDetails, totalDiscount: calculatedDiscount, validCouponCode } = await promotionService.applyPromotions(formattedCartDetails, applicablePromotions, user_id, cart_id, coupon_code, transaction);
+        const { updatedOrderDetails, totalDiscount: calculatedDiscount } = await promotionService.applyPromotions(formattedCartDetails, applicablePromotions, user_id, cart_id, null, transaction);
         totalDiscount = calculatedDiscount;
-        appliedCouponCode = validCouponCode;
 
         for (const detail of cartDetails) {
           const updatedDetail = updatedOrderDetails.find(d => d.variant_id === detail.variant_id);
           await detail.update({ discount_applied: updatedDetail.discount_applied }, { transaction });
         }
       } else {
-        // If no promotions are applicable, clear any existing coupon
-        await CouponUsage.destroy({ where: { cart_id, user_id }, transaction });
         for (const detail of cartDetails) {
           await detail.update({ discount_applied: 0 }, { transaction });
-        }
-        if (coupon_code) {
-          const coupon = await Coupon.findOne({
-            where: { code: coupon_code, status: 'active' },
-            transaction
-          });
-          if (!coupon) {
-            appliedCouponCode = null;
-          } else {
-            appliedCouponCode = coupon_code;
-          }
         }
       }
 
       const total = cartDetails.reduce((sum, detail) => sum + parseFloat(detail.subtotal), 0);
       const total_urgent_delivery_fee = cartDetails.reduce((sum, detail) => sum + parseFloat(detail.urgent_delivery_fee || 0), 0);
       await Cart.update(
-        { total, total_urgent_delivery_fee, total_discount: totalDiscount, coupon_code: appliedCouponCode },
+        { total, total_urgent_delivery_fee, total_discount: totalDiscount },
         { where: { cart_id }, transaction }
       );
 
@@ -684,8 +585,7 @@ exports.removeCartItem = [
         message: 'Ítem eliminado del carrito exitosamente',
         cart_id,
         total,
-        total_discount: totalDiscount,
-        coupon_code: appliedCouponCode
+        total_discount: totalDiscount
       });
     } catch (error) {
       await transaction.rollback();

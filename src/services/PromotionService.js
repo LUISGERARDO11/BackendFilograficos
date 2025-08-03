@@ -22,6 +22,7 @@ class PromotionService {
     let coupon = null;
 
     if (couponCode) {
+      // Fetch promotions tied to the provided coupon code
       coupon = await Coupon.findOne({
         where: { code: couponCode, status: 'active' },
         include: [
@@ -40,14 +41,18 @@ class PromotionService {
         promotions = [coupon.Promotion];
       }
     } else {
+      // Fetch automatic promotions (not tied to a Coupon)
       promotions = await Promotion.findAll({
         where: whereClause,
         include: [
           { model: ProductVariant, through: { model: PromotionProduct, attributes: [] }, attributes: ['variant_id'] },
-          { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id'] }
+          { model: Category, through: { model: PromotionCategory, attributes: [] }, attributes: ['category_id'] },
+          { model: Coupon, required: false, where: { status: 'active' }, attributes: ['coupon_id', 'code'] }
         ],
         transaction
       });
+      // Filter out promotions that are tied to a coupon
+      promotions = promotions.filter(promo => !promo.Coupon);
     }
 
     const applicablePromotions = [];
@@ -69,9 +74,9 @@ class PromotionService {
       }
 
       // Verificar usos máximos por usuario si aplica un cupón
-      if (couponCode && promotion.max_uses_per_user) {
+      if (couponCode && promotion.max_uses_per_user && coupon) {
         const usageCount = await CouponUsage.count({
-          where: { user_id: userId, promotion_id: promotion.promotion_id, coupon_id: coupon?.coupon_id },
+          where: { user_id: userId, promotion_id: promotion.promotion_id, coupon_id: coupon.coupon_id },
           transaction
         });
         if (usageCount >= promotion.max_uses_per_user) {
@@ -80,9 +85,9 @@ class PromotionService {
       }
 
       // Verificar usos máximos totales si aplica un cupón
-      if (couponCode && promotion.max_uses) {
+      if (couponCode && promotion.max_uses && coupon) {
         const totalUsage = await CouponUsage.count({
-          where: { promotion_id: promotion.promotion_id, coupon_id: coupon?.coupon_id },
+          where: { promotion_id: promotion.promotion_id, coupon_id: coupon.coupon_id },
           transaction
         });
         if (totalUsage >= promotion.max_uses) {
@@ -110,6 +115,7 @@ class PromotionService {
           is_exclusive: promotion.is_exclusive,
           free_shipping_enabled: promotion.free_shipping_enabled,
           coupon_code: couponCode || null,
+          coupon_id: coupon ? coupon.coupon_id : null,
           applicable_items: applicableItems.map(item => ({
             variant_id: item.variant_id,
             quantity: item.quantity,
@@ -317,21 +323,36 @@ class PromotionService {
     const isEligible = await this.isPromotionApplicable(promotion, cartDetails, userId, couponCode, transaction);
     const cartTotal = cartDetails.reduce((sum, detail) => sum + detail.subtotal, 0);
 
-    if (!isEligible && promotion.min_order_value && cartTotal < promotion.min_order_value) {
+    // Check if the promotion is tied to a coupon
+    const hasCoupon = await Coupon.findOne({
+      where: { promotion_id: promotion.promotion_id, status: 'active' },
+      transaction
+    });
+
+    if (couponCode && !isEligible) {
+      message = `El cupón ${couponCode} no es aplicable a los ítems en tu carrito.`;
+    } else if (!couponCode && hasCoupon) {
+      // Skip coupon-based promotions unless a coupon code is provided
+      return { message: '', is_eligible: false };
+    } else if (!isEligible && promotion.min_order_value && cartTotal < promotion.min_order_value) {
       const remaining = promotion.min_order_value - cartTotal;
       message = `Te faltan $${remaining.toFixed(2)} en tu carrito para aplicar ${couponCode ? `el cupón ${couponCode}` : 'la promoción'}.`;
     } else if (promotion.coupon_type === 'percentage_discount') {
       message = isEligible
         ? `¡${couponCode ? `Cupón ${couponCode}` : 'Promoción'} válida! Aplica un ${promotion.discount_value}% de descuento.`
-        : `El ${couponCode ? `cupón ${couponCode}` : 'promoción'} no es aplicable a los ítems en tu carrito.`;
+        : `La ${couponCode ? `cupón ${couponCode}` : 'promoción'} no es aplicable a los ítems en tu carrito.`;
     } else if (promotion.coupon_type === 'fixed_discount') {
       message = isEligible
         ? `¡${couponCode ? `Cupón ${couponCode}` : 'Promoción'} válida! Aplica un descuento fijo de $${promotion.discount_value}.`
-        : `El ${couponCode ? `cupón ${couponCode}` : 'promoción'} no es aplicable a los ítems en tu carrito.`;
+        : `La ${couponCode ? `cupón ${couponCode}` : 'promoción'} no es aplicable a los ítems en tu carrito.`;
     } else if (promotion.coupon_type === 'free_shipping') {
       message = isEligible
         ? `¡${couponCode ? `Cupón ${couponCode}` : 'Promoción'} válida! Obtén envío gratis.`
-        : `El ${couponCode ? `cupón ${couponCode}` : 'promoción'} no es aplicable a los ítems en tu carrito.`;
+        : `La ${couponCode ? `cupón ${couponCode}` : 'promoción'} no es aplicable a los ítems en tu carrito.`;
+    } else if (promotion.coupon_type === 'order_count_discount') {
+      message = isEligible
+        ? `¡Promoción válida! Aplica un descuento por cantidad de pedidos.`
+        : `No cumples con los requisitos para el descuento por cantidad de pedidos.`;
     }
 
     return { message, is_eligible: isEligible };
@@ -390,9 +411,6 @@ class PromotionService {
       if (existingCoupon) {
         throw new Error('El código de cupón ya está en uso');
       }
-    }
-
-    if (coupon_code) {
       await Coupon.create({
         code: coupon_code,
         promotion_id: promotion.promotion_id,
@@ -418,8 +436,8 @@ class PromotionService {
       order,
       limit: pageSize,
       offset,
-      distinct: true, // Ensure distinct counting on promotion_id
-      col: 'promotion_id', // Count distinct promotion_id
+      distinct: true,
+      col: 'promotion_id',
       transaction
     });
 
@@ -489,12 +507,9 @@ class PromotionService {
       if (existingCoupon) {
         throw new Error('El código de cupón ya está en uso por otra promoción');
       }
-    }
-
-    if (coupon_code) {
-      const existingCoupon = await Coupon.findOne({ where: { promotion_id: id }, transaction });
-      if (existingCoupon) {
-        await existingCoupon.update({ code: coupon_code, status: 'active' }, { transaction });
+      const coupon = await Coupon.findOne({ where: { promotion_id: id }, transaction });
+      if (coupon) {
+        await coupon.update({ code: coupon_code, status: 'active' }, { transaction });
       } else {
         await Coupon.create({
           code: coupon_code,
@@ -503,7 +518,6 @@ class PromotionService {
         }, { transaction });
       }
     } else {
-      // Eliminar el cupón si coupon_code es null o vacío
       await Coupon.destroy({ where: { promotion_id: id }, transaction });
     }
 

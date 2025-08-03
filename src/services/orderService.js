@@ -4,21 +4,13 @@ const { Op, Sequelize } = require('sequelize');
 const moment = require('moment-timezone');
 const orderUtils = require('../utils/orderUtils');
 const NotificationManager = require('./notificationManager');
-const PromotionService = require('./PromotionService'); // Importar PromotionService
+const PromotionService = require('./PromotionService');
 const mercadopago = require('../config/mercado-pago.config');
 
-// Importar todos los modelos necesarios al inicio del archivo
 const { Cart, CartDetail, Order, OrderDetail, OrderHistory, Payment, Address, CouponUsage, Promotion, Coupon, ProductVariant, Customization, Product, ProductImage, User, ShippingOption } = require('../models/Associations');
 
 class OrderService {
-  /**
-   * Crea una orden a partir del carrito o un ítem único del usuario, aplica promociones/cupones, genera registros relacionados, actualiza el stock y limpia el carrito.
-   * @param {number} userId - El ID del usuario autenticado.
-   * @param {Object} orderData - Los datos de la orden incluyendo address_id, payment_method, coupon_code, delivery_option, y item (opcional).
-   * @returns {Object} - La orden creada, el pago y las instrucciones de pago.
-   * @throws {Error} - Si el carrito está vacío, la dirección es inválida, el stock es insuficiente o falla alguna operación.
-   */
-  async createOrder(userId, { address_id, payment_method, coupon_code, delivery_option, item = null }) {
+  async createOrder(userId, { address_id, payment_method, coupon_code, delivery_option, item = null, precalculatedTotals = null }) {
     const transaction = await Cart.sequelize.transaction();
     try {
       // Validar dirección
@@ -42,7 +34,6 @@ class OrderService {
       let cartId = null;
 
       if (item) {
-        // Validar ítem único
         if (!item.variant_id || !item.quantity) {
           throw new Error('Ítem no válido o incompleto');
         }
@@ -86,7 +77,6 @@ class OrderService {
           Product: variant.Product
         });
       } else {
-        // Obtener carrito
         cart = await Cart.findOne({
           where: { user_id: userId },
           include: [{ model: CouponUsage }],
@@ -150,19 +140,6 @@ class OrderService {
         }
       }
 
-      // Aplicar promociones/cupones
-      const applicablePromotions = await promotionService.getApplicablePromotions(orderDetailsData, userId, coupon_code);
-      const { updatedOrderDetails, totalDiscount, shippingCost } = await promotionService.applyPromotions(
-        orderDetailsData,
-        applicablePromotions,
-        userId,
-        cartId || null,
-        coupon_code
-      );
-
-      // Actualizar orderDetailsData con descuentos aplicados
-      orderDetailsData = updatedOrderDetails;
-
       // Calcular costos y días de entrega
       let total_urgent_cost = 0;
       let maxDeliveryDays = 0;
@@ -172,20 +149,60 @@ class OrderService {
         maxDeliveryDays = Math.max(maxDeliveryDays, deliveryDays);
       }
 
-      // Calcular subtotal, descuento y total
-      const subtotal = orderDetailsData.reduce((sum, detail) => sum + (detail.quantity * detail.unit_price), 0);
-      const discount = totalDiscount; // Usar el descuento calculado por PromotionService
-      let calculatedShippingCost = shippingCost; // Usar el costo de envío calculado por PromotionService
-      if (delivery_option && calculatedShippingCost === 0) {
-        const shippingOption = await ShippingOption.findOne({ where: { name: delivery_option, status: 'active' }, transaction });
-        if (!shippingOption) {
-          throw new Error('Opción de envío no válida o inactiva');
+      let total = 0;
+      let discount = 0;
+      let calculatedShippingCost = 0;
+
+      // Usar totales precalculados si se proporcionan (desde /api/coupons/apply)
+      if (precalculatedTotals) {
+        total = parseFloat(precalculatedTotals.total) || 0;
+        discount = parseFloat(precalculatedTotals.total_discount) || 0;
+        calculatedShippingCost = parseFloat(precalculatedTotals.shipping_cost) || 0;
+        total_urgent_cost = parseFloat(precalculatedTotals.total_urgent_delivery_fee) || total_urgent_cost;
+        maxDeliveryDays = parseInt(precalculatedTotals.estimated_delivery_days) || maxDeliveryDays;
+
+        // Aplicar descuentos a los ítems si se proporcionan
+        if (precalculatedTotals.applied_promotions) {
+          for (const detail of orderDetailsData) {
+            const promotion = precalculatedTotals.applied_promotions.find(p => p.is_applicable && p.coupon_type !== 'free_shipping');
+            if (promotion) {
+              if (promotion.coupon_type === 'percentage_discount') {
+                detail.discount_applied = detail.subtotal * (parseFloat(promotion.discount_value) / 100);
+              } else if (promotion.coupon_type === 'fixed_discount') {
+                detail.discount_applied = Math.min(parseFloat(promotion.discount_value), detail.subtotal);
+              }
+            }
+          }
         }
-        calculatedShippingCost = applicablePromotions.some(p => p.coupon_type === 'free_shipping' && p.free_shipping_enabled)
-          ? 0
-          : parseFloat(shippingOption.base_cost);
+      } else {
+        // Aplicar promociones/cupones si no hay totales precalculados
+        const applicablePromotions = await promotionService.getApplicablePromotions(orderDetailsData, userId, coupon_code);
+        const { updatedOrderDetails, totalDiscount, shippingCost } = await promotionService.applyPromotions(
+          orderDetailsData,
+          applicablePromotions,
+          userId,
+          cartId || null,
+          coupon_code
+        );
+        orderDetailsData = updatedOrderDetails;
+        discount = totalDiscount;
+        calculatedShippingCost = shippingCost;
+
+        // Validar opción de envío
+        if (delivery_option) {
+          const shippingOption = await ShippingOption.findOne({ where: { name: delivery_option, status: 'active' }, transaction });
+          if (!shippingOption) {
+            throw new Error('Opción de envío no válida o inactiva');
+          }
+          calculatedShippingCost = applicablePromotions.some(p => p.coupon_type === 'free_shipping' && p.free_shipping_enabled)
+            ? 0
+            : parseFloat(shippingOption.base_cost);
+        }
+
+        const subtotal = orderDetailsData.reduce((sum, detail) => sum + (detail.quantity * detail.unit_price), 0);
+        total = Math.max(0, subtotal + calculatedShippingCost + total_urgent_cost - discount);
       }
-      const total = Math.max(0, subtotal + calculatedShippingCost + total_urgent_cost - discount);
+
       const estimated_delivery_date = moment().add(maxDeliveryDays, 'days').toDate();
 
       // Crear orden
@@ -201,7 +218,7 @@ class OrderService {
         order_status: 'pending',
         estimated_delivery_date,
         delivery_option: delivery_option || null,
-        coupon_code: coupon_code || null // Almacenar el código de cupón en la orden
+        coupon_code: coupon_code || null
       }, { transaction });
 
       // Crear detalles del pedido
@@ -209,7 +226,7 @@ class OrderService {
         await OrderDetail.create({
           ...detailData,
           order_id: order.order_id,
-          subtotal: (detailData.quantity * detailData.unit_price) + detailData.additional_cost
+          subtotal: (detailData.quantity * detailData.unit_price) + detailData.additional_cost - (detailData.discount_applied || 0)
         }, { transaction });
       }
 
@@ -330,13 +347,6 @@ class OrderService {
     await notificationManager.notifyNewOrder(order, user, orderDetails, payment);
   }
 
-  /**
-   * Obtiene los detalles de una orden específica para el usuario autenticado.
-   * @param {number} userId - El ID del usuario autenticado.
-   * @param {number} orderId - El ID de la orden a obtener.
-   * @returns {Object} - Detalles estructurados de la orden incluyendo información, ítems, dirección, pago e historial.
-   * @throws {Error} - Si la orden no se encuentra o no pertenece al usuario.
-   */
   async getOrderById(userId, orderId) {
     try {
       const order = await Order.findOne({
@@ -457,7 +467,6 @@ class OrderService {
         throw new Error('Orden no encontrada o acceso denegado');
       }
 
-      // Calcular máximo de días de entrega
       let deliveryDays = 0;
       for (const detail of order.OrderDetails || []) {
         const product = detail.ProductVariant?.Product;
@@ -467,13 +476,11 @@ class OrderService {
         }
       }
 
-      // Generar instrucciones de pago
       const paymentInstructions = this.generatePaymentInstructions(
         order.payment_method,
         parseFloat(order.total) || 0
       );
 
-      // Formatear la respuesta
       const orderDetails = {
         order: {
           order_id: order.order_id,
@@ -547,31 +554,18 @@ class OrderService {
     }
   }
 
-  /**
-   * Obtiene una lista paginada de todas las órdenes para el usuario autenticado con sus detalles.
-   * @param {number} userId - El ID del usuario autenticado.
-   * @param {number} page - El número de página (por defecto: 1).
-   * @param {number} pageSize - El número de órdenes por página (por defecto: 10).
-   * @param {string} searchTerm - Término de búsqueda opcional para filtrar productos por nombre.
-   * @param {string} dateFilter - Año, fecha única o rango de fechas (YYYY, YYYY-MM-DD, o YYYY-MM-DD,YYYY-MM-DD).
-   * @returns {Object} - La lista de órdenes con detalles y metadatos de paginación.
-   * @throws {Error} - Si hay un error al obtener las órdenes.
-   */
   async getOrders(userId, page = 1, pageSize = 10, searchTerm = '', dateFilter = '') {
     try {
       const offset = (page - 1) * pageSize;
       const validStatuses = ['pending', 'delivered', 'processing', 'shipped'];
 
-      // Construir condición de fecha
       const dateCondition = orderUtils.buildDateCondition(dateFilter, 'created_at');
 
-      // Configurar condición de búsqueda para productos
       let productCondition = {};
       if (searchTerm) {
         productCondition = { name: { [Op.like]: `%${searchTerm}%` } };
       }
 
-      // Configurar la consulta
       const include = [
         {
           model: OrderDetail,
@@ -728,11 +722,6 @@ class OrderService {
     }
   }
 
-  /**
-   * Obtiene un resumen global de estadísticas de órdenes para administradores.
-   * @returns {Object} - Estadísticas de resumen (totales por estado).
-   * @throws {Error} - Si hay un error al obtener las estadísticas.
-   */
   async getOrderSummary() {
     try {
       const result = await Order.findAll({
@@ -759,16 +748,8 @@ class OrderService {
     }
   }
 
-  /**
-   * Obtiene órdenes para una fecha específica para el panel de administración.
-   * @param {string} date - Fecha en formato YYYY-MM-DD.
-   * @param {string} dateField - Campo de fecha a filtrar ('delivery' o 'creation').
-   * @returns {Array} - Lista de órdenes formateadas para la fecha especificada.
-   * @throws {Error} - Si la fecha es inválida o hay un error en la consulta.
-   */
   async getOrdersByDateForAdmin(date, dateField) {
     try {
-      // Validar formato de fecha
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(date)) {
         throw new Error('Formato de fecha inválido: debe ser YYYY-MM-DD');
@@ -896,25 +877,16 @@ class OrderService {
     }
   }
 
-  /**
-   * Obtiene un resumen global de estadísticas de órdenes para Alexa.
-   * @param {string} statusFilter - Filtro de estado ('all', 'pending', 'processing', 'shipped', 'delivered').
-   * @param {string} dateFilter - Año, fecha única o rango de fechas (YYYY, YYYY-MM-DD, o YYYY-MM-DD,YYYY-MM-DD).
-   * @param {string} dateField - Campo de fecha a filtrar ('delivery' o 'creation').
-   * @returns {Object} - Resumen de estadísticas (total, monto total, conteos por estado).
-   * @throws {Error} - Si hay un error al obtener el resumen.
-   */
   async getOrderSummaryForAlexa(statusFilter = 'all', dateFilter = '', dateField = 'delivery') {
     try {
       const validStatuses = ['pending', 'processing', 'shipped', 'delivered'];
       const field = dateField === 'delivery' ? 'estimated_delivery_date' : 'created_at';
 
-      // Determinar el rango de fechas predeterminado (lunes de la semana actual hasta hoy)
       let effectiveDateFilter = dateFilter;
       if (!dateFilter) {
         const today = moment.tz('America/Mexico_City');
-        const startOfWeek = today.clone().startOf('isoWeek'); // Lunes de la semana actual
-        const endOfDay = today.clone().endOf('day'); // Fin del día actual
+        const startOfWeek = today.clone().startOf('isoWeek');
+        const endOfDay = today.clone().endOf('day');
         effectiveDateFilter = `${startOfWeek.format('YYYY-MM-DD')},${endOfDay.format('YYYY-MM-DD')}`;
       }
 
@@ -955,28 +927,11 @@ class OrderService {
     }
   }
 
-  /**
-   * Obtiene una lista paginada de órdenes para el panel de administración con filtros y estadísticas.
-   * @param {number} page - El número de página (por defecto: 1).
-   * @param {number} pageSize - El número de órdenes por página (por defecto: 10).
-   * @param {string} searchTerm - Término de búsqueda opcional para cliente o ID de orden.
-   * @param {string} statusFilter - Filtro de estado ('all', 'pending', 'processing', 'shipped', 'delivered').
-   * @param {string} dateFilter - Filtro de fecha (YYYY, YYYY-MM-DD, o YYYY-MM-DD,YYYY-MM-DD).
-   * @param {string} dateField - Campo de fecha a filtrar ('delivery' o 'creation').
-   * @param {string} paymentMethod - Filtro opcional por método de pago.
-   * @param {string} deliveryOption - Filtro opcional por opción de entrega.
-   * @param {number} minTotal - Filtro opcional por total mínimo.
-   * @param {number} maxTotal - Filtro opcional por total máximo.
-   * @param {boolean} isUrgent - Filtro opcional por órdenes urgentes.
-   * @returns {Object} - Lista de órdenes, paginación y resumen estadístico.
-   * @throws {Error} - Si hay un error al obtener las órdenes.
-   */
   async getOrdersForAdmin(page = 1, pageSize = 10, searchTerm = '', statusFilter = 'all', dateFilter = '', dateField = 'delivery', paymentMethod = '', deliveryOption = '', minTotal = null, maxTotal = null, isUrgent = null) {
     try {
       const offset = (page - 1) * pageSize;
       const validStatuses = ['pending', 'processing', 'shipped', 'delivered'];
 
-      // Construir condiciones de consulta
       const field = dateField === 'delivery' ? 'estimated_delivery_date' : 'created_at';
       const dateCondition = orderUtils.buildDateCondition(dateFilter, field);
 
@@ -988,7 +943,6 @@ class OrderService {
       }
       where = { ...where, ...dateCondition };
 
-      // Filtros adicionales
       if (paymentMethod) {
         where.payment_method = paymentMethod;
       }
@@ -1151,12 +1105,6 @@ class OrderService {
     }
   }
 
-  /**
-   * Obtiene los detalles de una orden específica para el panel de administración.
-   * @param {number} orderId - El ID de la orden a obtener.
-   * @returns {Object} - Detalles estructurados de la orden.
-   * @throws {Error} - Si la orden no se encuentra.
-   */
   async getOrderDetailsByIdForAdmin(orderId) {
     try {
       const order = await Order.findOne({
@@ -1274,15 +1222,6 @@ class OrderService {
     }
   }
 
-  /**
-   * Actualiza el estado de una orden y registra el cambio en el historial.
-   * @param {number} orderId - El ID de la orden a actualizar.
-   * @param {string} newStatus - El nuevo estado ('pending', 'processing', 'shipped', 'delivered').
-   * @param {number} adminId - El ID del administrador que realiza el cambio.
-   * @param {string} paymentStatus - El nuevo estado del pago (opcional).
-   * @returns {Object} - La orden actualizada.
-   * @throws {Error} - Si el estado es inválido o la orden no se encuentra.
-   */
   async updateOrderStatus(orderId, newStatus, adminId = null, paymentStatus = null) {
     const transaction = await Order.sequelize.transaction();
     try {
@@ -1290,7 +1229,6 @@ class OrderService {
         throw new Error('Estado de orden inválido');
       }
 
-      // Validar que adminId pertenece a un administrador
       if (adminId) {
         const admin = await User.findOne({
           where: { user_id: adminId, user_type: 'administrador' },
@@ -1301,7 +1239,6 @@ class OrderService {
         }
       }
 
-      // Obtener la orden con todas las relaciones necesarias
       const order = await Order.findOne({
         where: { order_id: orderId },
         attributes: [
@@ -1380,13 +1317,11 @@ class OrderService {
         throw new Error('Orden no encontrada');
       }
 
-      // Actualizar el estado de la orden
       await order.update({
         order_status: newStatus,
         ...(paymentStatus && { payment_status: paymentStatus })
       }, { transaction });
 
-      // Actualizar el estado del pago si la orden está en 'delivered'
       if (newStatus === 'delivered') {
         const payment = await Payment.findOne({ where: { order_id: orderId }, transaction });
         if (payment && payment.status !== 'validated') {
@@ -1394,7 +1329,6 @@ class OrderService {
         }
       }
 
-      // Registrar el cambio en el historial
       await OrderHistory.create({
         user_id: order.user_id,
         order_id: order.order_id,
@@ -1404,13 +1338,11 @@ class OrderService {
         updated_by: adminId,
       }, { transaction });
 
-      // Actualizar el objeto order con el nuevo estado para devolverlo
       order.order_status = newStatus;
       if (paymentStatus) order.payment_status = paymentStatus;
 
       await transaction.commit();
 
-      // Obtener detalles de la orden para la notificación
       const orderDetails = await OrderDetail.findAll({
         where: { order_id: order.order_id },
         include: [
@@ -1421,23 +1353,18 @@ class OrderService {
         ]
       });
 
-      // Obtener datos del usuario
       const user = await User.findOne({
         where: { user_id: order.user_id },
         attributes: ['user_id', 'name', 'email']
       });
 
-      // Obtener datos del pago
       const payment = await Payment.findOne({ where: { order_id: order.order_id } });
 
-      // Enviar notificación al cliente
       const notificationManager = new NotificationManager();
       await notificationManager.notifyOrderStatusChange(order, user, orderDetails, payment);
 
-      // Registrar la actividad
       loggerUtils.logUserActivity(adminId, 'update_order_status', `Estado de la orden actualizado: ID ${orderId}, nuevo estado: ${newStatus}`);
 
-      // Devolver la orden formateada
       return {
         ...orderUtils.formatOrderDetails(order),
         coupon_code: order.coupon_code || null,
@@ -1458,13 +1385,6 @@ class OrderService {
     }
   }
 
-  /**
-   * Actualiza el estado de un pago.
-   * @param {number} orderId - El ID de la orden asociada al pago.
-   * @param {string} newStatus - El nuevo estado del pago.
-   * @returns {void}
-   * @throws {Error} - Si hay un error al actualizar el estado del pago.
-   */
   async updatePaymentStatus(orderId, newStatus) {
     const transaction = await Payment.sequelize.transaction();
     try {
@@ -1480,12 +1400,6 @@ class OrderService {
     }
   }
 
-  /**
-   * Genera instrucciones de pago basadas en el método de pago.
-   * @param {string} paymentMethod - El método de pago elegido por el usuario.
-   * @param {number} amount - El monto total de la orden.
-   * @returns {Object} - Las instrucciones de pago incluyendo método, referencia y detalles.
-   */
   generatePaymentInstructions(paymentMethod, amount) {
     switch (paymentMethod) {
       case 'mercado_pago':
