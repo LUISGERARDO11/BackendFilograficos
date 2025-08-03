@@ -1,4 +1,4 @@
-const { Cart, CartDetail, Product, ProductVariant, Coupon, Promotion, CouponUsage,ShippingOption } = require('../models/Associations');
+const { Cart, CartDetail, Product, ProductVariant, Coupon, Promotion, CouponUsage, ShippingOption } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');
 const { body, validationResult } = require('express-validator');
@@ -18,7 +18,8 @@ const validateApplyCoupon = [
       (value.option_id === undefined || typeof value.option_id === 'number') &&
       (value.is_urgent === undefined || typeof value.is_urgent === 'boolean')
     );
-  }).withMessage('Ítem de compra directa inválido')
+  }).withMessage('Ítem de compra directa inválido'),
+  body('estimated_delivery_days').optional().isInt({ min: 0 }).withMessage('Los días estimados de entrega deben ser un número entero no negativo')
 ];
 
 exports.applyCoupon = [
@@ -32,7 +33,7 @@ exports.applyCoupon = [
         return res.status(400).json({ success: false, message: 'Errores de validación', errors: errors.array() });
       }
 
-      const { coupon_code, cart, item } = req.body;
+      const { coupon_code, cart, item, estimated_delivery_days, delivery_option } = req.body;
       const user_id = req.user?.user_id;
       if (!user_id) {
         await transaction.rollback();
@@ -104,13 +105,23 @@ exports.applyCoupon = [
 
       const subtotal = cartDetails.reduce((sum, detail) => sum + detail.subtotal, 0);
       const total_urgent_delivery_fee = cartDetails.reduce((sum, detail) => sum + (detail.urgent_delivery_fee * detail.quantity), 0);
-      const estimated_delivery_days = Math.max(...cartDetails.map(detail =>
-        detail.is_urgent ? (detail.ProductVariant.Product.urgent_delivery_days || detail.ProductVariant.Product.standard_delivery_days) : detail.ProductVariant.Product.standard_delivery_days
-      ), 0);
+      
+      // Usar estimated_delivery_days del frontend si se proporciona, si no, calcularlo
+      let final_estimated_delivery_days;
+      if (estimated_delivery_days !== undefined && Number.isInteger(estimated_delivery_days) && estimated_delivery_days >= 0) {
+        final_estimated_delivery_days = estimated_delivery_days;
+      } else {
+        final_estimated_delivery_days = Math.max(...cartDetails.map(detail =>
+          detail.is_urgent ? 
+            (detail.ProductVariant.Product.urgent_delivery_days || detail.ProductVariant.Product.standard_delivery_days || 0) : 
+            (detail.ProductVariant.Product.standard_delivery_days || 0)
+        ), 0);
+      }
 
+      // Ajustar costo de envío según delivery_option
       const shippingOptions = await getShippingOptions();
-      const defaultShippingOption = shippingOptions.find(option => option.name === 'Recoger en Tienda') || shippingOptions[0];
-      let shipping_cost = parseFloat(defaultShippingOption.cost);
+      const selectedShippingOption = shippingOptions.find(option => option.name === delivery_option) || shippingOptions.find(option => option.name === 'Recoger en Tienda') || shippingOptions[0];
+      let shipping_cost = parseFloat(selectedShippingOption.cost);
 
       const formattedCartDetails = cartDetails.map(detail => ({
         variant_id: detail.variant_id,
@@ -188,7 +199,6 @@ exports.applyCoupon = [
           progress_message: `¡Cupón ${coupon_code} válido! Aplica un ${promotion.coupon_type === 'percentage_discount' ? `${promotion.discount_value}% de descuento` : promotion.coupon_type === 'fixed_discount' ? `descuento fijo de $${promotion.discount_value}` : 'envío gratis'}.`
         };
 
-        // Registrar uso del cupón
         await CouponUsage.create({
           promotion_id: promotion.promotion_id,
           coupon_id: coupon.coupon_id,
@@ -207,12 +217,12 @@ exports.applyCoupon = [
         success: true,
         message: coupon_code && appliedCoupon ? `Cupón ${coupon_code} aplicado con éxito` : 'Cupón no aplicado',
         data: {
-          subtotal: subtotal, // Add original subtotal
+          subtotal,
           total,
           total_discount: totalDiscount,
           shipping_cost,
           total_urgent_delivery_fee,
-          estimated_delivery_days,
+          estimated_delivery_days: final_estimated_delivery_days,
           applied_promotions: [...appliedPromotions, ...(appliedCoupon ? [appliedCoupon] : [])],
           coupon_code: coupon_code || null
         }
