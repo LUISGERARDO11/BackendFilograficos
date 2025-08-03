@@ -17,27 +17,33 @@ const validateGetAllPromotions = [
 
 // Validations for createPromotion
 const validateCreatePromotion = [
-  body('name').notEmpty().withMessage('El nombre de la promoción es obligatorio'),
-  body('coupon_type').isIn(['percentage_discount', 'fixed_discount', 'free_shipping']).withMessage('Tipo de cupón inválido'),
-  body('discount_value').isFloat({ min: 0 }).withMessage('El valor de descuento debe ser un número mayor o igual a 0'),
-  body('max_uses').optional().isInt({ min: 1 }).withMessage('El número máximo de usos debe ser un entero positivo'),
-  body('max_uses_per_user').optional().isInt({ min: 1 }).withMessage('El número máximo de usos por usuario debe ser un entero positivo'),
-  body('min_order_value').optional().isFloat({ min: 0 }).withMessage('El valor mínimo de la orden debe ser un número mayor o igual a 0'),
-  body('free_shipping_enabled').optional().isBoolean().withMessage('El campo "free_shipping_enabled" debe ser un booleano'),
-  body('applies_to').isIn(['specific_products', 'specific_categories', 'all']).withMessage('El campo "applies_to" debe ser "specific_products", "specific_categories" o "all"'),
-  body('is_exclusive').optional().isBoolean().withMessage('El campo "is_exclusive" debe ser un booleano'),
-  body('start_date').isISO8601().withMessage('La fecha de inicio debe ser una fecha válida en formato ISO8601'),
-  body('end_date').isISO8601().withMessage('La fecha de fin debe ser una fecha válida en formato ISO8601'),
-  body('variantIds').optional().isArray().withMessage('variantIds debe ser un arreglo'),
-  body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un arreglo'),
-  body('coupon_code').optional().isString().trim().withMessage('El código de cupón debe ser una cadena de texto'),
+  body('name').notEmpty().withMessage('El nombre es obligatorio'),
+  body('coupon_type').isIn(['percentage_discount', 'fixed_discount', 'free_shipping']).withMessage('El tipo de cupón debe ser percentage_discount, fixed_discount o free_shipping'),
+  body('discount_value').isFloat({ min: 0 }).withMessage('El valor del descuento debe ser un número mayor o igual a 0'),
+  body('max_uses').optional().isInt({ min: 1 }).withMessage('El máximo de usos debe ser un entero positivo'),
+  body('max_uses_per_user').optional().isInt({ min: 1 }).withMessage('El máximo de usos por usuario debe ser un entero positivo'),
+  body('min_order_value').optional().isFloat({ min: 0 }).withMessage('El valor mínimo del pedido debe ser un número mayor o igual a 0'),
+  body('free_shipping_enabled').optional().isBoolean().withMessage('El envío gratuito debe ser un booleano'),
+  body('applies_to').isIn(['specific_products', 'specific_categories', 'all', 'cluster']).withMessage('El campo "applies_to" debe ser "specific_products", "specific_categories", "all" o "cluster"'),
+  body('is_exclusive').optional().isBoolean().withMessage('El campo is_exclusive debe ser un booleano'),
+  body('start_date').isISO8601().toDate().withMessage('La fecha de inicio debe ser una fecha válida en formato ISO8601'),
+  body('end_date').isISO8601().toDate().withMessage('La fecha de fin debe ser una fecha válida en formato ISO8601'),
+  body('variantIds').optional().isArray().withMessage('variantIds debe ser un array'),
+  body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un array'),
+  body('coupon_code').optional().isString().withMessage('El código de cupón debe ser una cadena'),
   body('cluster_id').optional().isInt({ min: 0 }).withMessage('El cluster_id debe ser un entero no negativo'),
-  body().custom(({ applies_to, cluster_id }) => {
+  body().custom(({ applies_to, cluster_id, variantIds, categoryIds }) => {
     if (applies_to === 'cluster' && cluster_id === undefined) {
       throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
     }
     if (applies_to !== 'cluster' && cluster_id !== undefined) {
       throw new Error('El cluster_id debe ser null o undefined si applies_to no es "cluster"');
+    }
+    if (applies_to === 'specific_products' && (!variantIds || variantIds.length === 0)) {
+      throw new Error('Se deben proporcionar variantIds cuando applies_to es "specific_products"');
+    }
+    if (applies_to === 'specific_categories' && (!categoryIds || categoryIds.length === 0)) {
+      throw new Error('Se deben proporcionar categoryIds cuando applies_to es "specific_categories"');
     }
     return true;
   })
@@ -57,35 +63,34 @@ const validateApplyPromotion = [
 
 // Validations for updatePromotion
 const validateUpdatePromotion = [
-  body('name').optional().trim().isLength({ min: 3, max: 100 }).withMessage('El nombre debe tener entre 3 y 100 caracteres.'),
-  body('coupon_type').optional().isIn(['percentage_discount', 'fixed_discount', 'free_shipping']).withMessage('Tipo de cupón inválido'),
-  body('discount_value').optional().isFloat({ min: 0 }).withMessage('El valor de descuento debe ser un número mayor o igual a 0'),
-  body('max_uses').optional().isInt({ min: 1 }).withMessage('El número máximo de usos debe ser un entero positivo'),
-  body('max_uses_per_user').optional().isInt({ min: 1 }).withMessage('El número máximo de usos por usuario debe ser un entero positivo'),
-  body('min_order_value').optional().isFloat({ min: 0 }).withMessage('El valor mínimo de la orden debe ser un número mayor o igual a 0'),
-  body('free_shipping_enabled').optional().isBoolean().withMessage('El campo "free_shipping_enabled" debe ser un booleano'),
-  body('applies_to').optional().isIn(['specific_products', 'specific_categories', 'all']).withMessage('El campo "applies_to" debe ser válido'),
-  body('is_exclusive').optional().isBoolean().withMessage('El campo "is_exclusive" debe ser un booleano'),
-  body('start_date').optional().isISO8601().withMessage('La fecha de inicio debe ser una fecha válida'),
-  body('end_date').optional().isISO8601().withMessage('La fecha de fin debe ser una fecha válida')
-    .custom((end_date, { req }) => {
-      const start_date = req.body.start_date || req.body.existingStartDate;
-      if (start_date && new Date(end_date) <= new Date(start_date)) {
-        throw new Error('La fecha de fin debe ser posterior a la fecha de inicio');
-      }
-      return true;
-    }),
+  body('name').optional().notEmpty().withMessage('El nombre no puede estar vacío'),
+  body('coupon_type').optional().isIn(['percentage_discount', 'fixed_discount', 'free_shipping']).withMessage('El tipo de cupón debe ser percentage_discount, fixed_discount o free_shipping'),
+  body('discount_value').optional().isFloat({ min: 0 }).withMessage('El valor del descuento debe ser un número mayor o igual a 0'),
+  body('max_uses').optional().isInt({ min: 1 }).withMessage('El máximo de usos debe ser un entero positivo'),
+  body('max_uses_per_user').optional().isInt({ min: 1 }).withMessage('El máximo de usos por usuario debe ser un entero positivo'),
+  body('min_order_value').optional().isFloat({ min: 0 }).withMessage('El valor mínimo del pedido debe ser un número mayor o igual a 0'),
+  body('free_shipping_enabled').optional().isBoolean().withMessage('El envío gratuito debe ser un booleano'),
+  body('applies_to').optional().isIn(['specific_products', 'specific_categories', 'all', 'cluster']).withMessage('El campo "applies_to" debe ser "specific_products", "specific_categories", "all" o "cluster"'),
+  body('is_exclusive').optional().isBoolean().withMessage('El campo is_exclusive debe ser un booleano'),
+  body('start_date').optional().isISO8601().toDate().withMessage('La fecha de inicio debe ser una fecha válida en formato ISO8601'),
+  body('end_date').optional().isISO8601().toDate().withMessage('La fecha de fin debe ser una fecha válida en formato ISO8601'),
   body('status').optional().isIn(['active', 'inactive']).withMessage('El estado debe ser "active" o "inactive"'),
-  body('variantIds').optional().isArray().withMessage('variantIds debe ser un arreglo'),
-  body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un arreglo'),
-  body('coupon_code').optional().isString().trim().withMessage('El código de cupón debe ser una cadena de texto'),
+  body('variantIds').optional().isArray().withMessage('variantIds debe ser un array'),
+  body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un array'),
+  body('coupon_code').optional().isString().withMessage('El código de cupón debe ser una cadena'),
   body('cluster_id').optional().isInt({ min: 0 }).withMessage('El cluster_id debe ser un entero no negativo'),
-  body().custom(({ applies_to, cluster_id }) => {
+  body().custom(({ applies_to, cluster_id, variantIds, categoryIds }) => {
     if (applies_to === 'cluster' && cluster_id === undefined) {
       throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
     }
     if (applies_to !== 'cluster' && cluster_id !== undefined) {
       throw new Error('El cluster_id debe ser null o undefined si applies_to no es "cluster"');
+    }
+    if (applies_to === 'specific_products' && (!variantIds || variantIds.length === 0)) {
+      throw new Error('Se deben proporcionar variantIds cuando applies_to es "specific_products"');
+    }
+    if (applies_to === 'specific_categories' && (!categoryIds || categoryIds.length === 0)) {
+      throw new Error('Se deben proporcionar categoryIds cuando applies_to es "specific_categories"');
     }
     return true;
   })

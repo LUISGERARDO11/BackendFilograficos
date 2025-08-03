@@ -417,6 +417,7 @@ class PromotionService {
         throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
       }
       const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id }, transaction });
+      loggerUtils.logInfo(`Verificando cluster_id ${cluster_id}: ${JSON.stringify(clusterExists)}`);
       if (!clusterExists) {
         throw new Error(`El cluster_id ${cluster_id} no existe en la base de datos`);
       }
