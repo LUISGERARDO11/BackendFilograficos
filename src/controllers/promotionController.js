@@ -31,13 +31,13 @@ const validateCreatePromotion = [
   body('variantIds').optional().isArray().withMessage('variantIds debe ser un arreglo'),
   body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un arreglo'),
   body('coupon_code').optional().isString().trim().withMessage('El código de cupón debe ser una cadena de texto'),
-  body('cluster_id').optional().isInt({ min: 1 }).withMessage('El cluster_id debe ser un entero positivo'),
+  body('cluster_id').optional().isInt({ min: 0 }).withMessage('El cluster_id debe ser un entero no negativo'),
   body().custom(({ applies_to, cluster_id }) => {
-    if (applies_to === 'cluster' && !cluster_id) {
+    if (applies_to === 'cluster' && cluster_id === undefined) {
       throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
     }
-    if (applies_to !== 'cluster' && cluster_id) {
-      throw new Error('El cluster_id debe ser null si applies_to no es "cluster"');
+    if (applies_to !== 'cluster' && cluster_id !== undefined) {
+      throw new Error('El cluster_id debe ser null o undefined si applies_to no es "cluster"');
     }
     return true;
   })
@@ -79,13 +79,13 @@ const validateUpdatePromotion = [
   body('variantIds').optional().isArray().withMessage('variantIds debe ser un arreglo'),
   body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un arreglo'),
   body('coupon_code').optional().isString().trim().withMessage('El código de cupón debe ser una cadena de texto'),
-  body('cluster_id').optional().isInt({ min: 1 }).withMessage('El cluster_id debe ser un entero positivo'),
+  body('cluster_id').optional().isInt({ min: 0 }).withMessage('El cluster_id debe ser un entero no negativo'),
   body().custom(({ applies_to, cluster_id }) => {
-    if (applies_to === 'cluster' && !cluster_id) {
+    if (applies_to === 'cluster' && cluster_id === undefined) {
       throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
     }
-    if (applies_to !== 'cluster' && cluster_id) {
-      throw new Error('El cluster_id debe ser null si applies_to no es "cluster"');
+    if (applies_to !== 'cluster' && cluster_id !== undefined) {
+      throw new Error('El cluster_id debe ser null o undefined si applies_to no es "cluster"');
     }
     return true;
   })
@@ -166,10 +166,10 @@ exports.createPromotion = [
         return res.status(401).json({ message: 'No se pudo identificar al usuario autenticado' });
       }
       // Validar si el cluster_id existe en client_clusters
-      if (applies_to === 'cluster' && cluster_id) {
+      if (applies_to === 'cluster' && cluster_id !== undefined) {
         const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id } });
         if (!clusterExists) {
-          return res.status(400).json({ message: 'El cluster_id especificado no existe' });
+          return res.status(400).json({ message: `El cluster_id ${cluster_id} no existe en la base de datos` });
         }
       }
 
@@ -380,10 +380,10 @@ exports.updatePromotion = [
 
     try {
       // Validar si el cluster_id existe en client_clusters
-      if (applies_to === 'cluster' && cluster_id) {
+      if (applies_to === 'cluster' && cluster_id !== undefined) {
         const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id } });
         if (!clusterExists) {
-          return res.status(400).json({ message: 'El cluster_id especificado no existe' });
+          return res.status(400).json({ message: `El cluster_id ${cluster_id} no existe en la base de datos` });
         }
       }
       const promotionData = {

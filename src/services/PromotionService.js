@@ -413,15 +413,15 @@ class PromotionService {
 
     // Validar cluster_id si applies_to es 'cluster'
     if (applies_to === 'cluster') {
-      if (!cluster_id) {
+      if (cluster_id === undefined) {
         throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
       }
       const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id }, transaction });
       if (!clusterExists) {
-        throw new Error('El cluster_id especificado no existe');
+        throw new Error(`El cluster_id ${cluster_id} no existe en la base de datos`);
       }
-    } else if (cluster_id) {
-      throw new Error('El cluster_id debe ser null si applies_to no es "cluster"');
+    } else if (cluster_id !== undefined) {
+      throw new Error('El cluster_id debe ser null o undefined si applies_to no es "cluster"');
     }
 
     const promotion = await Promotion.create({
@@ -538,15 +538,15 @@ class PromotionService {
     const { coupon_type, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled, applies_to, coupon_code, cluster_id } = data;
     // Validar cluster_id
     if (applies_to === 'cluster') {
-      if (!cluster_id) {
+      if (cluster_id === undefined) {
         throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
       }
       const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id }, transaction });
       if (!clusterExists) {
-        throw new Error('El cluster_id especificado no existe');
+        throw new Error(`El cluster_id ${cluster_id} no existe en la base de datos`);
       }
-    } else if (cluster_id) {
-      throw new Error('El cluster_id debe ser null si applies_to no es "cluster"');
+    } else if (cluster_id !== undefined) {
+      throw new Error('El cluster_id debe ser null o undefined si applies_to no es "cluster"');
     }
     data.free_shipping_enabled = coupon_type === 'free_shipping' ? free_shipping_enabled : false;
     data.cluster_id = applies_to === 'cluster' ? cluster_id : null; // Asegurar que cluster_id sea null si no aplica
