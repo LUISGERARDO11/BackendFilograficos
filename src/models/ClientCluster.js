@@ -23,7 +23,7 @@ const ClientCluster = sequelize.define('ClientCluster', {
   updatedAt: 'updated_at',
   indexes: [
     {
-      fields: ['cluster'] // Add an index on the cluster column
+      fields: ['cluster'] 
     }
   ]
 });

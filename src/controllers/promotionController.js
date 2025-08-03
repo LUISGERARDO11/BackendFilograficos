@@ -30,7 +30,7 @@ const validateCreatePromotion = [
   body('end_date').isISO8601().withMessage('La fecha de fin debe ser una fecha válida en formato ISO8601'),
   body('variantIds').optional().isArray().withMessage('variantIds debe ser un arreglo'),
   body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un arreglo'),
-body('cluster_id')
+  body('cluster_id')
     .optional()
     .isInt({ min: 0 })
     .withMessage('El cluster_id debe ser un entero no negativo')
@@ -39,7 +39,10 @@ body('cluster_id')
         if (value === undefined || value === null) {
           throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
         }
-        const clusterExists = await ClientCluster.findOne({ where: { cluster: value } });
+        const clusterExists = await ClientCluster.findOne({
+          where: { cluster: value },
+          raw: true // Para evitar problemas con instancias de modelo
+        });
         if (!clusterExists) {
           throw new Error(`El cluster_id ${value} no existe en client_clusters`);
         }
