@@ -59,6 +59,17 @@ class PromotionService {
     const cartTotal = cartDetails.reduce((sum, detail) => sum + detail.subtotal, 0);
 
     for (const promotion of promotions) {
+      // Verificar pertenencia al clúster
+      if (promotion.applies_to === 'cluster' && promotion.cluster_id) {
+        const userInCluster = await ClientCluster.findOne({
+          where: { user_id: userId, cluster: promotion.cluster_id },
+          transaction
+        });
+        if (!userInCluster) {
+          continue; // Saltar promoción si el usuario no pertenece al clúster
+        }
+      }
+
       const variantIds = Array.isArray(promotion.ProductVariants)
         ? promotion.ProductVariants.map(v => v.variant_id)
         : [];
@@ -100,10 +111,11 @@ class PromotionService {
         return (
           (promotion.applies_to === 'all') ||
           (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
-          (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id))
+          (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id)) ||
+          (promotion.applies_to === 'cluster')
         );
       });
-      isEligible = applicableItems.length > 0 || promotion.applies_to === 'all';
+      isEligible = applicableItems.length > 0 || promotion.applies_to === 'all' || promotion.applies_to === 'cluster';
 
       if (isEligible) {
         applicablePromotions.push({
@@ -116,6 +128,7 @@ class PromotionService {
           free_shipping_enabled: promotion.free_shipping_enabled,
           coupon_code: couponCode || null,
           coupon_id: coupon ? coupon.coupon_id : null,
+          cluster_id: promotion.cluster_id,
           applicable_items: applicableItems.map(item => ({
             variant_id: item.variant_id,
             quantity: item.quantity,
@@ -140,6 +153,16 @@ class PromotionService {
    * @returns {boolean} True si la promoción/cupón es aplicable.
    */
   async isPromotionApplicable(promotion, cartDetails, userId, couponCode = null, transaction = null) {
+    // Verificar pertenencia al clúster
+    if (promotion.applies_to === 'cluster' && promotion.cluster_id) {
+      const userInCluster = await ClientCluster.findOne({
+        where: { user_id: userId, cluster: promotion.cluster_id },
+        transaction
+      });
+      if (!userInCluster) {
+        return false;
+      }
+    }
     const cartTotal = cartDetails.reduce((sum, detail) => sum + detail.subtotal, 0);
     if (promotion.min_order_value && cartTotal < promotion.min_order_value) {
       return false;
@@ -184,11 +207,14 @@ class PromotionService {
     });
     const categoryIds = Array.isArray(categoryResults) ? categoryResults.map(c => c.category_id) : [];
 
-    return cartDetails.some(detail => (
-      (promotion.applies_to === 'all') ||
-      (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
-      (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id))
-    ));
+    return (
+      promotion.applies_to === 'all' ||
+      promotion.applies_to === 'cluster' || // Cluster aplica a todos los ítems
+      cartDetails.some(detail => (
+        (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
+        (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id))
+      ))
+    );
   }
 
   /**
@@ -240,7 +266,8 @@ class PromotionService {
         const isEligible =
           (promotion.applies_to === 'all') ||
           (promotion.applies_to === 'specific_products' && variantIds.includes(detail.variant_id)) ||
-          (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id));
+          (promotion.applies_to === 'specific_categories' && categoryIds.includes(detail.category_id)) ||
+          (promotion.applies_to === 'cluster');
 
         if (!isEligible) continue;
 
@@ -321,6 +348,19 @@ class PromotionService {
   async getPromotionProgress(promotion, cartDetails, userId, couponCode = null, transaction = null) {
     let message = '';
     const isEligible = await this.isPromotionApplicable(promotion, cartDetails, userId, couponCode, transaction);
+    // Verificar pertenencia al clúster
+    if (promotion.applies_to === 'cluster' && promotion.cluster_id) {
+      const userInCluster = await ClientCluster.findOne({
+        where: { user_id: userId, cluster: promotion.cluster_id },
+        transaction
+      });
+      if (!userInCluster) {
+        message = `No eres elegible porque no perteneces al grupo de clientes de esta promoción.`;
+        is_eligible = false;
+        return { message, is_eligible };
+      }
+    }
+
     const cartTotal = cartDetails.reduce((sum, detail) => sum + detail.subtotal, 0);
 
     // Check if the promotion is tied to a coupon
@@ -366,10 +406,23 @@ class PromotionService {
    * @returns {Object} Promoción y cupón creados.
    */
   async createPromotion(promotionData, transaction = null) {
-    const { 
+    const {
       name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled,
-      applies_to, is_exclusive, start_date, end_date, created_by, status, variantIds, categoryIds, coupon_code
+      applies_to, is_exclusive, start_date, end_date, created_by, status, variantIds, categoryIds, coupon_code, cluster_id
     } = promotionData;
+
+    // Validar cluster_id si applies_to es 'cluster'
+    if (applies_to === 'cluster') {
+      if (!cluster_id) {
+        throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
+      }
+      const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id }, transaction });
+      if (!clusterExists) {
+        throw new Error('El cluster_id especificado no existe');
+      }
+    } else if (cluster_id) {
+      throw new Error('El cluster_id debe ser null si applies_to no es "cluster"');
+    }
 
     const promotion = await Promotion.create({
       name,
@@ -384,7 +437,8 @@ class PromotionService {
       start_date,
       end_date,
       created_by,
-      status
+      status,
+      cluster_id
     }, { transaction });
 
     if (variantIds && variantIds.length > 0 && applies_to === 'specific_products') {
@@ -429,7 +483,7 @@ class PromotionService {
    */
   async getPromotions({ where = {}, order = [['promotion_id', 'ASC']], page = 1, pageSize = 10, include = [] } = {}, transaction = null) {
     const offset = (page - 1) * pageSize;
-    
+
     const { count, rows } = await Promotion.findAndCountAll({
       where,
       include,
@@ -460,7 +514,10 @@ class PromotionService {
       transaction
     });
     if (!promotion || promotion.status !== 'active') return null;
-    return promotion;
+    return {
+      ...promotion.toJSON(),
+      cluster_id: promotion.cluster_id // Asegurar que cluster_id esté incluido
+    };
   }
 
   /**
@@ -478,8 +535,21 @@ class PromotionService {
     if (!promotion) throw new Error('Promoción no encontrada');
     if (promotion.status !== 'active') throw new Error('No se puede actualizar una promoción inactiva');
 
-    const { coupon_type, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled, applies_to, coupon_code } = data;
+    const { coupon_type, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled, applies_to, coupon_code, cluster_id } = data;
+    // Validar cluster_id
+    if (applies_to === 'cluster') {
+      if (!cluster_id) {
+        throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
+      }
+      const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id }, transaction });
+      if (!clusterExists) {
+        throw new Error('El cluster_id especificado no existe');
+      }
+    } else if (cluster_id) {
+      throw new Error('El cluster_id debe ser null si applies_to no es "cluster"');
+    }
     data.free_shipping_enabled = coupon_type === 'free_shipping' ? free_shipping_enabled : false;
+    data.cluster_id = applies_to === 'cluster' ? cluster_id : null; // Asegurar que cluster_id sea null si no aplica
 
     await promotion.update(data, { transaction });
 
@@ -498,7 +568,7 @@ class PromotionService {
         category_id: categoryId
       })), { transaction });
     }
-    
+
     if (coupon_code) {
       const existingCoupon = await Coupon.findOne({
         where: { code: coupon_code, promotion_id: { [Op.ne]: id } },

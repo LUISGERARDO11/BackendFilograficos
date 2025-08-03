@@ -30,7 +30,17 @@ const validateCreatePromotion = [
   body('end_date').isISO8601().withMessage('La fecha de fin debe ser una fecha válida en formato ISO8601'),
   body('variantIds').optional().isArray().withMessage('variantIds debe ser un arreglo'),
   body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un arreglo'),
-  body('coupon_code').optional().isString().trim().withMessage('El código de cupón debe ser una cadena de texto')
+  body('coupon_code').optional().isString().trim().withMessage('El código de cupón debe ser una cadena de texto'),
+  body('cluster_id').optional().isInt({ min: 1 }).withMessage('El cluster_id debe ser un entero positivo'),
+  body().custom(({ applies_to, cluster_id }) => {
+    if (applies_to === 'cluster' && !cluster_id) {
+      throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
+    }
+    if (applies_to !== 'cluster' && cluster_id) {
+      throw new Error('El cluster_id debe ser null si applies_to no es "cluster"');
+    }
+    return true;
+  })
 ];
 
 // Validations for applyPromotion
@@ -68,7 +78,17 @@ const validateUpdatePromotion = [
   body('status').optional().isIn(['active', 'inactive']).withMessage('El estado debe ser "active" o "inactive"'),
   body('variantIds').optional().isArray().withMessage('variantIds debe ser un arreglo'),
   body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un arreglo'),
-  body('coupon_code').optional().isString().trim().withMessage('El código de cupón debe ser una cadena de texto')
+  body('coupon_code').optional().isString().trim().withMessage('El código de cupón debe ser una cadena de texto'),
+  body('cluster_id').optional().isInt({ min: 1 }).withMessage('El cluster_id debe ser un entero positivo'),
+  body().custom(({ applies_to, cluster_id }) => {
+    if (applies_to === 'cluster' && !cluster_id) {
+      throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
+    }
+    if (applies_to !== 'cluster' && cluster_id) {
+      throw new Error('El cluster_id debe ser null si applies_to no es "cluster"');
+    }
+    return true;
+  })
 ];
 
 // Validations for getAllVariants
@@ -138,18 +158,25 @@ exports.createPromotion = [
       const {
         name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
         free_shipping_enabled, applies_to, is_exclusive = true, start_date, end_date,
-        variantIds = [], categoryIds = [], coupon_code
+        variantIds = [], categoryIds = [], coupon_code, cluster_id
       } = req.body;
 
       const created_by = req.user.user_id;
       if (!created_by) {
         return res.status(401).json({ message: 'No se pudo identificar al usuario autenticado' });
       }
+      // Validar si el cluster_id existe en client_clusters
+      if (applies_to === 'cluster' && cluster_id) {
+        const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id } });
+        if (!clusterExists) {
+          return res.status(400).json({ message: 'El cluster_id especificado no existe' });
+        }
+      }
 
       const promotionData = {
         name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
         free_shipping_enabled, applies_to, is_exclusive, start_date, end_date, created_by,
-        status: 'active', variantIds, categoryIds, coupon_code
+        status: 'active', variantIds, categoryIds, coupon_code, cluster_id
       };
 
       const newPromotion = await promotionService.createPromotion(promotionData);
@@ -169,7 +196,8 @@ exports.createPromotion = [
           is_exclusive: newPromotion.is_exclusive,
           start_date: newPromotion.start_date,
           end_date: newPromotion.end_date,
-          coupon_code: newPromotion.Coupon ? newPromotion.Coupon.code : null
+          coupon_code: newPromotion.Coupon ? newPromotion.Coupon.code : null,
+          cluster_id: newPromotion.cluster_id
         }
       });
     } catch (error) {
@@ -347,14 +375,21 @@ exports.updatePromotion = [
     const {
       name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
       free_shipping_enabled, applies_to, is_exclusive, start_date, end_date, status,
-      variantIds, categoryIds, coupon_code
+      variantIds, categoryIds, coupon_code, cluster_id
     } = req.body;
 
     try {
+      // Validar si el cluster_id existe en client_clusters
+      if (applies_to === 'cluster' && cluster_id) {
+        const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id } });
+        if (!clusterExists) {
+          return res.status(400).json({ message: 'El cluster_id especificado no existe' });
+        }
+      }
       const promotionData = {
         name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
         free_shipping_enabled, applies_to, is_exclusive, start_date, end_date, status,
-        updated_by: req.user.user_id, coupon_code
+        updated_by: req.user.user_id, coupon_code, cluster_id
       };
 
       const promotion = await promotionService.updatePromotion(id, promotionData, variantIds || [], categoryIds || []);
@@ -379,7 +414,8 @@ exports.updatePromotion = [
           is_exclusive: promotion.is_exclusive,
           start_date: promotion.start_date,
           end_date: promotion.end_date,
-          coupon_code: promotion.Coupon ? promotion.Coupon.code : null
+          coupon_code: promotion.Coupon ? promotion.Coupon.code : null,
+          cluster_id: promotion.cluster_id
         }
       });
     } catch (error) {
@@ -414,27 +450,23 @@ exports.applyPromotion = [
         await transaction.rollback();
         return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
       }
-
       const { promotion_id, coupon_code } = req.body;
       const user_id = req.user.user_id;
       if (!user_id) {
         await transaction.rollback();
         return res.status(401).json({ message: 'Usuario no autenticado' });
       }
-
       // Obtener el carrito activo
       const cart = await Cart.findOne({
         where: { user_id, status: 'active' },
         include: [{ model: CartDetail, include: [{ model: ProductVariant, include: [{ model: Product, attributes: ['category_id'] }] }] }],
         transaction
       });
-
       if (!cart || !cart.CartDetails.length) {
         await transaction.rollback();
         return res.status(400).json({ message: 'No hay un carrito activo o está vacío' });
       }
-
-      // Preparar los detalles del carrito para PromotionService
+      // Preparar los detalles del carrito
       const cartDetails = cart.CartDetails.map(detail => ({
         variant_id: detail.variant_id,
         quantity: detail.quantity,
@@ -442,11 +474,9 @@ exports.applyPromotion = [
         subtotal: parseFloat(detail.subtotal),
         category_id: detail.ProductVariant?.Product?.category_id || null
       }));
-
       // Obtener promociones aplicables
       const applicablePromotions = await promotionService.getApplicablePromotions(cartDetails, user_id, coupon_code, transaction);
       let selectedPromotion = null;
-
       if (promotion_id) {
         selectedPromotion = applicablePromotions.find(p => p.promotion_id === parseInt(promotion_id));
         if (!selectedPromotion) {
@@ -460,12 +490,21 @@ exports.applyPromotion = [
           return res.status(400).json({ message: 'El cupón no es válido o no aplicable' });
         }
       }
-
       if (!selectedPromotion) {
         await transaction.rollback();
         return res.status(400).json({ message: 'No se proporcionó una promoción o cupón válido' });
       }
-
+      // Verificar si el usuario pertenece al clúster (si aplica)
+      if (selectedPromotion.applies_to === 'cluster' && selectedPromotion.cluster_id) {
+        const userInCluster = await ClientCluster.findOne({
+          where: { user_id, cluster: selectedPromotion.cluster_id },
+          transaction
+        });
+        if (!userInCluster) {
+          await transaction.rollback();
+          return res.status(403).json({ message: 'El usuario no pertenece al clúster de la promoción' });
+        }
+      }
       // Verificar si la promoción/cupón ya está aplicado
       const existingUsage = await CouponUsage.findOne({
         where: { promotion_id: selectedPromotion.promotion_id, cart_id: cart.cart_id, user_id },
@@ -475,19 +514,16 @@ exports.applyPromotion = [
         await transaction.rollback();
         return res.status(400).json({ message: 'Esta promoción o cupón ya está aplicado al carrito' });
       }
-
       // Si la promoción es exclusiva, eliminar otras promociones
       if (selectedPromotion.is_exclusive) {
         await CouponUsage.destroy({ where: { cart_id: cart.cart_id, user_id }, transaction });
       }
-
       // Aplicar descuentos
       const { updatedOrderDetails, totalDiscount } = await promotionService.applyPromotions(cartDetails, [selectedPromotion], user_id, cart.cart_id, coupon_code, transaction);
       for (const detail of cart.CartDetails) {
         const updatedDetail = updatedOrderDetails.find(d => d.variant_id === detail.variant_id);
         await detail.update({ discount_applied: updatedDetail.discount_applied }, { transaction });
       }
-
       // Actualizar totales del carrito
       const subtotal = cart.CartDetails.reduce((sum, detail) => sum + parseFloat(detail.subtotal), 0);
       await cart.update({
@@ -495,7 +531,6 @@ exports.applyPromotion = [
         total: subtotal - totalDiscount,
         coupon_code: coupon_code || null
       }, { transaction });
-
       // Registrar en coupon_usages
       await CouponUsage.create({
         promotion_id: selectedPromotion.promotion_id,
@@ -506,7 +541,6 @@ exports.applyPromotion = [
         created_at: new Date(),
         updated_at: new Date()
       }, { transaction });
-
       // Generar mensaje de progreso
       const progress = await promotionService.getPromotionProgress(
         {
@@ -518,30 +552,34 @@ exports.applyPromotion = [
           min_order_value: selectedPromotion.min_order_value,
           free_shipping_enabled: selectedPromotion.free_shipping_enabled,
           applies_to: selectedPromotion.applies_to,
-          Coupon: selectedPromotion.coupon_code ? { code: selectedPromotion.coupon_code } : null
+          Coupon: selectedPromotion.coupon_code ? { code: selectedPromotion.coupon_code } : null,
+          cluster_id: selectedPromotion.cluster_id
         },
         cartDetails,
         user_id,
         selectedPromotion.coupon_code,
         transaction
       );
-
       await transaction.commit();
       res.status(200).json({
         message: 'Promoción o cupón aplicado exitosamente',
         cart: {
           cart_id: cart.cart_id,
           total_discount: totalDiscount,
-          total: subtotal - totalDiscount
+          total: subtotal - totalDiscount,
+          coupon_code: coupon_code || null
         },
         promotion: {
           promotion_id: selectedPromotion.promotion_id,
           name: selectedPromotion.name,
           coupon_type: selectedPromotion.coupon_type,
           discount_value: parseFloat(selectedPromotion.discount_value),
-          coupon_code: selectedPromotion.coupon_code || null
-        },
-        promotion_progress: progress
+          coupon_code: selectedPromotion.coupon_code || null,
+          promotion_progress: {
+            message: progress.message,
+            is_eligible: progress.is_eligible
+          }
+        }
       });
     } catch (error) {
       await transaction.rollback();
