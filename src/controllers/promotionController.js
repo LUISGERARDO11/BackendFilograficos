@@ -2,7 +2,7 @@ const { Op } = require('sequelize');
 const { body, query, validationResult } = require('express-validator');
 const PromotionService = require('../services/PromotionService');
 const loggerUtils = require('../utils/loggerUtils');
-const { Product, ProductVariant, ProductImage, Cart, CartDetail, CouponUsage, Coupon, Promotion, PromotionProduct, PromotionCategory, Category } = require('../models/Associations');
+const { Product, ProductVariant, ProductImage, Cart, CartDetail, CouponUsage, Coupon, Promotion, PromotionProduct, PromotionCategory, Category, ClientCluster } = require('../models/Associations');
 
 const promotionService = new PromotionService();
 
