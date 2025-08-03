@@ -20,7 +20,12 @@ const ClientCluster = sequelize.define('ClientCluster', {
   tableName: 'client_clusters',
   timestamps: true,
   createdAt: 'created_at',
-  updatedAt: 'updated_at'
+  updatedAt: 'updated_at',
+  indexes: [
+    {
+      fields: ['cluster'] // Add an index on the cluster column
+    }
+  ]
 });
 
 module.exports = ClientCluster;

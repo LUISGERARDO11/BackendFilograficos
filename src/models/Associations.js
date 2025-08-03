@@ -245,6 +245,9 @@ Category.belongsToMany(Promotion, { through: PromotionCategory, foreignKey: 'cat
 User.hasMany(Promotion, { foreignKey: 'created_by' });
 Promotion.belongsTo(User, { foreignKey: 'created_by' });
 
+Promotion.belongsTo(ClientCluster, { foreignKey: 'cluster_id', targetKey: 'cluster' });
+ClientCluster.hasMany(Promotion, { foreignKey: 'cluster_id', sourceKey: 'cluster' });
+
 // Relaciones de Coupons
 Promotion.hasOne(Coupon, { foreignKey: 'promotion_id' });
 Coupon.belongsTo(Promotion, { foreignKey: 'promotion_id' });
