@@ -153,19 +153,19 @@ exports.applyCoupon = [
 
         if (!coupon) {
           await transaction.rollback();
-          return res.status(400).json({ success: false, message: `El cupón ${coupon_code} es inválido o inactivo` });
+          return res.status(200).json({ success: false, message: `El cupón ${coupon_code} es inválido o inactivo` });
         }
 
         const promotion = coupon.Promotion;
         const isCouponApplicable = await promotionService.isPromotionApplicable(promotion, formattedCartDetails, user_id, coupon_code, transaction);
         if (!isCouponApplicable) {
           await transaction.rollback();
-          return res.status(400).json({ success: false, message: `El cupón ${coupon_code} no es aplicable a los ítems del pedido` });
+          return res.status(200).json({ success: false, message: `El cupón ${coupon_code} no es aplicable a los ítems del pedido` });
         }
 
         if (automaticPromotions.some(p => p.is_exclusive)) {
           await transaction.rollback();
-          return res.status(400).json({ success: false, message: 'No se puede aplicar el cupón debido a una promoción automática exclusiva' });
+          return res.status(200).json({ success: false, message: 'No se puede aplicar el cupón debido a una promoción automática exclusiva' });
         }
 
         if (promotion.coupon_type === 'percentage_discount') {
@@ -207,6 +207,7 @@ exports.applyCoupon = [
         success: true,
         message: coupon_code && appliedCoupon ? `Cupón ${coupon_code} aplicado con éxito` : 'Cupón no aplicado',
         data: {
+          subtotal: subtotal, // Add original subtotal
           total,
           total_discount: totalDiscount,
           shipping_cost,
