@@ -384,7 +384,8 @@ class PromotionService {
       start_date,
       end_date,
       created_by,
-      status
+      status,
+      cluster_id: applies_to === 'cluster' ? cluster_id : null
     }, { transaction });
 
     if (variantIds && variantIds.length > 0 && applies_to === 'specific_products') {

@@ -30,6 +30,19 @@ const validateCreatePromotion = [
   body('end_date').isISO8601().withMessage('La fecha de fin debe ser una fecha válida en formato ISO8601'),
   body('variantIds').optional().isArray().withMessage('variantIds debe ser un arreglo'),
   body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un arreglo'),
+  body('cluster_id')
+    .optional()
+    .isInt({ min: 0 })
+    .withMessage('El cluster_id debe ser un entero no negativo')
+    .custom((value, { req }) => {
+      if (req.body.applies_to === 'cluster' && !value) {
+        throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
+      }
+      if (req.body.applies_to !== 'cluster' && value) {
+        throw new Error('El cluster_id no debe proporcionarse si applies_to no es "cluster"');
+      }
+      return true;
+    }),
   body('coupon_code').optional().isString().trim().withMessage('El código de cupón debe ser una cadena de texto')
 ];
 
@@ -149,7 +162,7 @@ exports.createPromotion = [
       const promotionData = {
         name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
         free_shipping_enabled, applies_to, is_exclusive, start_date, end_date, created_by,
-        status: 'active', variantIds, categoryIds, coupon_code
+        status: 'active', variantIds, categoryIds, cluster_id: applies_to === 'cluster' ? cluster_id : null, coupon_code
       };
 
       const newPromotion = await promotionService.createPromotion(promotionData);
@@ -169,6 +182,7 @@ exports.createPromotion = [
           is_exclusive: newPromotion.is_exclusive,
           start_date: newPromotion.start_date,
           end_date: newPromotion.end_date,
+          cluster_id: newPromotion.cluster_id,
           coupon_code: newPromotion.Coupon ? newPromotion.Coupon.code : null
         }
       });
