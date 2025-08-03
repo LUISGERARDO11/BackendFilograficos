@@ -37,7 +37,7 @@ const Promotion = sequelize.define('Promotion', {
     defaultValue: false
   },
   applies_to: {
-    type: DataTypes.ENUM('specific_products', 'specific_categories', 'all'),
+    type: DataTypes.ENUM('specific_products', 'specific_categories', 'all', 'cluster'),
     allowNull: false
   },
   is_exclusive: {
@@ -60,6 +60,11 @@ const Promotion = sequelize.define('Promotion', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: { model: 'users', key: 'user_id' }
+  },
+  cluster_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: { model: 'client_clusters', key: 'cluster' }
   }
 }, {
   tableName: 'promotions',
