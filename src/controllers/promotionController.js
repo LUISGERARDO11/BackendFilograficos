@@ -39,16 +39,15 @@ const validateCreatePromotion = [
         if (value === undefined || value === null) {
           throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
         }
-        const clusterExists = await ClientCluster.findOne({
+        const clusters = await ClientCluster.findAll({
           where: { cluster: value },
-          raw: true // Para evitar problemas con instancias de modelo
+          limit: 1,
+          raw: true
         });
-        if (!clusterExists) {
-          throw new Error(`El cluster_id ${value} no existe en client_clusters`);
+
+        if (clusters.length === 0) {
+          throw new Error(`No existen usuarios en el cluster ${value}`);
         }
-      }
-      if (req.body.applies_to !== 'cluster' && value !== undefined && value !== null) {
-        throw new Error('El cluster_id no debe proporcionarse si applies_to no es "cluster"');
       }
       return true;
     }),
