@@ -55,7 +55,7 @@ class EmailService {
         seen: false
       });
       loggerUtils.logCriticalError(error);
-      throw new Error(`Error enviando correo: ${error.message}`);
+      return { success: false, error: error.message };
     }
   }
 
@@ -109,6 +109,15 @@ class EmailService {
   async notifyStockEmail(to, title, message) {
     const htmlContent = `<h1>${title}</h1><p>${message}</p>`;
     return this.sendGenericEmail(to, title, htmlContent, message);
+  }
+
+  async sendCouponEmail(to, couponCode) {
+    const template = await this.getEmailTemplate('COUPON_DELIVERY');
+    const data = { coupon_code: couponCode };
+    const htmlContent = ejs.render(template.html_content, data);
+    const textContent = ejs.render(template.text_content, data);
+
+    return this.sendGenericEmail(to, template.subject, htmlContent, textContent);
   }
 }
 

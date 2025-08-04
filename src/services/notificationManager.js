@@ -3,8 +3,9 @@ const NotificationService = require('./notificationService');
 const EmailService = require('./emailService');
 const loggerUtils = require('../utils/loggerUtils');
 const ejs = require('ejs');
-const moment = require('moment-timezone'); // Asegúrate de incluir moment-timezone
+const moment = require('moment-timezone');
 const orderUtils = require('../utils/orderUtils');
+const async = require('async');
 
 class NotificationManager {
   constructor() {
@@ -69,7 +70,6 @@ class NotificationManager {
   async notifyOrderStatusChange(order, user, orderDetails, payment) {
     try {
       const template = await this.emailService.getEmailTemplate('order_status_change');
-      // Mapear el estado en inglés a español
       const statusTranslations = {
         pending: 'Pendiente',
         processing: 'En proceso',
@@ -191,15 +191,41 @@ class NotificationManager {
                 await this.notificationService.notifyStock(admin.user_id, title, message);
             }
         } else if (type === 'new_order_admin') {
-            // Enviar correo siempre, sin verificar preferencias
             await this.emailService.sendGenericEmail(admin.email, subject, htmlContent, textContent);
-            // Enviar notificación push solo si está habilitado
             if (preferences.methods.includes('push') && preferences.categories.order_notifications) {
                 const title = `Nueva Orden #${data.order_id}`;
                 const message = `Se ha creado una nueva orden de ${data.user_name} (Total: ${data.total})`;
                 await this.notificationService.notifyStock(admin.user_id, title, message);
             }
         }
+    }
+  }
+
+  async notifyCouponDistribution(couponCode, users) {
+    try {
+      const queue = async.queue(async (user, callback) => {
+        try {
+          const result = await this.emailService.sendCouponEmail(user.email, couponCode);
+          if (result.success) {
+            loggerUtils.logUserActivity(user.user_id || null, 'send_coupon_email', `Correo de cupón enviado a ${user.email}`);
+          } else {
+            loggerUtils.logUserActivity(user.user_id || null, 'send_coupon_email_failed', `Fallo al enviar correo de cupón a ${user.email}: ${result.error}`);
+          }
+        } catch (error) {
+          loggerUtils.logCriticalError(error, `Error al enviar correo de cupón a ${user.email}`);
+        }
+        callback();
+      }, 10); // Concurrencia limitada a 10 correos simultáneos
+
+      users.forEach(user => {
+        queue.push(user);
+      });
+
+      await queue.drain();
+      loggerUtils.logUserActivity(null, 'notify_coupon_distribution', `Distribución de cupones completada para ${users.length} usuarios con código ${couponCode}`);
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      throw new Error(`Error al distribuir cupones: ${error.message}`);
     }
   }
 }
