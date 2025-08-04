@@ -1,4 +1,4 @@
-const { Cart, CartDetail, Product, ProductVariant, Coupon, Promotion, CouponUsage, ShippingOption } = require('../models/Associations');
+const { Cart, CartDetail, Product, ProductVariant, Coupon, Promotion, CouponUsage, ShippingOption, ClientCluster } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op } = require('sequelize');
 const { body, validationResult } = require('express-validator');
