@@ -408,27 +408,29 @@ class PromotionService {
   async createPromotion(promotionData, transaction = null) {
     const {
       name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled,
-      applies_to, is_exclusive, start_date, end_date, created_by, status, variantIds, categoryIds, coupon_code, cluster_id
+      applies_to, is_exclusive, start_date, end_date, created_by, status, variantIds, categoryIds, coupon_code, restrict_to_cluster, cluster_id
     } = promotionData;
 
-    // Validar cluster_id si applies_to es 'cluster'
-    if (applies_to === 'cluster') {
-      if (cluster_id === undefined) {
-        throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
+    // Validar cluster_id si restrict_to_cluster es true
+    if (restrict_to_cluster) {
+      if (cluster_id === undefined || cluster_id === null) {
+        throw new Error('El cluster_id es obligatorio cuando restrict_to_cluster es true');
       }
       const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id }, transaction });
       loggerUtils.logInfo(`Verificando cluster_id ${cluster_id}: ${JSON.stringify(clusterExists)}`);
       if (!clusterExists) {
         throw new Error(`El cluster_id ${cluster_id} no existe en la base de datos`);
       }
-    } else if (cluster_id !== undefined) {
-      throw new Error('El cluster_id debe ser null o undefined si applies_to no es "cluster"');
+    } else if (cluster_id !== undefined && cluster_id !== null) {
+      throw new Error('El cluster_id debe ser null o undefined si restrict_to_cluster es false');
     }
+    // Asegurar que discount_value sea null para free_shipping
+    const finalDiscountValue = coupon_type === 'free_shipping' ? null : discount_value;
 
     const promotion = await Promotion.create({
       name,
       coupon_type,
-      discount_value,
+      discount_value: finalDiscountValue,
       max_uses,
       max_uses_per_user,
       min_order_value,
@@ -439,7 +441,8 @@ class PromotionService {
       end_date,
       created_by,
       status,
-      cluster_id
+      restrict_to_cluster,
+      cluster_id: restrict_to_cluster ? cluster_id : null
     }, { transaction });
 
     if (variantIds && variantIds.length > 0 && applies_to === 'specific_products') {
@@ -536,23 +539,29 @@ class PromotionService {
     if (!promotion) throw new Error('Promoción no encontrada');
     if (promotion.status !== 'active') throw new Error('No se puede actualizar una promoción inactiva');
 
-    const { coupon_type, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled, applies_to, coupon_code, cluster_id } = data;
-    // Validar cluster_id
-    if (applies_to === 'cluster') {
-      if (cluster_id === undefined) {
-        throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
+    const { coupon_type, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled, applies_to, coupon_code, restrict_to_cluster, cluster_id } = data;
+    // Validar cluster_id si restrict_to_cluster es true
+    if (restrict_to_cluster) {
+      if (cluster_id === undefined || cluster_id === null) {
+        throw new Error('El cluster_id es obligatorio cuando restrict_to_cluster es true');
       }
       const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id }, transaction });
       if (!clusterExists) {
         throw new Error(`El cluster_id ${cluster_id} no existe en la base de datos`);
       }
-    } else if (cluster_id !== undefined) {
-      throw new Error('El cluster_id debe ser null o undefined si applies_to no es "cluster"');
+    } else if (cluster_id !== undefined && cluster_id !== null) {
+      throw new Error('El cluster_id debe ser null o undefined si restrict_to_cluster es false');
     }
-    data.free_shipping_enabled = coupon_type === 'free_shipping' ? free_shipping_enabled : false;
-    data.cluster_id = applies_to === 'cluster' ? cluster_id : null; // Asegurar que cluster_id sea null si no aplica
 
-    await promotion.update(data, { transaction });
+    // Asegurar que discount_value sea null para free_shipping
+    const finalDiscountValue = coupon_type === 'free_shipping' ? null : data.discount_value;
+
+    await promotion.update({
+      ...data,
+      discount_value: finalDiscountValue,
+      free_shipping_enabled: coupon_type === 'free_shipping' ? free_shipping_enabled : false,
+      cluster_id: restrict_to_cluster ? cluster_id : null
+    }, { transaction });
 
     await PromotionProduct.destroy({ where: { promotion_id: id }, transaction });
     if (variantIds.length > 0 && applies_to === 'specific_products') {

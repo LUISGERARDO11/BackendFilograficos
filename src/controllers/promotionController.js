@@ -31,19 +31,23 @@ const validateCreatePromotion = [
   body('variantIds').optional().isArray().withMessage('variantIds debe ser un array'),
   body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un array'),
   body('coupon_code').optional().isString().withMessage('El código de cupón debe ser una cadena'),
-  body('cluster_id').optional().isInt({ min: 0 }).withMessage('El cluster_id debe ser un entero no negativo'),
-  body().custom(({ applies_to, cluster_id, variantIds, categoryIds }) => {
-    if (applies_to === 'cluster' && cluster_id === undefined) {
-      throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
-    }
-    if (applies_to !== 'cluster' && cluster_id !== undefined) {
-      throw new Error('El cluster_id debe ser null o undefined si applies_to no es "cluster"');
-    }
+  body('restrict_to_cluster').optional().isBoolean().withMessage('El campo restrict_to_cluster debe ser un booleano'),
+  body('cluster_id')
+    .if(body('restrict_to_cluster').equals(true))
+    .notEmpty().withMessage('El cluster_id es obligatorio cuando restrict_to_cluster es true')
+    .isInt({ min: 1 }).withMessage('El cluster_id debe ser un entero positivo'),
+  body().custom(({ applies_to, variantIds, categoryIds, coupon_type, discount_value, restrict_to_cluster, cluster_id }) => {
     if (applies_to === 'specific_products' && (!variantIds || variantIds.length === 0)) {
       throw new Error('Se deben proporcionar variantIds cuando applies_to es "specific_products"');
     }
     if (applies_to === 'specific_categories' && (!categoryIds || categoryIds.length === 0)) {
       throw new Error('Se deben proporcionar categoryIds cuando applies_to es "specific_categories"');
+    }
+    if (coupon_type === 'free_shipping' && discount_value != null) {
+      throw new Error('El discount_value debe ser null para free_shipping');
+    }
+    if (!restrict_to_cluster && cluster_id !== undefined && cluster_id !== null) {
+      throw new Error('El cluster_id debe ser null o undefined si restrict_to_cluster es false');
     }
     return true;
   })
@@ -78,29 +82,161 @@ const validateUpdatePromotion = [
   body('variantIds').optional().isArray().withMessage('variantIds debe ser un array'),
   body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un array'),
   body('coupon_code').optional().isString().withMessage('El código de cupón debe ser una cadena'),
-  body('cluster_id').optional().isInt({ min: 0 }).withMessage('El cluster_id debe ser un entero no negativo'),
-  body().custom(({ applies_to, cluster_id, variantIds, categoryIds }) => {
-    if (applies_to === 'cluster' && cluster_id === undefined) {
-      throw new Error('El cluster_id es obligatorio cuando applies_to es "cluster"');
-    }
-    if (applies_to !== 'cluster' && cluster_id !== undefined) {
-      throw new Error('El cluster_id debe ser null o undefined si applies_to no es "cluster"');
-    }
+  body('restrict_to_cluster').optional().isBoolean().withMessage('El campo restrict_to_cluster debe ser un booleano'),
+  body('cluster_id')
+    .if(body('restrict_to_cluster').equals(true))
+    .notEmpty().withMessage('El cluster_id es obligatorio cuando restrict_to_cluster es true')
+    .isInt({ min: 1 }).withMessage('El cluster_id debe ser un entero positivo'),
+  body().custom(({ applies_to, variantIds, categoryIds, coupon_type, discount_value, restrict_to_cluster, cluster_id }) => {
     if (applies_to === 'specific_products' && (!variantIds || variantIds.length === 0)) {
       throw new Error('Se deben proporcionar variantIds cuando applies_to es "specific_products"');
     }
     if (applies_to === 'specific_categories' && (!categoryIds || categoryIds.length === 0)) {
       throw new Error('Se deben proporcionar categoryIds cuando applies_to es "specific_categories"');
     }
+    if (coupon_type === 'free_shipping' && discount_value != null) {
+      throw new Error('El discount_value debe ser null para free_shipping');
+    }
+    if (!restrict_to_cluster && cluster_id !== undefined && cluster_id !== null) {
+      throw new Error('El cluster_id debe ser null o undefined si restrict_to_cluster es false');
+    }
     return true;
   })
+];
+// Crear una promoción
+exports.createPromotion = [
+  validateCreatePromotion,
+  async (req, res) => {
+    try {
+      loggerUtils.logInfo(`Parámetros recibidos en body para crear promoción: ${JSON.stringify(req.body)}`);
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
+      }
+
+      const {
+        name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
+        free_shipping_enabled, applies_to, is_exclusive = true, start_date, end_date,
+        variantIds = [], categoryIds = [], coupon_code, restrict_to_cluster = false, cluster_id
+      } = req.body;
+
+      const created_by = req.user.user_id;
+      if (!created_by) {
+        return res.status(401).json({ message: 'No se pudo identificar al usuario autenticado' });
+      }
+      // Validar si el cluster_id existe en client_clusters
+      if (restrict_to_cluster && cluster_id) {
+        const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id } });
+        if (!clusterExists) {
+          return res.status(400).json({ message: `El cluster_id ${cluster_id} no existe en la base de datos` });
+        }
+      }
+
+      const promotionData = {
+        name, coupon_type, discount_value: coupon_type === 'free_shipping' ? null : discount_value, max_uses, max_uses_per_user, min_order_value,
+        free_shipping_enabled, applies_to, is_exclusive, start_date, end_date, created_by,
+        status: 'active', variantIds, categoryIds, coupon_code, restrict_to_cluster, cluster_id: restrict_to_cluster ? cluster_id : null
+      };
+
+      const newPromotion = await promotionService.createPromotion(promotionData);
+
+      res.status(201).json({
+        message: 'Promoción creada exitosamente',
+        promotion: {
+          promotion_id: newPromotion.promotion_id,
+          name: newPromotion.name,
+          coupon_type: newPromotion.coupon_type,
+          discount_value: newPromotion.discount_value ? parseFloat(newPromotion.discount_value) : null,
+          max_uses: newPromotion.max_uses,
+          max_uses_per_user: newPromotion.max_uses_per_user,
+          min_order_value: newPromotion.min_order_value,
+          free_shipping_enabled: newPromotion.free_shipping_enabled,
+          applies_to: newPromotion.applies_to,
+          is_exclusive: newPromotion.is_exclusive,
+          start_date: newPromotion.start_date,
+          end_date: newPromotion.end_date,
+          coupon_code: newPromotion.Coupon ? newPromotion.Coupon.code : null,
+          restrict_to_cluster: newPromotion.restrict_to_cluster,
+          cluster_id: newPromotion.cluster_id
+        }
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al crear la promoción', error: error.message });
+    }
+  }
+];
+// Actualizar una promoción
+exports.updatePromotion = [
+  validateUpdatePromotion,
+  async (req, res) => {
+    loggerUtils.logInfo(`Parámetros recibidos en params para actualizar promoción: ${JSON.stringify(req.params)}`);
+    loggerUtils.logInfo(`Parámetros recibidos en body para actualizar promoción: ${JSON.stringify(req.body)}`);
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
+    }
+
+    const { id } = req.params;
+    const {
+      name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
+      free_shipping_enabled, applies_to, is_exclusive, start_date, end_date, status,
+      variantIds, categoryIds, coupon_code, restrict_to_cluster, cluster_id
+    } = req.body;
+
+    try {
+      // Validar si el cluster_id existe en client_clusters
+      if (restrict_to_cluster && cluster_id) {
+        const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id } });
+        if (!clusterExists) {
+          return res.status(400).json({ message: `El cluster_id ${cluster_id} no existe en la base de datos` });
+        }
+      }
+      const promotionData = {
+        name, coupon_type, discount_value: coupon_type === 'free_shipping' ? null : discount_value, max_uses, max_uses_per_user, min_order_value,
+        free_shipping_enabled, applies_to, is_exclusive, start_date, end_date, status,
+        updated_by: req.user.user_id, coupon_code, restrict_to_cluster, cluster_id: restrict_to_cluster ? cluster_id : null
+      };
+
+      const promotion = await promotionService.updatePromotion(id, promotionData, variantIds || [], categoryIds || []);
+      if (!promotion) {
+        return res.status(404).json({ message: 'Promoción no encontrada' });
+      }
+
+      loggerUtils.logInfo(`Objeto promotion devuelto por updatePromotion: ${JSON.stringify(promotion, null, 2)}`);
+
+      res.status(200).json({
+        message: 'Promoción actualizada exitosamente',
+        promotion: {
+          promotion_id: promotion.promotion_id,
+          name: promotion.name,
+          coupon_type: promotion.coupon_type,
+          discount_value: promotion.discount_value ? parseFloat(promotion.discount_value) : null,
+          max_uses: promotion.max_uses,
+          max_uses_per_user: promotion.max_uses_per_user,
+          min_order_value: promotion.min_order_value,
+          free_shipping_enabled: promotion.free_shipping_enabled,
+          applies_to: promotion.applies_to,
+          is_exclusive: promotion.is_exclusive,
+          start_date: promotion.start_date,
+          end_date: promotion.end_date,
+          coupon_code: promotion.Coupon ? promotion.Coupon.code : null,
+          restrict_to_cluster: promotion.restrict_to_cluster,
+          cluster_id: promotion.cluster_id
+        }
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al actualizar la promoción', error: error.message });
+    }
+  }
 ];
 
 // Validations for getAllVariants
 const validateGetAllVariants = [
   query('search').optional().trim().escape(),
 ];
-
 // Obtener todas las variantes con información básica
 exports.getAllVariants = [
   validateGetAllVariants,
@@ -145,69 +281,6 @@ exports.getAllVariants = [
     } catch (error) {
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error al obtener las variantes', error: error.message });
-    }
-  }
-];
-
-// Crear una promoción
-exports.createPromotion = [
-  validateCreatePromotion,
-  async (req, res) => {
-    try {
-      loggerUtils.logInfo(`Parámetros recibidos en body para crear promoción: ${JSON.stringify(req.body)}`);
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
-      }
-
-      const {
-        name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
-        free_shipping_enabled, applies_to, is_exclusive = true, start_date, end_date,
-        variantIds = [], categoryIds = [], coupon_code, cluster_id
-      } = req.body;
-
-      const created_by = req.user.user_id;
-      if (!created_by) {
-        return res.status(401).json({ message: 'No se pudo identificar al usuario autenticado' });
-      }
-      // Validar si el cluster_id existe en client_clusters
-      if (applies_to === 'cluster' && cluster_id !== undefined) {
-        const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id } });
-        if (!clusterExists) {
-          return res.status(400).json({ message: `El cluster_id ${cluster_id} no existe en la base de datos` });
-        }
-      }
-
-      const promotionData = {
-        name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
-        free_shipping_enabled, applies_to, is_exclusive, start_date, end_date, created_by,
-        status: 'active', variantIds, categoryIds, coupon_code, cluster_id
-      };
-
-      const newPromotion = await promotionService.createPromotion(promotionData);
-
-      res.status(201).json({
-        message: 'Promoción creada exitosamente',
-        promotion: {
-          promotion_id: newPromotion.promotion_id,
-          name: newPromotion.name,
-          coupon_type: newPromotion.coupon_type,
-          discount_value: parseFloat(newPromotion.discount_value),
-          max_uses: newPromotion.max_uses,
-          max_uses_per_user: newPromotion.max_uses_per_user,
-          min_order_value: newPromotion.min_order_value,
-          free_shipping_enabled: newPromotion.free_shipping_enabled,
-          applies_to: newPromotion.applies_to,
-          is_exclusive: newPromotion.is_exclusive,
-          start_date: newPromotion.start_date,
-          end_date: newPromotion.end_date,
-          coupon_code: newPromotion.Coupon ? newPromotion.Coupon.code : null,
-          cluster_id: newPromotion.cluster_id
-        }
-      });
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error al crear la promoción', error: error.message });
     }
   }
 ];
@@ -363,72 +436,6 @@ exports.getPromotionById = async (req, res) => {
     res.status(500).json({ message: 'Error al obtener la promoción', error: error.message });
   }
 };
-
-// Actualizar una promoción
-exports.updatePromotion = [
-  validateUpdatePromotion,
-  async (req, res) => {
-    loggerUtils.logInfo(`Parámetros recibidos en params para actualizar promoción: ${JSON.stringify(req.params)}`);
-    loggerUtils.logInfo(`Parámetros recibidos en body para actualizar promoción: ${JSON.stringify(req.body)}`);
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
-    }
-
-    const { id } = req.params;
-    const {
-      name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
-      free_shipping_enabled, applies_to, is_exclusive, start_date, end_date, status,
-      variantIds, categoryIds, coupon_code, cluster_id
-    } = req.body;
-
-    try {
-      // Validar si el cluster_id existe en client_clusters
-      if (applies_to === 'cluster' && cluster_id !== undefined) {
-        const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id } });
-        if (!clusterExists) {
-          return res.status(400).json({ message: `El cluster_id ${cluster_id} no existe en la base de datos` });
-        }
-      }
-      const promotionData = {
-        name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
-        free_shipping_enabled, applies_to, is_exclusive, start_date, end_date, status,
-        updated_by: req.user.user_id, coupon_code, cluster_id
-      };
-
-      const promotion = await promotionService.updatePromotion(id, promotionData, variantIds || [], categoryIds || []);
-      if (!promotion) {
-        return res.status(404).json({ message: 'Promoción no encontrada' });
-      }
-
-      loggerUtils.logInfo(`Objeto promotion devuelto por updatePromotion: ${JSON.stringify(promotion, null, 2)}`);
-
-      res.status(200).json({
-        message: 'Promoción actualizada exitosamente',
-        promotion: {
-          promotion_id: promotion.promotion_id,
-          name: promotion.name,
-          coupon_type: promotion.coupon_type,
-          discount_value: parseFloat(promotion.discount_value),
-          max_uses: promotion.max_uses,
-          max_uses_per_user: promotion.max_uses_per_user,
-          min_order_value: promotion.min_order_value,
-          free_shipping_enabled: promotion.free_shipping_enabled,
-          applies_to: promotion.applies_to,
-          is_exclusive: promotion.is_exclusive,
-          start_date: promotion.start_date,
-          end_date: promotion.end_date,
-          coupon_code: promotion.Coupon ? promotion.Coupon.code : null,
-          cluster_id: promotion.cluster_id
-        }
-      });
-    } catch (error) {
-      loggerUtils.logCriticalError(error);
-      res.status(500).json({ message: 'Error al actualizar la promoción', error: error.message });
-    }
-  }
-];
 
 // Eliminar una promoción
 exports.deletePromotion = async (req, res) => {
