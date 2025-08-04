@@ -1,10 +1,12 @@
 const { Op } = require('sequelize');
 const { body, query, validationResult } = require('express-validator');
 const PromotionService = require('../services/PromotionService');
+const NotificationManager = require('../services/notificationManager');
 const loggerUtils = require('../utils/loggerUtils');
 const { Product, ProductVariant, ProductImage, Cart, CartDetail, CouponUsage, Coupon, Promotion, PromotionProduct, PromotionCategory, Category, ClientCluster } = require('../models/Associations');
 
 const promotionService = new PromotionService();
+const notificationManager = new NotificationManager();
 
 // Validations for getAllPromotions
 const validateGetAllPromotions = [
@@ -19,7 +21,7 @@ const validateGetAllPromotions = [
 const validateCreatePromotion = [
   body('name').notEmpty().withMessage('El nombre es obligatorio'),
   body('coupon_type').isIn(['percentage_discount', 'fixed_discount', 'free_shipping']).withMessage('El tipo de cupón debe ser percentage_discount, fixed_discount o free_shipping'),
-  body('discount_value').isFloat({ min: 0 }).withMessage('El valor del descuento debe ser un número mayor o igual a 0'),
+  body('discount_value').optional().isFloat({ min: 0 }).withMessage('El valor del descuento debe ser un número mayor o igual a 0'),
   body('max_uses').optional().isInt({ min: 1 }).withMessage('El máximo de usos debe ser un entero positivo'),
   body('max_uses_per_user').optional().isInt({ min: 1 }).withMessage('El máximo de usos por usuario debe ser un entero positivo'),
   body('min_order_value').optional().isFloat({ min: 0 }).withMessage('El valor mínimo del pedido debe ser un número mayor o igual a 0'),
@@ -30,12 +32,15 @@ const validateCreatePromotion = [
   body('end_date').isISO8601().toDate().withMessage('La fecha de fin debe ser una fecha válida en formato ISO8601'),
   body('variantIds').optional().isArray().withMessage('variantIds debe ser un array'),
   body('categoryIds').optional().isArray().withMessage('categoryIds debe ser un array'),
-  body('coupon_code').optional().isString().withMessage('El código de cupón debe ser una cadena'),
+  body('coupon_code')
+    .if(body('restrict_to_cluster').equals(true))
+    .notEmpty().withMessage('El código de cupón es obligatorio cuando restrict_to_cluster es true')
+    .isString().withMessage('El código de cupón debe ser una cadena'),
   body('restrict_to_cluster').optional().isBoolean().withMessage('El campo restrict_to_cluster debe ser un booleano'),
   body('cluster_id')
     .if(body('restrict_to_cluster').equals(true))
     .notEmpty().withMessage('El cluster_id es obligatorio cuando restrict_to_cluster es true')
-    .isInt({ min: 1 }).withMessage('El cluster_id debe ser un entero positivo'),
+    .isInt({ min: 0, max: 2 }).withMessage('El cluster_id debe ser un entero entre 0 y 2'),
   body().custom(({ applies_to, variantIds, categoryIds, coupon_type, discount_value, restrict_to_cluster, cluster_id }) => {
     if (applies_to === 'specific_products' && (!variantIds || variantIds.length === 0)) {
       throw new Error('Se deben proporcionar variantIds cuando applies_to es "specific_products"');
@@ -86,7 +91,7 @@ const validateUpdatePromotion = [
   body('cluster_id')
     .if(body('restrict_to_cluster').equals(true))
     .notEmpty().withMessage('El cluster_id es obligatorio cuando restrict_to_cluster es true')
-    .isInt({ min: 1 }).withMessage('El cluster_id debe ser un entero positivo'),
+    .isInt({ min: 0, max: 2 }).withMessage('El cluster_id debe ser un entero entre 0 y 2'),
   body().custom(({ applies_to, variantIds, categoryIds, coupon_type, discount_value, restrict_to_cluster, cluster_id }) => {
     if (applies_to === 'specific_products' && (!variantIds || variantIds.length === 0)) {
       throw new Error('Se deben proporcionar variantIds cuando applies_to es "specific_products"');
@@ -103,14 +108,17 @@ const validateUpdatePromotion = [
     return true;
   })
 ];
+
 // Crear una promoción
 exports.createPromotion = [
   validateCreatePromotion,
   async (req, res) => {
+    const transaction = await Promotion.sequelize.transaction();
     try {
       loggerUtils.logInfo(`Parámetros recibidos en body para crear promoción: ${JSON.stringify(req.body)}`);
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        await transaction.rollback();
         return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
       }
 
@@ -122,23 +130,36 @@ exports.createPromotion = [
 
       const created_by = req.user.user_id;
       if (!created_by) {
+        await transaction.rollback();
         return res.status(401).json({ message: 'No se pudo identificar al usuario autenticado' });
-      }
-      // Validar si el cluster_id existe en client_clusters
-      if (restrict_to_cluster && cluster_id) {
-        const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id } });
-        if (!clusterExists) {
-          return res.status(400).json({ message: `El cluster_id ${cluster_id} no existe en la base de datos` });
-        }
       }
 
       const promotionData = {
-        name, coupon_type, discount_value: coupon_type === 'free_shipping' ? null : discount_value, max_uses, max_uses_per_user, min_order_value,
+        name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
         free_shipping_enabled, applies_to, is_exclusive, start_date, end_date, created_by,
-        status: 'active', variantIds, categoryIds, coupon_code, restrict_to_cluster, cluster_id: restrict_to_cluster ? cluster_id : null
+        status: 'active', variantIds, categoryIds, coupon_code, restrict_to_cluster, cluster_id
       };
 
-      const newPromotion = await promotionService.createPromotion(promotionData);
+      const newPromotion = await promotionService.createPromotion(promotionData, transaction);
+      await transaction.commit();
+
+      // Enviar correos a usuarios del cluster si restrict_to_cluster es true
+      if (restrict_to_cluster && cluster_id !== undefined && coupon_code) {
+        setImmediate(async () => {
+          try {
+            // Usar una nueva transacción para getUsersByCluster o sin transacción
+            const users = await promotionService.getUsersByCluster(cluster_id);
+            if (users.length < 10 || users.length > 500) {
+              loggerUtils.logCriticalError(new Error(`Número de usuarios (${users.length}) fuera del rango permitido (10-500) para el cluster ${cluster_id}`));
+              return;
+            }
+            await notificationManager.notifyCouponDistribution(coupon_code, users);
+            loggerUtils.logUserActivity(created_by, 'send_coupon', `Cupón ${coupon_code} enviado a ${users.length} usuarios del cluster ${cluster_id}`);
+          } catch (error) {
+            loggerUtils.logCriticalError(error, `Error al enviar cupones para la promoción ${newPromotion.promotion_id}`);
+          }
+        });
+      }
 
       res.status(201).json({
         message: 'Promoción creada exitosamente',
@@ -161,11 +182,13 @@ exports.createPromotion = [
         }
       });
     } catch (error) {
+      await transaction.rollback();
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error al crear la promoción', error: error.message });
     }
   }
 ];
+
 // Actualizar una promoción
 exports.updatePromotion = [
   validateUpdatePromotion,
@@ -185,25 +208,21 @@ exports.updatePromotion = [
       variantIds, categoryIds, coupon_code, restrict_to_cluster, cluster_id
     } = req.body;
 
+    const transaction = await Promotion.sequelize.transaction();
     try {
-      // Validar si el cluster_id existe en client_clusters
-      if (restrict_to_cluster && cluster_id) {
-        const clusterExists = await ClientCluster.findOne({ where: { cluster: cluster_id } });
-        if (!clusterExists) {
-          return res.status(400).json({ message: `El cluster_id ${cluster_id} no existe en la base de datos` });
-        }
-      }
       const promotionData = {
-        name, coupon_type, discount_value: coupon_type === 'free_shipping' ? null : discount_value, max_uses, max_uses_per_user, min_order_value,
+        name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value,
         free_shipping_enabled, applies_to, is_exclusive, start_date, end_date, status,
-        updated_by: req.user.user_id, coupon_code, restrict_to_cluster, cluster_id: restrict_to_cluster ? cluster_id : null
+        updated_by: req.user.user_id, coupon_code, restrict_to_cluster, cluster_id
       };
 
-      const promotion = await promotionService.updatePromotion(id, promotionData, variantIds || [], categoryIds || []);
+      const promotion = await promotionService.updatePromotion(id, promotionData, variantIds || [], categoryIds || [], transaction);
       if (!promotion) {
+        await transaction.rollback();
         return res.status(404).json({ message: 'Promoción no encontrada' });
       }
 
+      await transaction.commit();
       loggerUtils.logInfo(`Objeto promotion devuelto por updatePromotion: ${JSON.stringify(promotion, null, 2)}`);
 
       res.status(200).json({
@@ -227,17 +246,17 @@ exports.updatePromotion = [
         }
       });
     } catch (error) {
+      await transaction.rollback();
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error al actualizar la promoción', error: error.message });
     }
   }
 ];
 
-// Validations for getAllVariants
+// Obtener todas las variantes con información básica
 const validateGetAllVariants = [
   query('search').optional().trim().escape(),
 ];
-// Obtener todas las variantes con información básica
 exports.getAllVariants = [
   validateGetAllVariants,
   async (req, res) => {
@@ -505,17 +524,6 @@ exports.applyPromotion = [
       if (!selectedPromotion) {
         await transaction.rollback();
         return res.status(400).json({ message: 'No se proporcionó una promoción o cupón válido' });
-      }
-      // Verificar si el usuario pertenece al clúster (si aplica)
-      if (selectedPromotion.applies_to === 'cluster' && selectedPromotion.cluster_id) {
-        const userInCluster = await ClientCluster.findOne({
-          where: { user_id, cluster: selectedPromotion.cluster_id },
-          transaction
-        });
-        if (!userInCluster) {
-          await transaction.rollback();
-          return res.status(403).json({ message: 'El usuario no pertenece al clúster de la promoción' });
-        }
       }
       // Verificar si la promoción/cupón ya está aplicado
       const existingUsage = await CouponUsage.findOne({

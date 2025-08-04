@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
-const { Promotion, Coupon, CouponUsage, Order, PromotionProduct, PromotionCategory, ProductVariant, Product, Category, Cart, ClientCluster } = require('../models/Associations');
+const { Promotion, Coupon, CouponUsage, PromotionProduct, PromotionCategory, ProductVariant, Product, Category, Cart, ClientCluster, User } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
+
 class PromotionService {
   /**
    * Obtiene todas las promociones y cupones aplicables al carrito del usuario con detalles por ítem.
@@ -380,8 +381,7 @@ class PromotionService {
       });
       if (!userInCluster) {
         message = `No eres elegible porque no perteneces al grupo de clientes de esta promoción.`;
-        is_eligible = false;
-        return { message, is_eligible };
+        return { message, is_eligible: false };
       }
     }
 
@@ -425,7 +425,6 @@ class PromotionService {
   /**
    * Crea una nueva promoción y opcionalmente un cupón asociado.
    * @param {Object} promotionData - Datos de la promoción.
-   * @param {string|null} couponCode - Código de cupón opcional.
    * @param {Object|null} transaction - Transacción de Sequelize (opcional).
    * @returns {Object} Promoción y cupón creados.
    */
@@ -434,6 +433,11 @@ class PromotionService {
       name, coupon_type, discount_value, max_uses, max_uses_per_user, min_order_value, free_shipping_enabled,
       applies_to, is_exclusive, start_date, end_date, created_by, status, variantIds, categoryIds, coupon_code, restrict_to_cluster, cluster_id
     } = promotionData;
+
+    // Validar que coupon_code sea obligatorio si restrict_to_cluster es true
+    if (restrict_to_cluster && !coupon_code) {
+      throw new Error('El código de cupón es obligatorio cuando restrict_to_cluster es true');
+    }
 
     // Validar cluster_id si restrict_to_cluster es true
     if (restrict_to_cluster) {
@@ -554,7 +558,6 @@ class PromotionService {
    * @param {Object} data - Datos a actualizar.
    * @param {Array} variantIds - IDs de variantes asociadas.
    * @param {Array} categoryIds - IDs de categorías asociadas.
-   * @param {string|null} couponCode - Código de cupón opcional para crear/actualizar.
    * @param {Object|null} transaction - Transacción de Sequelize (opcional).
    * @returns {Object} Promoción actualizada.
    */
@@ -642,6 +645,32 @@ class PromotionService {
     await Coupon.update({ status: 'inactive' }, { where: { promotion_id: id }, transaction });
 
     return { message: 'Promoción y cupones asociados desactivados exitosamente' };
+  }
+
+  /**
+   * Obtiene usuarios activos de un cluster específico.
+   * @param {number} cluster_id - ID del cluster.
+   * @param {Object|null} transaction - Transacción de Sequelize (opcional).
+   * @returns {Array} Usuarios activos con user_id, email y name.
+   */
+  async getUsersByCluster(cluster_id, transaction = null) {
+    try {
+      const users = await User.findAll({
+        include: [{
+          model: ClientCluster,
+          where: { cluster: cluster_id },
+          attributes: []
+        }],
+        where: { status: 'activo' },
+        attributes: ['user_id', 'email', 'name'],
+        raw: true,
+        transaction
+      });
+      return users;
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      throw error;
+    }
   }
 }
 
