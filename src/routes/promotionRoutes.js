@@ -3,6 +3,7 @@ const router = express.Router();
 
 // Importar controladores
 const promotionController = require('../controllers/promotionController');
+const couponNotificationController = require('../controllers/couponNotificationController');
 
 // Importar middlewares
 const authMiddleware = require('../middlewares/authMiddleware');
@@ -77,6 +78,12 @@ router.delete(
   tokenExpirationMiddleware.verifyTokenExpiration,
   roleMiddleware(['administrador']),
   promotionController.deletePromotion
+);
+
+// Enviar cupón a usuarios seleccionados
+router.post(
+  '/send-coupon',
+  couponNotificationController.sendCouponToUsers
 );
 
 module.exports = router;
