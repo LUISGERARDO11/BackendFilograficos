@@ -105,15 +105,15 @@ exports.applyCoupon = [
 
       const subtotal = cartDetails.reduce((sum, detail) => sum + detail.subtotal, 0);
       const total_urgent_delivery_fee = cartDetails.reduce((sum, detail) => sum + (detail.urgent_delivery_fee * detail.quantity), 0);
-      
+
       // Usar estimated_delivery_days del frontend si se proporciona, si no, calcularlo
       let final_estimated_delivery_days;
       if (estimated_delivery_days !== undefined && Number.isInteger(estimated_delivery_days) && estimated_delivery_days >= 0) {
         final_estimated_delivery_days = estimated_delivery_days;
       } else {
         final_estimated_delivery_days = Math.max(...cartDetails.map(detail =>
-          detail.is_urgent ? 
-            (detail.ProductVariant.Product.urgent_delivery_days || detail.ProductVariant.Product.standard_delivery_days || 0) : 
+          detail.is_urgent ?
+            (detail.ProductVariant.Product.urgent_delivery_days || detail.ProductVariant.Product.standard_delivery_days || 0) :
             (detail.ProductVariant.Product.standard_delivery_days || 0)
         ), 0);
       }
@@ -168,6 +168,16 @@ exports.applyCoupon = [
         }
 
         const promotion = coupon.Promotion;
+        if (promotion.restrict_to_cluster && (promotion.cluster_id || promotion.cluster_id === 0)) {
+          const userInCluster = await ClientCluster.findOne({
+            where: { user_id, cluster: promotion.cluster_id },
+            transaction
+          });
+          if (!userInCluster) {
+            await transaction.rollback();
+            return res.status(200).json({ success: false, message: `El usuario no pertenece al clúster de la promoción` });
+          }
+        }
         const isCouponApplicable = await promotionService.isPromotionApplicable(promotion, formattedCartDetails, user_id, coupon_code, transaction);
         if (!isCouponApplicable) {
           await transaction.rollback();

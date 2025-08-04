@@ -157,19 +157,20 @@ class PromotionService {
    * @returns {boolean} True si la promoción/cupón es aplicable.
    */
   async isPromotionApplicable(promotion, cartDetails, userId, couponCode = null, transaction = null) {
-    // Verificar pertenencia al clúster para applies_to: 'cluster'
-    if (promotion.applies_to === 'cluster') {
+    loggerUtils.logInfo(`Validando promoción ${promotion.promotion_id}, applies_to: ${promotion.applies_to}, restrict_to_cluster: ${promotion.restrict_to_cluster}, cluster_id: ${promotion.cluster_id}`);
+    if (promotion.restrict_to_cluster) {
       if (!promotion.cluster_id && promotion.cluster_id !== 0) {
-        return false; // cluster_id debe estar definido
+        loggerUtils.logInfo(`Promoción ${promotion.promotion_id} no tiene cluster_id definido`);
+        return false;
       }
       const userInCluster = await ClientCluster.findOne({
         where: { user_id: userId, cluster: promotion.cluster_id },
         transaction
       });
+      loggerUtils.logInfo(`Validación de clúster para user_id: ${userId}, cluster: ${promotion.cluster_id}, resultado: ${!!userInCluster}`);
       if (!userInCluster) {
-        return false; // No aplicable si el usuario no está en el clúster
+        return false;
       }
-      // Si el usuario está en el clúster, la promoción es aplicable
       return true;
     }
 
