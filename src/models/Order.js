@@ -78,9 +78,10 @@ const Order = sequelize.define('Order', {
   createdAt: 'created_at',
   updatedAt: 'updated_at',
   indexes: [
-    { fields: ['user_id'] },
-    { fields: ['address_id'] },
-    { fields: ['order_status'] }
+    { fields: ['user_id'], name: 'idx_order_user_id' },
+    { fields: ['address_id'], name: 'idx_order_address_id' },
+    { fields: ['order_status'], name: 'idx_order_status' },
+    { fields: ['user_id', 'created_at', 'order_status'], name: 'idx_order_user_date_status' }
   ]
 });
 

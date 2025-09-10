@@ -56,6 +56,9 @@ const BackupFiles = require('./BackupFiles');
 const RevokedToken = require('./RevokedToken');
 const AlexaAuthCode = require('./AlexaAuthCode');
 const ClientCluster = require('./ClientCluster');
+const BadgeCategory = require('./BadgeCategories');
+const Badge = require('./Badges');
+const UserBadge = require('./UserBadges');
 
 // Relaciones de Usuarios
 User.hasOne(Account, { foreignKey: 'user_id' });
@@ -322,6 +325,16 @@ Category.belongsTo(Category, { as: 'parent', foreignKey: 'parent_id' });
 Company.hasMany(SocialMedia, { foreignKey: 'company_id' });
 SocialMedia.belongsTo(Company, { foreignKey: 'company_id' });
 
+// Relaciones de Insignias
+BadgeCategory.hasMany(Badge, { foreignKey: 'badge_category_id' });
+Badge.belongsTo(BadgeCategory, { foreignKey: 'badge_category_id' });
+
+User.hasMany(UserBadge, { foreignKey: 'user_id' });
+UserBadge.belongsTo(User, { foreignKey: 'user_id' });
+
+Badge.hasMany(UserBadge, { foreignKey: 'badge_id' });
+UserBadge.belongsTo(Badge, { foreignKey: 'badge_id' });
+
 // Exportación de Modelos
 module.exports = {
   User,
@@ -380,5 +393,8 @@ module.exports = {
   BackupFiles,
   RevokedToken,
   AlexaAuthCode,
-  ClientCluster
+  ClientCluster,
+  BadgeCategory,
+  Badge,
+  UserBadge
 };

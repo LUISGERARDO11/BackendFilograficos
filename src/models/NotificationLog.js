@@ -17,7 +17,7 @@ const NotificationLog = sequelize.define('NotificationLog', {
     }
   },
   type: {
-    type: DataTypes.ENUM('push', 'email', 'system'),
+    type: DataTypes.ENUM('push', 'email', 'system', 'badge_awarded'),
     allowNull: false
   },
   title: {
@@ -55,14 +55,9 @@ const NotificationLog = sequelize.define('NotificationLog', {
   createdAt: 'created_at',
   updatedAt: 'updated_at',
   indexes: [
-    {
-      fields: ['expires_at'], // Índice en expires_at para optimizar consultas de expiración
-      name: 'idx_expires_at'
-    },
-    {
-      fields: ['seen'], // Índice en seen para optimizar consultas de estado visto
-      name: 'idx_seen'
-    }
+    { fields: ['expires_at'], name: 'idx_expires_at' },
+    { fields: ['seen'], name: 'idx_seen' },
+    { fields: ['type'], name: 'idx_notification_type' }
   ]
 });
 
