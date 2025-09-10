@@ -45,6 +45,7 @@ const routes = [
   { path: '/api/admin/orders', router: require('./routes/adminOrderRoutes') },
   { path: '/api/reviews', router: require('./routes/reviewRoutes') }, 
   { path: '/api/recommendations', router: require('./routes/recommendationRoutes') },
+  { path: '/api/badge-categories', router: require('./routes/badgeCategoryRoutes') },
   { path: '/api/transactions', router: require('./routes/transactionRoutes') },
   // Hailie
   { path: '/api/collaborators', router: require('./routes/collaboratorsRoutes') },
