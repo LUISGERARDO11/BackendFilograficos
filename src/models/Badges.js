@@ -15,19 +15,28 @@ const Badge = sequelize.define('Badge', {
   },
   description: {
     type: DataTypes.TEXT,
-    allowNull: false
+    allowNull: true,
+    validate: {
+      len: [0, 500]
+    }
   },
   icon_url: {
     type: DataTypes.STRING(255),
-    allowNull: true
+    allowNull: false
+  },
+  public_id: {
+    type: DataTypes.STRING(255),
+    allowNull: false
   },
   badge_category_id: {
     type: DataTypes.INTEGER,
-    allowNull: true,
+    allowNull: false,
     references: {
       model: 'badge_categories',
       key: 'badge_category_id'
-    }
+    },
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE'
   },
   is_active: {
     type: DataTypes.BOOLEAN,
@@ -42,7 +51,8 @@ const Badge = sequelize.define('Badge', {
   indexes: [
     { fields: ['name'], name: 'idx_badge_name', unique: true },
     { fields: ['badge_category_id'], name: 'idx_badge_category_id' },
-    { fields: ['is_active'], name: 'idx_badge_is_active' }
+    { fields: ['is_active'], name: 'idx_badge_is_active' },
+    { fields: ['badge_category_id', 'is_active'], name: 'idx_badge_category_id_is_active' }
   ]
 });
 

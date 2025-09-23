@@ -174,7 +174,36 @@ const uploadReviewMediaToCloudinary = (fileBuffer, reviewId, fileName = '') => {
           resolve({
             secure_url: result.secure_url,
             public_id: result.public_id,
-            resource_type: result.resource_type // Para identificar si es imagen o video
+            resource_type: result.resource_type
+          });
+        }
+      })
+      .end(fileBuffer);
+  });
+};
+
+const uploadBadgeIconToCloudinary = (fileBuffer, fileName = '') => {
+  return new Promise((resolve, reject) => {
+    const options = {
+      folder: 'BadgeIcons',
+      resource_type: 'image',
+      public_id: fileName.split('.')[0] || `badge_icon_${Date.now()}`,
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+      transformation: [
+        { width: 150, height: 150, crop: 'fill' },
+        { quality: 'auto', format: 'webp' }
+      ]
+    };
+
+    cloudinary.uploader
+      .upload_stream(options, (error, result) => {
+        if (error) {
+          const errorMessage = error.message || 'Unknown error occurred during badge icon upload';
+          reject(new Error(`Error uploading badge icon to Cloudinary: ${errorMessage}`));
+        } else {
+          resolve({
+            secure_url: result.secure_url,
+            public_id: result.public_id
           });
         }
       })
@@ -204,5 +233,6 @@ module.exports = {
   uploadCategoryImageToCloudinary,
   uploadProfilePictureToCloudinary,
   uploadReviewMediaToCloudinary,
+  uploadBadgeIconToCloudinary,
   deleteFromCloudinary
 };

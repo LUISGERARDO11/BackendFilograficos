@@ -14,7 +14,9 @@ const UserBadge = sequelize.define('UserBadge', {
     references: {
       model: 'users',
       key: 'user_id'
-    }
+    },
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE'
   },
   badge_id: {
     type: DataTypes.INTEGER,
@@ -22,7 +24,9 @@ const UserBadge = sequelize.define('UserBadge', {
     references: {
       model: 'badges',
       key: 'badge_id'
-    }
+    },
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE'
   },
   obtained_at: {
     type: DataTypes.DATE,
@@ -37,7 +41,15 @@ const UserBadge = sequelize.define('UserBadge', {
     { fields: ['user_id'], name: 'idx_user_badge_user_id' },
     { fields: ['badge_id'], name: 'idx_user_badge_badge_id' },
     { fields: ['obtained_at'], name: 'idx_user_badge_obtained_at' }
-  ]
+  ],
+  validate: {
+    async checkReferences() {
+      const user = await sequelize.models.User.findByPk(this.user_id);
+      const badge = await sequelize.models.Badge.findByPk(this.badge_id);
+      if (!user) throw new Error('Usuario no existe');
+      if (!badge) throw new Error('Insignia no existe');
+    }
+  }
 });
 
 module.exports = UserBadge;

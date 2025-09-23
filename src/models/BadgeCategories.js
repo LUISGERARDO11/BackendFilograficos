@@ -15,7 +15,10 @@ const BadgeCategory = sequelize.define('BadgeCategory', {
   },
   description: {
     type: DataTypes.TEXT,
-    allowNull: true
+    allowNull: true,
+    validate: {
+      len: [0, 500]
+    }
   },
   is_active: {
     type: DataTypes.BOOLEAN,
@@ -29,7 +32,8 @@ const BadgeCategory = sequelize.define('BadgeCategory', {
   updatedAt: 'updated_at',
   indexes: [
     { fields: ['name'], name: 'idx_badge_category_name', unique: true },
-    { fields: ['is_active'], name: 'idx_badge_category_is_active' }
+    { fields: ['is_active'], name: 'idx_badge_category_is_active' },
+    { fields: ['badge_category_id', 'is_active'], name: 'idx_badge_category_id_is_active' }
   ]
 });
 
