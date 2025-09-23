@@ -228,6 +228,9 @@ exports.login = [
         maxAge: config.session_lifetime * 1000 // 15 min en milisegundos
       });
 
+      // **Añade esta línea para la app móvil:**
+      res.header('Authorization', `Bearer ${token}`);
+
       loggerUtils.logUserActivity(user.user_id, 'login', 'Inicio de sesión exitoso');
       res.status(200).json({
         userId: user.user_id,
@@ -398,6 +401,9 @@ exports.verifyOTPMFA = async (req, res) => {
       sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
       maxAge: config.session_lifetime * 1000
     });
+
+    // **Añade esta línea para la app móvil:**
+    res.header('Authorization', `Bearer ${token}`);
 
     loggerUtils.logUserActivity(user.user_id, 'mfa_login', 'Inicio de sesión con MFA exitoso');
     res.status(200).json({
