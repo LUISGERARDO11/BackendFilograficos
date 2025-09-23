@@ -48,6 +48,9 @@ const routes = [
   { path: '/api/badge-categories', router: require('./routes/badgeCategoryRoutes') },
   { path: '/api/badges', router: require('./routes/badgeRoutes') },
   { path: '/api/transactions', router: require('./routes/transactionRoutes') },
+
+  { path: '/api/models3d', router: require('./routes/models3dRoutes') },
+
   // Hailie
   { path: '/api/collaborators', router: require('./routes/collaboratorsRoutes') },
   { path: '/api/categories', router: require('./routes/categoriesRoutes') },
