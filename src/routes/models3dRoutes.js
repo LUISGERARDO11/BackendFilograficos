@@ -25,12 +25,9 @@ router.get(
   models3dController.getAllModels3d
 );
 
-// Ruta para obtener un modelo 3D por ID (solo administradores)
+// Ruta para obtener un modelo 3D por ID
 router.get(
   '/:id',
-  //authMiddleware,
-  ///tokenExpirationMiddleware.verifyTokenExpiration,
-  //roleMiddleware(['administrador']),
   models3dController.getModel3dById
 );
 
