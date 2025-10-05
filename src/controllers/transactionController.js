@@ -1,6 +1,121 @@
 const { Sequelize, Op } = require('sequelize');
-const { Order, OrderDetail, Product, ProductVariant, User, Address, Coupon, ShippingOption, Promotion, OrderHistory, Payment } = require('../models/Associations');
+const { 
+    Order, OrderDetail, Product, ProductVariant, User, Address, Coupon, ShippingOption, Promotion, OrderHistory, Payment,
+    Customization, UserBadge, Badge // <--- ¡Asegúrate de importar los nuevos modelos aquí!
+} = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
+
+const BADGE_IDS = {
+    CLIENTE_FIEL: 1,                    // 10 o más pedidos entregados
+    PRIMER_PERSONALIZADO: 3,            // Primer pedido entregado CON personalización
+    CINCO_PEDIDOS: 5                    // 5 o más pedidos entregados
+};
+const COMPLETED_STATUS = 'delivered';
+
+/**
+ * Función auxiliar para asignar o verificar la existencia de una insignia.
+ * Utiliza findOrCreate para asegurar que la asignación es única.
+ */
+async function assignBadge(userId, badgeId, transaction) {
+    try {
+        const [userBadge, created] = await UserBadge.findOrCreate({
+            where: { user_id: userId, badge_id: badgeId },
+            defaults: { 
+                user_id: userId, 
+                badge_id: badgeId, 
+                obtained_at: new Date() 
+            },
+            transaction: transaction
+        });
+
+        return created; // Devuelve true si fue creada, false si ya existía
+    } catch (error) {
+        // En un controlador real, puedes loggear esto pero no detener todo.
+        loggerUtils.logCriticalError(new Error(`[Badge Assignment Failed] User: ${userId}, Badge: ${badgeId}. Error: ${error.message}`));
+        return false;
+    }
+}
+
+// ⚡ NUEVO MÉTODO DEL CONTROLADOR ⚡
+exports.assignRetroactiveBadges = async (req, res) => {
+    let t;
+    let assignedCount = 0; // Contador de insignias asignadas en esta ejecución
+
+    try {
+        t = await Order.sequelize.transaction();
+        
+        // 1. Obtener todos los IDs de usuarios que son clientes y están activos
+        const users = await User.findAll({ 
+            where: { user_type: 'cliente', status: 'activo' },
+            attributes: ['user_id'],
+            transaction: t 
+        });
+
+        if (users.length === 0) {
+            await t.commit();
+            return res.status(200).json({ message: 'No se encontraron clientes activos para asignar insignias.', badges_assigned: 0 });
+        }
+
+        console.log(`Iniciando chequeo de ${users.length} usuarios para insignias retroactivas...`);
+
+        // 2. Procesar Insignias por Usuario
+        for (const user of users) {
+            const userId = user.user_id;
+
+            // a) Contar pedidos entregados
+            const completedOrdersCount = await Order.count({
+                where: {
+                    user_id: userId,
+                    order_status: COMPLETED_STATUS
+                },
+                transaction: t
+            });
+
+            // b) Verificar si tiene al menos UN pedido entregado CON personalización (Customization)
+            const hasCustomCompletedOrder = await Order.findOne({
+                where: {
+                    user_id: userId,
+                    order_status: COMPLETED_STATUS
+                },
+                include: [{
+                    model: Customization,
+                    required: true // INNER JOIN: Solo órdenes que tienen Customization
+                }],
+                transaction: t
+            });
+
+            // --- Lógica de Asignación ---
+
+            // Insignia: Cliente Fiel (ID 1)
+            if (completedOrdersCount >= 10) {
+                if (await assignBadge(userId, BADGE_IDS.CLIENTE_FIEL, t)) assignedCount++;
+            }
+
+            // Insignia: Cinco Pedidos Únicos (ID 5)
+            // Nota: Si tiene 10, automáticamente tiene 5, pero findOrCreate se encarga de la unicidad.
+            if (completedOrdersCount >= 5) {
+                if (await assignBadge(userId, BADGE_IDS.CINCO_PEDIDOS, t)) assignedCount++;
+            }
+
+            // Insignia: Primer Pedido Personalizado (ID 3)
+            // Nota: Solo se asigna si existe una orden con personalización.
+            if (hasCustomCompletedOrder) {
+                if (await assignBadge(userId, BADGE_IDS.PRIMER_PERSONALIZADO, t)) assignedCount++;
+            }
+        }
+
+        await t.commit();
+        res.status(200).json({ 
+            message: `Proceso retroactivo completado exitosamente. Total de insignias asignadas o encontradas: ${assignedCount}.`,
+            badges_assigned: assignedCount
+        });
+
+    } catch (error) {
+        if (t) await t.rollback();
+        loggerUtils.logCriticalError(error);
+        res.status(500).json({ message: 'Error al asignar insignias retroactivas. Transacción revertida.', error: error.message });
+    }
+};
 
 // Controlador para exportar transacciones a CSV
 exports.exportTransactions = async (req, res) => {
