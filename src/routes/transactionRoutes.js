@@ -13,4 +13,7 @@ router.post('/generate-orders', transactionController.generateOrders);
 // Ruta para generar registros faltantes en órdenes
 router.post('/fill-missing-records', transactionController.fillMissingRecords);
 
+// ⚡ NUEVA RUTA: Asignación retroactiva de insignias 
+router.post('/assign-badges-retroactive', transactionController.assignRetroactiveBadges);
+
 module.exports = router;

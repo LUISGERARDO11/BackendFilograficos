@@ -1,7 +1,8 @@
 const { Op } = require('sequelize');
-const { Badge, BadgeCategory } = require('../models/Associations');
+const { Badge, BadgeCategory, User, UserBadge, Order } = require('../models/Associations');
 const { uploadBadgeIconToCloudinary, deleteFromCloudinary } = require('../services/cloudinaryService');
 const loggerUtils = require('../utils/loggerUtils');
+const sequelize = require('../config/dataBase'); //
 
 class BadgeService {
   async getBadges({ where = {}, order = [['badge_id', 'ASC']], page = 1, pageSize = 10 } = {}, transaction = null) {
@@ -112,9 +113,8 @@ class BadgeService {
       throw new Error('Insignia no encontrada');
     }
 
-    await deleteFromCloudinary(badge.public_id);
     await badge.update({ is_active: false }, { transaction });
-    return { message: 'Insignia desactivada exitosamente' };
+    return { message: `Insignia '${badge.name}' desactivada exitosamente` };
   }
 
   async getBadgeCategoriesWithCount({ where = {}, order = [['badge_category_id', 'ASC']], page = 1, pageSize = 10 } = {}, transaction = null) {
@@ -140,6 +140,29 @@ class BadgeService {
     });
 
     return { count: count.length, rows };
+  }
+  
+  /**
+  * **NUEVO MÉTODO: Consulta de Insignias Otorgadas (Admin)**
+  * @param {object} filters - Filtros de búsqueda (badge_id, user_id, start_date, end_date, etc.)
+  * @returns {Promise<object>} Lista paginada del historial de UserBadge.
+  */
+  async getGrantedBadgesHistory({ where = {}, order = [['obtained_at', 'DESC']], page = 1, pageSize = 10 } = {}, transaction = null) {
+     const offset = (page - 1) * pageSize;
+     const { count, rows } = await UserBadge.findAndCountAll({
+        where,
+        order,
+        limit: pageSize,
+        offset,
+        // Incluimos información de la Insignia y del Usuario
+        include: [
+          { model: Badge, attributes: ['name', 'icon_url', 'badge_category_id'], include: [{ model: BadgeCategory, attributes: ['name'] }] },
+          // Asegúrate de que tu modelo 'User' tenga al menos 'user_id' y un campo de identificación (ej: 'email' o 'username')
+          { model: User, attributes: ['user_id', 'email', 'name'] } 
+        ],
+        transaction
+      });
+    return { count, rows };
   }
 }
 
