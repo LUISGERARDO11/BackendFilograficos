@@ -7,8 +7,11 @@ const transactionController = require('../controllers/transactionController');
 // Ruta para exportar transacciones a CSV
 router.get('/export', transactionController.exportTransactions);
 
-// Ruta para generar órdenes automáticamente
+// Ruta para generar órdenes automáticamente (random)
 router.post('/generate-orders', transactionController.generateOrders);
+
+// Ruta para generar órdenes específicas para pruebas de insignias
+router.post('/generate-targeted-orders', transactionController.generateTargetedBadgesOrders); // <--- ¡NUEVA RUTA!
 
 // Ruta para generar registros faltantes en órdenes
 router.post('/fill-missing-records', transactionController.fillMissingRecords);
