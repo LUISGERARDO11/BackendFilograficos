@@ -12,7 +12,8 @@ const validateGetAllBadgeCategories = [
   query('pageSize').optional().isInt({ min: 1 }).withMessage('El tamaño de página debe ser un número entero positivo.'),
   query('sort').optional().isString().withMessage('El parámetro sort debe ser una cadena (ej. "badge_category_id:ASC,name:DESC").'),
   query('search').optional().isString().withMessage('El término de búsqueda debe ser una cadena.'),
-  query('statusFilter').optional().isIn(['active', 'inactive', 'all']).withMessage('El filtro de estado debe ser "active", "inactive" o "all".')
+  query('statusFilter').optional().isIn(['active', 'inactive', 'all']).withMessage('El filtro de estado debe ser "active", "inactive" o "all".'),
+  query('badgeName').optional().isString().withMessage('El término de búsqueda de insignia debe ser una cadena.')
 ];
 
 // Validaciones para createBadgeCategory
@@ -37,7 +38,8 @@ exports.getAllBadgeCategories = [
         return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
       }
 
-      const { search, page = 1, pageSize = 10, sort, statusFilter = 'active' } = req.query;
+      // **[CORRECCIÓN DE ERRORES]** Sintaxis de desestructuración correcta:
+      const { search, page = 1, pageSize = 10, sort, statusFilter = 'active', badgeName } = req.query; 
       const pageInt = parseInt(page);
       const pageSizeInt = parseInt(pageSize);
 
@@ -70,7 +72,8 @@ exports.getAllBadgeCategories = [
         where,
         order,
         page: pageInt,
-        pageSize: pageSizeInt
+        pageSize: pageSizeInt,
+        badgeNameFilter: badgeName
       });
 
       const formattedBadgeCategories = badgeCategories.map(category => ({
@@ -79,7 +82,14 @@ exports.getAllBadgeCategories = [
         description: category.description,
         is_active: category.is_active,
         created_at: category.created_at,
-        updated_at: category.updated_at
+        updated_at: category.updated_at,
+        // **[CORRECCIÓN DE ERRORES]** Sintaxis de mapeo correcta (remueve las estrellas)
+        badges: category.Badges ? category.Badges.map(badge => ({ 
+            badge_id: badge.badge_id,
+            name: badge.name,
+            icon_url: badge.icon_url,
+            is_active: badge.is_active
+        })) : []
       }));
 
       res.status(200).json({
@@ -114,7 +124,14 @@ exports.getBadgeCategoryById = async (req, res) => {
         description: badgeCategory.description,
         is_active: badgeCategory.is_active,
         created_at: badgeCategory.created_at,
-        updated_at: badgeCategory.updated_at
+        updated_at: badgeCategory.updated_at,
+        // **[CORRECCIÓN DE ERRORES]** Sintaxis de mapeo correcta (remueve las estrellas)
+        badges: badgeCategory.Badges ? badgeCategory.Badges.map(badge => ({ 
+            badge_id: badge.badge_id,
+            name: badge.name,
+            icon_url: badge.icon_url,
+            is_active: badge.is_active
+        })) : []
       }
     });
   } catch (error) {
@@ -220,5 +237,20 @@ exports.deleteBadgeCategory = async (req, res) => {
     await transaction.rollback();
     loggerUtils.logCriticalError(error);
     res.status(500).json({ message: 'Error al desactivar la categoría de insignias', error: error.message });
+  }
+};
+
+// Obtener Reporte de Distribución de Insignias
+exports.getBadgeDistributionReport = async (req, res) => {
+  try {
+    const report = await badgeCategoryService.getBadgeDistributionReport();
+
+    res.status(200).json({
+      message: 'Reporte de distribución de insignias generado exitosamente',
+      report
+    });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al generar el reporte de distribución de insignias', error: error.message });
   }
 };
