@@ -42,8 +42,18 @@ const validateGetGrantedBadgesHistory = [
   query('sort').optional().isString().withMessage('El parámetro sort debe ser una cadena (ej. "obtained_at:DESC").'),
   query('userId').optional().isInt({ min: 1 }).withMessage('El ID de usuario debe ser un número entero positivo.'),
   query('badgeId').optional().isInt({ min: 1 }).withMessage('El ID de insignia debe ser un número entero positivo.'),
+  query('badgeCategoryId').optional().isInt({ min: 1 }).withMessage('El ID de categoría debe ser un número entero positivo.'), // NUEVO
   query('startDate').optional().isISO8601().withMessage('La fecha de inicio debe ser una fecha ISO válida (YYYY-MM-DD).'),
-  query('endDate').optional().isISO8601().withMessage('La fecha de fin debe ser una fecha ISO válida (YYYY-MM-DD).')
+  query('endDate').optional().isISO8601().withMessage('La fecha de fin debe ser una fecha ISO válida (YYYY-MM-DD).'),
+  query('search').optional().isString().withMessage('El término de búsqueda debe ser una cadena.') // Asegurado para user_id si es string
+];
+
+// NUEVA VALIDACIÓN para métricas
+const validateGetBadgeMetrics = [];
+
+// NUEVA VALIDACIÓN para tendencias
+const validateGetAcquisitionTrend = [
+  query('days').optional().isInt({ min: 1, max: 365 }).withMessage('Los días deben ser un número entre 1 y 365.')
 ];
 
 // Métodos del controlador
@@ -118,6 +128,34 @@ exports.getAllBadges = [
     }
   }
 ];
+
+// NUEVO: Obtener insignias activas (solo id y nombre)
+exports.getActiveBadges = async (req, res) => {
+  try {
+    const activeBadges = await badgeService.getActiveBadges();
+
+    // Si no hay insignias activas
+    if (!activeBadges || activeBadges.length === 0) {
+      return res.status(404).json({ message: 'No hay insignias activas disponibles' });
+    }
+
+    // Formateo para asegurar estructura uniforme
+    const formattedBadges = activeBadges.map(badge => ({
+      badge_id: badge.badge_id,
+      name: badge.name
+    }));
+
+    res.status(200).json({
+      message: 'Insignias activas obtenidas exitosamente',
+      badges: formattedBadges,
+      total: formattedBadges.length
+    });
+  } catch (error) {
+    loggerUtils.logCriticalError(error);
+    res.status(500).json({ message: 'Error al obtener las insignias activas', error: error.message });
+  }
+};
+
 
 exports.getBadgeById = async (req, res) => {
   const { id } = req.params;
@@ -349,7 +387,7 @@ exports.getGrantedBadgesHistory = [
         return res.status(400).json({ message: 'Errores de validación', errors: errors.array() });
       }
 
-      const { page = 1, pageSize = 10, sort, userId, badgeId, startDate, endDate, search } = req.query; // Asegurarse de capturar 'search'
+      const { page = 1, pageSize = 10, sort, userId, badgeId, badgeCategoryId, startDate, endDate, search } = req.query;
       const pageInt = parseInt(page);
       const pageSizeInt = parseInt(pageSize);
 
@@ -357,55 +395,80 @@ exports.getGrantedBadgesHistory = [
         return res.status(400).json({ message: 'Parámetros de paginación inválidos' });
       }
 
-      // La lógica de filtros se pasa como parámetros individuales al servicio,
-      // ya que este los maneja internamente en la cláusula WHERE y JOIN.
-      
-      let order = [['obtained_at', 'DESC']];
-      if (sort) {
-        const sortParams = sort.split(',').map(param => param.trim().split(':'));
-        const validColumns = ['user_badge_id', 'obtained_at', 'user_id', 'badge_id'];
-        order = sortParams
-          .filter(([column]) => validColumns.includes(column))
-          .map(([column, direction]) => [column, direction.toUpperCase() === 'DESC' ? 'DESC' : 'ASC']);
-      }
+      // La lógica de ordenación por defecto puede cambiar a 'total_badges' o 'last_obtained_at' en el servicio.
+      // Por ahora, pasamos el sort tal cual para que el servicio decida la columna de ordenación para los grupos.
+      let order = sort; 
 
-      // **[CORRECCIÓN APLICADA]**: Desestructuramos 'count' y 'rows'. 
-      // Pasamos los filtros como parámetros individuales y agregamos el fallback de seguridad.
-      const { count, rows } = await badgeService.getGrantedBadgesHistory({
-        user_id: userId, // Corregido: pasar userId
-        badge_id: badgeId, // Corregido: pasar badgeId
-        start_date: startDate, // Corregido: pasar startDate
-        end_date: endDate, // Corregido: pasar endDate
-        search: search, // Pasar search si está disponible
+      const { totalUsers: count, groupedHistory: history } = await badgeService.getGrantedBadgesHistory({
+        search,
+        user_id: userId, // Mantengo el filtro por userId
+        badge_id: badgeId,
+        badge_category_id: badgeCategoryId,
+        start_date: startDate,
+        end_date: endDate,
         order,
         page: pageInt,
         pageSize: pageSizeInt
-      }) || { count: 0, rows: [] }; // Fallback de seguridad: asegura que 'rows' sea un array.
+      }) || { totalUsers: 0, groupedHistory: [] };
 
-      // Usamos 'rows' para el mapeo (línea que causaba el error)
-      const formattedHistory = rows.map(item => ({
-        user_badge_id: item.user_badge_id,
-        user_id: item.user_id,
-        user_email: item.User ? item.User.email : 'N/A',
-        user_name: item.User ? item.User.name : 'N/A',
-        badge_id: item.badge_id,
-        badge_name: item.Badge ? item.Badge.name : 'N/A',
-        // Nota: El servicio alias 'Badge->BadgeCategory' debe coincidir con la inclusión de Sequelize
-        badge_category: item.Badge && item.Badge.BadgeCategory ? item.Badge.BadgeCategory.name : 'N/A', 
-        icon_url: item.Badge ? item.Badge.icon_url : null,
-        obtained_at: item.obtained_at
+      // Los datos ya vienen pre-formateados y agrupados por el servicio,
+      // por lo que el mapeo es mínimo, solo para asegurar el formato de respuesta final.
+      const formattedHistory = history.map(userGroup => ({
+        user_id: userGroup.user_id,
+        user_email: userGroup.user_email,
+        user_name: userGroup.user_name,
+        total_badges: userGroup.total_badges,
+        last_obtained_at: userGroup.last_obtained_at,
+        badges: userGroup.badges, // Lista de insignias obtenidas
       }));
 
       res.status(200).json({
-        message: 'Historial de insignias otorgadas obtenido exitosamente',
+        message: 'Historial de insignias otorgadas (paginado por usuario) obtenido exitosamente',
         history: formattedHistory,
-        total: count,
+        total: count, // Total de usuarios únicos
         page: pageInt,
         pageSize: pageSizeInt
       });
     } catch (error) {
       loggerUtils.logCriticalError(error);
       res.status(500).json({ message: 'Error al obtener el historial de insignias', error: error.message });
+    }
+  }
+];
+
+// NUEVO: Controlador para métricas
+exports.getBadgeMetrics = [
+  validateGetBadgeMetrics,
+  async (req, res) => {
+    try {
+      const metrics = await badgeService.getBadgeMetrics();
+
+      res.status(200).json({
+        message: 'Métricas de insignias obtenidas exitosamente',
+        metrics
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al obtener las métricas', error: error.message });
+    }
+  }
+];
+
+// NUEVO: Controlador para tendencias
+exports.getAcquisitionTrend = [
+  validateGetAcquisitionTrend,
+  async (req, res) => {
+    try {
+      const { days = 30 } = req.query;
+      const trendData = await badgeService.getAcquisitionTrend(parseInt(days));
+
+      res.status(200).json({
+        message: 'Tendencias de adquisición obtenidas exitosamente',
+        trend: trendData
+      });
+    } catch (error) {
+      loggerUtils.logCriticalError(error);
+      res.status(500).json({ message: 'Error al obtener las tendencias', error: error.message });
     }
   }
 ];

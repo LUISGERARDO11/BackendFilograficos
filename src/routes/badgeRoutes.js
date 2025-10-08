@@ -36,6 +36,33 @@ router.get(
     badgeController.getGrantedBadgesHistory
 );
 
+// NUEVO: GET /api/badges/active - Obtener insignias activas (id y nombre)
+router.get(
+    '/active',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    badgeController.getActiveBadges
+);
+
+// NUEVO: GET /api/badges/metrics - Obtener métricas generales de insignias (Admin)
+router.get(
+    '/metrics',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    badgeController.getBadgeMetrics
+);
+
+// NUEVO: GET /api/badges/trends - Obtener tendencias de adquisición (Admin)
+router.get(
+    '/trends',
+    authMiddleware,
+    tokenExpirationMiddleware.verifyTokenExpiration,
+    roleMiddleware(['administrador']),
+    badgeController.getAcquisitionTrend
+);
+
 // RUTAS DINÁMICAS (con :id) van al final
 
 // GET /api/badges/:id - Obtener insignia por ID (Admin)
