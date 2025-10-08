@@ -2,7 +2,7 @@
 administration in a Node.js application using Express and Sequelize ORM. Here is a summary of the
 functionalities: */
 const { body, validationResult } = require('express-validator');
-const { User, Account, Address, Session } = require('../models/Associations');
+const { User, Account, Address, Session, UserBadge, Badge, BadgeCategory } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const sequelize = require('../config/dataBase');
 const userServices = require('../services/userServices');
@@ -95,31 +95,68 @@ exports.updateUserProfile = [
 ];
 
 exports.getProfile = async (req, res) => {
-  const userId = req.user.user_id;
-  try {
-    const user = await User.findByPk(userId, {
-      attributes: ['user_id', 'name', 'email', 'phone', 'status', 'user_type'],
-      include: [
-        { model: Address, where: { is_primary: true }, required: false },
-        { model: Account, attributes: ['profile_picture_url'] }
-      ]
-    });
-    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    const userId = req.user.user_id;
+    try {
+        const user = await User.findByPk(userId, {
+            attributes: ['user_id', 'name', 'email', 'phone', 'status', 'user_type'],
+            include: [
+                { model: Address, where: { is_primary: true }, required: false },
+                { model: Account, attributes: ['profile_picture_url'] },
+                // --- INCLUSIÓN DE INSIGNIAS CORREGIDA ---
+                {
+                    model: UserBadge, 
+                    // Se corrige el alias: Si no se define alias en 'hasMany', Sequelize usa el nombre del modelo plural.
+                    // En este caso, asumimos que es 'UserBadges' (el nombre del modelo en PascalCase, pluralizado)
+                    as: 'UserBadges', // ¡CORRECCIÓN AQUÍ!
+                    attributes: ['obtained_at'], 
+                    required: false, 
+                    include: [{
+                        model: Badge, 
+                        // Sequelize usa el nombre del modelo singular si no hay alias en belongsTo
+                        as: 'Badge', // ¡AJUSTADO!
+                        attributes: ['badge_id', 'name', 'description', 'icon_url', 'public_id'],
+                        include: [{
+                            model: BadgeCategory, 
+                            // Sequelize usa el nombre del modelo singular si no hay alias en belongsTo
+                            as: 'BadgeCategory', // ¡AJUSTADO!
+                            attributes: ['name']
+                        }]
+                    }]
+                }
+                // ----------------------------------------------------
+            ]
+        });
+        
+        if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
 
-    // Formatear la respuesta para incluir la URL de la imagen
-    res.status(200).json({
-      user_id: user.user_id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      status: user.status,
-      user_type: user.user_type,
-      address: user.Addresses ? user.Addresses[0] : null, // Cambiar a Addresses
-      profile_picture_url: user.Account?.profile_picture_url || null
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Error al obtener el perfil', error: error.message });
-  }
+        // Formatear el array de insignias
+        // Se corrige la propiedad a la que se accede: user.UserBadges
+        const badges = user.UserBadges ? user.UserBadges.map(userBadge => ({
+            id: userBadge.Badge.badge_id, // Acceder con el alias corregido 'Badge'
+            name: userBadge.Badge.name,
+            icon_url: userBadge.Badge.icon_url,
+            description: userBadge.Badge.description,
+            // Acceder con el alias corregido 'BadgeCategory'
+            category: userBadge.Badge.BadgeCategory.name, 
+            obtained_at: userBadge.obtained_at 
+        })) : [];
+
+        // Formatear la respuesta final
+        res.status(200).json({
+            user_id: user.user_id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            status: user.status,
+            user_type: user.user_type,
+            address: user.Addresses ? user.Addresses[0] : null,
+            profile_picture_url: user.Account?.profile_picture_url || null,
+            badges: badges 
+        });
+    } catch (error) {
+        console.error("Error al obtener el perfil con insignias:", error);
+        res.status(500).json({ message: 'Error al obtener el perfil', error: error.message });
+    }
 };
 
 exports.uploadProfilePicture = async (req, res) => {
