@@ -1,4 +1,4 @@
-const { Op } = require('sequelize');
+const { Op, fn, col, literal } = require('sequelize');
 const { Badge, BadgeCategory, User, UserBadge } = require('../models/Associations');
 const { uploadBadgeIconToCloudinary, deleteFromCloudinary } = require('../services/cloudinaryService');
 const loggerUtils = require('../utils/loggerUtils');
@@ -382,29 +382,48 @@ class BadgeService {
     }
 
     async getAcquisitionTrend(days = 30, transaction = null) {
+        const endDate = new Date();
         const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
+        startDate.setDate(endDate.getDate() - days);
 
-        const trendData = await UserBadge.findAll({
+        // Obtener el conteo real por día
+        const results = await UserBadge.findAll({
             attributes: [
                 [sequelize.fn('DATE', sequelize.col('obtained_at')), 'date'],
                 [sequelize.fn('COUNT', sequelize.col('user_badge_id')), 'count']
             ],
             where: {
                 obtained_at: {
-                    [Op.gte]: startDate
+                    [Op.between]: [startDate, endDate]
                 }
             },
             group: [sequelize.fn('DATE', sequelize.col('obtained_at'))],
-            order: [[sequelize.literal('date'), 'ASC']],
+            order: [[literal('date'), 'ASC']],
             raw: true,
             transaction,
         });
 
-        return trendData.map(item => ({
-            date: item.date,
-            count: parseInt(item.count, 10)
-        }));
+        // Convertir a un mapa (para poder rellenar días vacíos)
+        const countByDate = new Map();
+        results.forEach(item => {
+            const date = new Date(item.date).toISOString().slice(0, 10); // YYYY-MM-DD
+            countByDate.set(date, parseInt(item.count, 10));
+        });
+
+        // Generar todos los días del rango (incluso si no hay registros)
+        const trendData = [];
+        for (let i = 0; i <= days; i++) {
+            const currentDate = new Date(startDate);
+            currentDate.setDate(startDate.getDate() + i);
+            const formattedDate = currentDate.toISOString().slice(0, 10);
+
+            trendData.push({
+                date: formattedDate,
+                count: countByDate.get(formattedDate) || 0
+            });
+        }
+
+        return trendData;
     }
 }
 
