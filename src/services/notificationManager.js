@@ -228,6 +228,83 @@ class NotificationManager {
       throw new Error(`Error al distribuir cupones: ${error.message}`);
     }
   }
+
+  /**
+   * Notifica al usuario sobre la asignación de una insignia.
+   * @param {number} userId - ID del usuario.
+   * @param {number} badgeId - ID de la insignia asignada.
+   * @param {Object} [transaction] - Transacción de Sequelize para mantener consistencia.
+   */
+  async notifyBadgeAssignment(userId, badgeId, transaction = null) {
+    const { User, Badge, UserBadge } = require('../models/Associations');
+    const BADGE_IDS = {
+      PRIMER_PERSONALIZADO: 3, // Primer pedido personalizado
+      CINCO_PEDIDOS: 5,        // Cinco pedidos únicos
+      CLIENTE_FIEL: 1          // Diez pedidos en total
+    };
+
+    const BADGE_TOKEN_MAP = {
+      [BADGE_IDS.PRIMER_PERSONALIZADO]: 'primer_pedido_personalizado',
+      [BADGE_IDS.CINCO_PEDIDOS]: 'cinco_pedidos_unicos',
+      [BADGE_IDS.CLIENTE_FIEL]: 'cliente_fiel'
+    };
+
+    try {
+      const badgeToken = BADGE_TOKEN_MAP[badgeId];
+      if (!badgeToken) {
+        loggerUtils.logCriticalError(new Error(`No se encontró token para badgeId ${badgeId}`));
+        throw new Error(`Token de insignia no encontrado para badgeId ${badgeId}`);
+      }
+
+      const user = await User.findOne({
+        where: { user_id: userId },
+        attributes: ['email', 'name'],
+        transaction
+      });
+      if (!user) {
+        loggerUtils.logCriticalError(new Error(`Usuario con ID ${userId} no encontrado`));
+        throw new Error(`Usuario no encontrado`);
+      }
+
+      const badge = await Badge.findOne({
+        where: { badge_id: badgeId },
+        attributes: ['name', 'description'],
+        transaction
+      });
+      if (!badge) {
+        loggerUtils.logCriticalError(new Error(`Insignia con ID ${badgeId} no encontrada`));
+        throw new Error(`Insignia no encontrada`);
+      }
+
+      const userBadge = await UserBadge.findOne({
+        where: { user_id: userId, badge_id: badgeId },
+        attributes: ['obtained_at'],
+        transaction
+      });
+      if (!userBadge) {
+        loggerUtils.logCriticalError(new Error(`Registro UserBadge no encontrado para userId ${userId} y badgeId ${badgeId}`));
+        throw new Error(`Registro UserBadge no encontrado`);
+      }
+
+      const result = await this.emailService.sendBadgeNotification(
+        user.email,
+        badgeToken,
+        user.name || 'Usuario',
+        badge.name,
+        moment(userBadge.obtained_at).tz('America/Mexico_City').format('YYYY-MM-DD'),
+        badge.description || ''
+      );
+
+      if (result.success) {
+        loggerUtils.logUserActivity(userId, 'notify_badge_assignment', `Notificación de insignia ${badge.name} enviada a ${user.email}`);
+      } else {
+        loggerUtils.logCriticalError(new Error(`Fallo al enviar notificación de insignia a ${user.email}: ${result.error}`));
+      }
+    } catch (error) {
+      loggerUtils.logCriticalError(error, `Error al notificar insignia para userId ${userId}, badgeId ${badgeId}`);
+      throw error;
+    }
+  }
 }
 
 module.exports = NotificationManager;

@@ -1,7 +1,9 @@
 const BadgeService = require('../services/BadgeService');
+const NotificationManager = require('../services/notificationManager');
 const { Order, Customization, OrderDetail } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const badgeService = new BadgeService();
+const notificationManager = new NotificationManager();
 const { Op, Sequelize } = require('sequelize');
 
 const BADGE_IDS = {
@@ -68,22 +70,31 @@ async function checkGamificationOnOrderDelivered(order, options) {
     let assignedBadges = [];
 
     if (completedOrdersCount === 10) {
-      await badgeService.assignBadgeById(userId, BADGE_IDS.CLIENTE_FIEL, transaction);
-      assignedBadges.push('CLIENTE_FIEL');
+      const userBadge = await badgeService.assignBadgeById(userId, BADGE_IDS.CLIENTE_FIEL, transaction);
+      if (userBadge) {
+        await notificationManager.notifyBadgeAssignment(userId, BADGE_IDS.CLIENTE_FIEL, transaction);
+        assignedBadges.push('CLIENTE_FIEL');
+      }
     } else {
       loggerUtils.logInfo(`🚫 No se asignó 'CLIENTE_FIEL' (pedidos completados: ${completedOrdersCount}/10).`);
     }
 
     if (uniqueOrdersCount >= 5) {
-      await badgeService.assignBadgeById(userId, BADGE_IDS.CINCO_PEDIDOS, transaction);
-      assignedBadges.push('CINCO_PEDIDOS');
+      const userBadge = await badgeService.assignBadgeById(userId, BADGE_IDS.CINCO_PEDIDOS, transaction);
+      if (userBadge) {
+        await notificationManager.notifyBadgeAssignment(userId, BADGE_IDS.CINCO_PEDIDOS, transaction);
+        assignedBadges.push('CINCO_PEDIDOS');
+      }
     } else {
       loggerUtils.logInfo(`🚫 No se asignó 'CINCO_PEDIDOS' (únicos: ${uniqueOrdersCount}/5).`);
     }
 
     if (completedOrdersCount === 1 && hasCustomization) {
-      await badgeService.assignBadgeById(userId, BADGE_IDS.PRIMER_PERSONALIZADO, transaction);
-      assignedBadges.push('PRIMER_PERSONALIZADO');
+      const userBadge = await badgeService.assignBadgeById(userId, BADGE_IDS.PRIMER_PERSONALIZADO, transaction);
+      if (userBadge) {
+        await notificationManager.notifyBadgeAssignment(userId, BADGE_IDS.PRIMER_PERSONALIZADO, transaction);
+        assignedBadges.push('PRIMER_PERSONALIZADO');
+      }
     } else {
       loggerUtils.logInfo(
         `🚫 No se asignó 'PRIMER_PERSONALIZADO' (pedidos completados: ${completedOrdersCount}, tiene personalización: ${!!hasCustomization}).`
