@@ -487,7 +487,7 @@ exports.getOrdersForAdmin = [
         isUrgent
       );
 
-      if (result.pagination.totalOrders > 1000) {
+      if (result.pagination.totalOrders > 3000) {
         return res.status(400).json({
           success: false,
           message: 'Demasiadas órdenes en el rango seleccionado. Por favor, aplica filtros más específicos o reduce el rango de fechas.',
