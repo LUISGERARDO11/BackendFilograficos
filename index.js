@@ -6,6 +6,8 @@ process.env.TZ = 'UTC'; // Forzar UTC en el proceso de Node.js
 const app = require("./src/app"); // Importar la configuración de la app
 const sequelize = require('./src/config/dataBase');
 const logger = require('./src/config/logger'); // Usar logger en lugar de console.log
+const { setupGamificationHooks } = require('./src/hooks/gamificationInitializer'); 
+
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {
@@ -20,11 +22,14 @@ async function startServer() {
               .then(() => console.log('Base de datos sincronizada'))
               .catch(error => console.error('Error al sincronizar:', error));
         }*/
+        
+        // **PASO CLAVE: Registrar los hooks después de la conexión y definición de modelos**
+        setupGamificationHooks(); 
 
         // Iniciar el servidor
         app.listen(PORT, () => {
             console.log(`Servidor corriendo en el puerto ${PORT}`);
-          });
+        });
     } catch (error) {
         console.log('Error al iniciar el servidor:', error);
         process.exit(1); // Detiene el proceso en caso de fallo crítico

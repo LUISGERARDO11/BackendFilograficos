@@ -425,6 +425,24 @@ class BadgeService {
 
         return trendData;
     }
+
+    async assignBadgeById(userId, badgeId, transaction = null) {
+        const badge = await Badge.findOne({
+            where: { badge_id: badgeId, is_active: true },
+            attributes: ['badge_id'],
+            transaction
+        });
+
+        if (!badge) return null;
+
+        const [userBadge, created] = await UserBadge.findOrCreate({
+            where: { user_id: userId, badge_id: badgeId },
+            defaults: { user_id: userId, badge_id: badgeId },
+            transaction
+        });
+
+        return created ? userBadge : null;
+    }
 }
 
 module.exports = BadgeService;
