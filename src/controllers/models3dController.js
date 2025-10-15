@@ -1,4 +1,3 @@
-// controllers/models3dController.js
 const { body, validationResult } = require('express-validator');
 const Models3d = require('../models/Models3d');
 const loggerUtils = require('../utils/loggerUtils');
@@ -46,7 +45,7 @@ exports.createModel3d = [
 
 // Obtener un modelo 3D por ID
 exports.getModel3dById = async (req, res) => {
-  const { id } = req.params;
+  const id = parseInt(req.params.id); // Convertir a número
 
   try {
     const model = await Models3d.findByPk(id);
@@ -94,7 +93,7 @@ exports.updateModel3d = [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { id } = req.params;
+    const id = parseInt(req.params.id); // Convertir a número
     const userId = req.user?.user_id;
     const { product_name, description, model_url, preview_image_url } = req.body;
 
@@ -124,7 +123,7 @@ exports.updateModel3d = [
 
 // Eliminar un modelo 3D
 exports.deleteModel3d = async (req, res) => {
-  const { id } = req.params;
+  const id = parseInt(req.params.id); // Convertir a número
   const userId = req.user?.user_id;
 
   try {
