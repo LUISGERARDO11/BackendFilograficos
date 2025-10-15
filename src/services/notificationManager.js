@@ -240,13 +240,15 @@ class NotificationManager {
     const BADGE_IDS = {
       PRIMER_PERSONALIZADO: 3, // Primer pedido personalizado
       CINCO_PEDIDOS: 5,        // Cinco pedidos únicos
-      CLIENTE_FIEL: 1          // Diez pedidos en total
+      CLIENTE_FIEL: 1,         // Diez pedidos en total
+      COMPRADOR_EXPRESS: 6     // Comprador exprés
     };
 
     const BADGE_TOKEN_MAP = {
       [BADGE_IDS.PRIMER_PERSONALIZADO]: 'primer_pedido_personalizado',
       [BADGE_IDS.CINCO_PEDIDOS]: 'cinco_pedidos_unicos',
-      [BADGE_IDS.CLIENTE_FIEL]: 'cliente_fiel'
+      [BADGE_IDS.CLIENTE_FIEL]: 'cliente_fiel',
+      [BADGE_IDS.COMPRADOR_EXPRESS]: 'comprador_expres'  // 🆕 Token para el nuevo badge (ajusta si tu template usa otro)
     };
 
     try {
