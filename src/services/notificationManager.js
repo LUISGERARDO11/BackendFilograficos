@@ -215,7 +215,7 @@ class NotificationManager {
           loggerUtils.logCriticalError(error, `Error al enviar correo de cupón a ${user.email}`);
         }
         callback();
-      }, 10); // Concurrencia limitada a 10 correos simultáneos
+      }, 10);
 
       users.forEach(user => {
         queue.push(user);
@@ -229,26 +229,22 @@ class NotificationManager {
     }
   }
 
-  /**
-   * Notifica al usuario sobre la asignación de una insignia.
-   * @param {number} userId - ID del usuario.
-   * @param {number} badgeId - ID de la insignia asignada.
-   * @param {Object} [transaction] - Transacción de Sequelize para mantener consistencia.
-   */
-  async notifyBadgeAssignment(userId, badgeId, transaction = null) {
-    const { User, Badge, UserBadge } = require('../models/Associations');
+  async notifyBadgeAssignment(userId, badgeId, transaction = null, additionalData = {}) {
+    const { User, Badge, UserBadge, Category } = require('../models/Associations');
     const BADGE_IDS = {
-      PRIMER_PERSONALIZADO: 3, // Primer pedido personalizado
-      CINCO_PEDIDOS: 5,        // Cinco pedidos únicos
-      CLIENTE_FIEL: 1,         // Diez pedidos en total
-      COMPRADOR_EXPRESS: 6     // Comprador exprés
+      PRIMER_PERSONALIZADO: 3,
+      CINCO_PEDIDOS: 5,
+      CLIENTE_FIEL: 1,
+      COMPRADOR_EXPRESS: 6,
+      COLECCIONISTA: 7
     };
 
     const BADGE_TOKEN_MAP = {
       [BADGE_IDS.PRIMER_PERSONALIZADO]: 'primer_pedido_personalizado',
       [BADGE_IDS.CINCO_PEDIDOS]: 'cinco_pedidos_unicos',
       [BADGE_IDS.CLIENTE_FIEL]: 'cliente_fiel',
-      [BADGE_IDS.COMPRADOR_EXPRESS]: 'comprador_expres'  // 🆕 Token para el nuevo badge (ajusta si tu template usa otro)
+      [BADGE_IDS.COMPRADOR_EXPRESS]: 'comprador_expres',
+      [BADGE_IDS.COLECCIONISTA]: 'coleccionista'
     };
 
     try {
@@ -288,17 +284,22 @@ class NotificationManager {
         throw new Error(`Registro UserBadge no encontrado`);
       }
 
+      // Extraer categoryName desde additionalData
+      const categoryName = additionalData.categoryName || null;
+
       const result = await this.emailService.sendBadgeNotification(
         user.email,
         badgeToken,
         user.name || 'Usuario',
         badge.name,
         moment(userBadge.obtained_at).tz('America/Mexico_City').format('YYYY-MM-DD'),
-        badge.description || ''
+        badge.description || '',
+        categoryName
       );
 
       if (result.success) {
-        loggerUtils.logUserActivity(userId, 'notify_badge_assignment', `Notificación de insignia ${badge.name} enviada a ${user.email}`);
+        loggerUtils.logUserActivity(userId, 'notify_badge_assignment', 
+          `Notificación de insignia ${badge.name}${categoryName ? ` (${categoryName})` : ''} enviada a ${user.email}`);
       } else {
         loggerUtils.logCriticalError(new Error(`Fallo al enviar notificación de insignia a ${user.email}: ${result.error}`));
       }

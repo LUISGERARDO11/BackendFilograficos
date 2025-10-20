@@ -1,22 +1,19 @@
-const BadgeService = require('../services/BadgeService');
-const NotificationManager = require('../services/notificationManager');
-const { Order, Customization, OrderDetail } = require('../models/Associations');
+// src/hooks/gamificationInitializer.js
+const { Order, Customization, OrderDetail, Product, Category, ProductVariant } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
-const badgeService = new BadgeService();
-const notificationManager = new NotificationManager();
 const { Op, Sequelize } = require('sequelize');
 
 const BADGE_IDS = {
   PRIMER_PERSONALIZADO: 3, // Primer pedido personalizado
   CINCO_PEDIDOS: 5,        // Cinco pedidos únicos
   CLIENTE_FIEL: 1,         // Diez pedidos en total
-  COMPRADOR_EXPRESS: 6     // Comprador exprés: 2 compras en el mismo día
+  COMPRADOR_EXPRESS: 6,    // Comprador exprés: 2 compras en el mismo día
+  COLECCIONISTA: 7         // Coleccionista: 3+ productos distintos en una categoría
 };
 
-async function checkGamificationOnOrderDelivered(order, options) {
+async function checkGamificationOnOrderDelivered(order, options, badgeService, notificationManager) {
   loggerUtils.logInfo(`🔔 Hook de gamificación activado para Order ID: ${order.order_id}`);
 
-  // Verificamos si el estado cambió a 'delivered'
   if (order.order_status !== 'delivered') {
     loggerUtils.logInfo(`⚠️ Pedido ${order.order_id} no está en estado 'delivered' (estado actual: ${order.order_status}). Hook no aplica.`);
     return;
@@ -29,6 +26,7 @@ async function checkGamificationOnOrderDelivered(order, options) {
 
   const userId = order.user_id;
   const transaction = options.transaction;
+  const assignedBadges = [];
 
   loggerUtils.logInfo(`🎯 Evaluando insignias para el usuario ${userId} (Order ID ${order.order_id})`);
 
@@ -41,10 +39,10 @@ async function checkGamificationOnOrderDelivered(order, options) {
     loggerUtils.logInfo(`📦 Total de pedidos completados del usuario ${userId}: ${completedOrdersCount}`);
 
     // 2️⃣ Validar compras por fecha para Comprador exprés
-    const orderCreatedAt = order.created_at; // 🆕 Usar created_at en lugar de createdAt
+    const orderCreatedAt = order.created_at;
     if (!orderCreatedAt || isNaN(orderCreatedAt)) {
       loggerUtils.logError(`⚠️ Fecha inválida en created_at para Order ID ${order.order_id}`);
-      return; // Evitar ejecutar la consulta si la fecha es inválida
+      return;
     }
 
     const startOfDay = new Date(orderCreatedAt);
@@ -56,9 +54,7 @@ async function checkGamificationOnOrderDelivered(order, options) {
       where: {
         user_id: userId,
         order_status: 'delivered',
-        created_at: { // 🆕 Cambiado a created_at
-          [Op.between]: [startOfDay, endOfDay]
-        }
+        created_at: { [Op.between]: [startOfDay, endOfDay] }
       },
       transaction
     });
@@ -85,62 +81,164 @@ async function checkGamificationOnOrderDelivered(order, options) {
       include: [{
         model: Customization,
         where: { status: 'approved' },
-        required: true
+        required: false
       }],
       transaction
     });
-    loggerUtils.logInfo(`🎨 Pedido ${order.order_id} ${hasCustomization ? 'tiene' : 'no tiene'} personalizaciones aprobadas.`);
+    const hasApprovedCustomization = hasCustomization && hasCustomization.Customizations && hasCustomization.Customizations.length > 0;
+    loggerUtils.logInfo(`🎨 Pedido ${order.order_id} ${hasApprovedCustomization ? 'tiene' : 'no tiene'} personalizaciones aprobadas.`);
 
-    // 5️⃣ Asignar insignias
-    let assignedBadges = [];
+    // 5️⃣ Verificar Coleccionista: 3+ productos distintos en la misma categoría
+    const productsByCategory = await Order.findAll({
+      where: { user_id: userId, order_status: 'delivered' },
+      attributes: [],
+      include: [{
+        model: OrderDetail,
+        attributes: [],
+        include: [{
+          model: ProductVariant,
+          attributes: [],
+          include: [{
+            model: Product,
+            attributes: ['product_id', 'category_id'],
+            required: true
+          }],
+          required: true
+        }],
+        required: true
+      }],
+      raw: true,
+      transaction
+    });
 
+    const categoryProductMap = new Map();
+    productsByCategory.forEach(item => {
+      const categoryId = item['OrderDetails.ProductVariant.Product.category_id'];
+      const productId = item['OrderDetails.ProductVariant.Product.product_id'];
+      if (!categoryProductMap.has(categoryId)) {
+        categoryProductMap.set(categoryId, new Set());
+      }
+      categoryProductMap.get(categoryId).add(productId);
+    });
+
+    const eligibleCategories = [];
+    for (const [categoryId, productIds] of categoryProductMap) {
+      if (productIds.size >= 3) {
+        eligibleCategories.push(categoryId);
+      }
+    }
+    loggerUtils.logInfo(`🏆 Categorías elegibles para Coleccionista (3+ productos): ${eligibleCategories.join(', ')}`);
+
+    // 6️⃣ Asignar insignias
     // Cliente Fiel (10 pedidos)
-    if (completedOrdersCount === 10) {
+    if (completedOrdersCount === 10 && !assignedBadges.includes('CLIENTE_FIEL')) {
+      console.log(`[DEBUG] Attempting to assign CLIENTE_FIEL for userId=${userId}`);
       const userBadge = await badgeService.assignBadgeById(userId, BADGE_IDS.CLIENTE_FIEL, transaction);
+      console.log(`[DEBUG] userBadge for CLIENTE_FIEL: ${JSON.stringify(userBadge)}`);
       if (userBadge) {
-        await notificationManager.notifyBadgeAssignment(userId, BADGE_IDS.CLIENTE_FIEL, transaction);
-        assignedBadges.push('CLIENTE_FIEL');
+        console.log(`[DEBUG] Calling notifyBadgeAssignment for CLIENTE_FIEL with userId=${userId}, badgeId=${BADGE_IDS.CLIENTE_FIEL}`);
+        try {
+          await notificationManager.notifyBadgeAssignment(userId, BADGE_IDS.CLIENTE_FIEL, transaction);
+          console.log(`[DEBUG] notifyBadgeAssignment for CLIENTE_FIEL completed successfully`);
+          assignedBadges.push('CLIENTE_FIEL');
+          loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${BADGE_IDS.CLIENTE_FIEL} asignada`);
+        } catch (error) {
+          console.log(`[DEBUG] Error in notifyBadgeAssignment for CLIENTE_FIEL: ${error.message}`);
+          loggerUtils.logError(`Error al notificar insignia CLIENTE_FIEL: ${error.message}`);
+        }
+      } else {
+        console.log(`[DEBUG] No userBadge returned for CLIENTE_FIEL`);
+        loggerUtils.logInfo(`🚫 No se asignó 'CLIENTE_FIEL' porque userBadge es null`);
       }
     } else {
       loggerUtils.logInfo(`🚫 No se asignó 'CLIENTE_FIEL' (pedidos completados: ${completedOrdersCount}/10).`);
     }
 
     // Cinco Pedidos Únicos
-    if (uniqueOrdersCount >= 5) {
+    if (uniqueOrdersCount >= 5 && !assignedBadges.includes('CINCO_PEDIDOS')) {
+      console.log(`[DEBUG] Attempting to assign CINCO_PEDIDOS for userId=${userId}`);
       const userBadge = await badgeService.assignBadgeById(userId, BADGE_IDS.CINCO_PEDIDOS, transaction);
+      console.log(`[DEBUG] userBadge for CINCO_PEDIDOS: ${JSON.stringify(userBadge)}`);
       if (userBadge) {
-        await notificationManager.notifyBadgeAssignment(userId, BADGE_IDS.CINCO_PEDIDOS, transaction);
-        assignedBadges.push('CINCO_PEDIDOS');
+        console.log(`[DEBUG] Calling notifyBadgeAssignment for CINCO_PEDIDOS with userId=${userId}, badgeId=${BADGE_IDS.CINCO_PEDIDOS}`);
+        try {
+          await notificationManager.notifyBadgeAssignment(userId, BADGE_IDS.CINCO_PEDIDOS, transaction);
+          console.log(`[DEBUG] notifyBadgeAssignment for CINCO_PEDIDOS completed successfully`);
+          assignedBadges.push('CINCO_PEDIDOS');
+          loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${BADGE_IDS.CINCO_PEDIDOS} asignada`);
+        } catch (error) {
+          console.log(`[DEBUG] Error in notifyBadgeAssignment for CINCO_PEDIDOS: ${error.message}`);
+          loggerUtils.logError(`Error al notificar insignia CINCO_PEDIDOS: ${error.message}`);
+        }
       }
     } else {
       loggerUtils.logInfo(`🚫 No se asignó 'CINCO_PEDIDOS' (únicos: ${uniqueOrdersCount}/5).`);
     }
 
     // Primer Pedido Personalizado
-    if (completedOrdersCount === 1 && hasCustomization) {
+    if (completedOrdersCount === 1 && hasApprovedCustomization && !assignedBadges.includes('PRIMER_PERSONALIZADO')) {
+      console.log(`[DEBUG] Attempting to assign PRIMER_PERSONALIZADO for userId=${userId}`);
       const userBadge = await badgeService.assignBadgeById(userId, BADGE_IDS.PRIMER_PERSONALIZADO, transaction);
+      console.log(`[DEBUG] userBadge for PRIMER_PERSONALIZADO: ${JSON.stringify(userBadge)}`);
       if (userBadge) {
-        await notificationManager.notifyBadgeAssignment(userId, BADGE_IDS.PRIMER_PERSONALIZADO, transaction);
-        assignedBadges.push('PRIMER_PERSONALIZADO');
+        console.log(`[DEBUG] Calling notifyBadgeAssignment for PRIMER_PERSONALIZADO with userId=${userId}, badgeId=${BADGE_IDS.PRIMER_PERSONALIZADO}`);
+        try {
+          await notificationManager.notifyBadgeAssignment(userId, BADGE_IDS.PRIMER_PERSONALIZADO, transaction);
+          console.log(`[DEBUG] notifyBadgeAssignment for PRIMER_PERSONALIZADO completed successfully`);
+          assignedBadges.push('PRIMER_PERSONALIZADO');
+          loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${BADGE_IDS.PRIMER_PERSONALIZADO} asignada`);
+        } catch (error) {
+          console.log(`[DEBUG] Error in notifyBadgeAssignment for PRIMER_PERSONALIZADO: ${error.message}`);
+          loggerUtils.logError(`Error al notificar insignia PRIMER_PERSONALIZADO: ${error.message}`);
+        }
       }
     } else {
       loggerUtils.logInfo(
-        `🚫 No se asignó 'PRIMER_PERSONALIZADO' (pedidos completados: ${completedOrdersCount}, tiene personalización: ${!!hasCustomization}).`
+        `🚫 No se asignó 'PRIMER_PERSONALIZADO' (pedidos completados: ${completedOrdersCount}, tiene personalización: ${hasApprovedCustomization}).`
       );
     }
 
     // Comprador Exprés: 2+ pedidos en el mismo día
-    if (dailyDeliveredOrders >= 2) {
+    if (dailyDeliveredOrders >= 2 && !assignedBadges.includes('COMPRADOR_EXPRESS')) {
+      console.log(`[DEBUG] Attempting to assign COMPRADOR_EXPRESS for userId=${userId}`);
       const userBadge = await badgeService.assignBadgeById(userId, BADGE_IDS.COMPRADOR_EXPRESS, transaction);
+      console.log(`[DEBUG] userBadge for COMPRADOR_EXPRESS: ${JSON.stringify(userBadge)}`);
       if (userBadge) {
-        await notificationManager.notifyBadgeAssignment(userId, BADGE_IDS.COMPRADOR_EXPRESS, transaction);
-        assignedBadges.push('COMPRADOR_EXPRESS');
-        loggerUtils.logInfo(`🚀 ¡Insignia COMPRADOR_EXPRESS asignada! Usuario ${userId} tiene ${dailyDeliveredOrders} pedidos en el día.`);
-      } else {
-        loggerUtils.logInfo(`ℹ️ Usuario ${userId} ya tenía COMPRADOR_EXPRESS para este criterio.`);
+        console.log(`[DEBUG] Calling notifyBadgeAssignment for COMPRADOR_EXPRESS with userId=${userId}, badgeId=${BADGE_IDS.COMPRADOR_EXPRESS}`);
+        try {
+          await notificationManager.notifyBadgeAssignment(userId, BADGE_IDS.COMPRADOR_EXPRESS, transaction);
+          console.log(`[DEBUG] notifyBadgeAssignment for COMPRADOR_EXPRESS completed successfully`);
+          assignedBadges.push('COMPRADOR_EXPRESS');
+          loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${BADGE_IDS.COMPRADOR_EXPRESS} asignada`);
+        } catch (error) {
+          console.log(`[DEBUG] Error in notifyBadgeAssignment for COMPRADOR_EXPRESS: ${error.message}`);
+          loggerUtils.logError(`Error al notificar insignia COMPRADOR_EXPRESS: ${error.message}`);
+        }
       }
     } else {
       loggerUtils.logInfo(`🚫 No se asignó 'COMPRADOR_EXPRESS' (pedidos del día: ${dailyDeliveredOrders}/2).`);
+    }
+
+    // Coleccionista: 3+ productos distintos en una categoría
+    for (const categoryId of eligibleCategories) {
+      if (!assignedBadges.includes(`COLECCIONISTA_${categoryId}`)) {
+        console.log(`[DEBUG] Attempting to assign COLECCIONISTA for userId=${userId}, categoryId=${categoryId}`);
+        const userBadge = await badgeService.assignBadgeById(userId, BADGE_IDS.COLECCIONISTA, transaction, { category_id: categoryId });
+        console.log(`[DEBUG] userBadge for COLECCIONISTA (category ${categoryId}): ${JSON.stringify(userBadge)}`);
+        if (userBadge) {
+          console.log(`[DEBUG] Calling notifyBadgeAssignment for COLECCIONISTA with userId=${userId}, badgeId=${BADGE_IDS.COLECCIONISTA}, categoryId=${categoryId}`);
+          try {
+            const category = await Category.findByPk(categoryId, { attributes: ['name'], transaction });
+            await notificationManager.notifyBadgeAssignment(userId, BADGE_IDS.COLECCIONISTA, transaction, { categoryName: category?.name });
+            console.log(`[DEBUG] notifyBadgeAssignment for COLECCIONISTA completed successfully`);
+            assignedBadges.push(`COLECCIONISTA (Categoría: ${category?.name || categoryId})`);
+            loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${BADGE_IDS.COLECCIONISTA} asignada para categoría ${category?.name || categoryId}`);
+          } catch (error) {
+            console.log(`[DEBUG] Error in notifyBadgeAssignment for COLECCIONISTA: ${error.message}`);
+            loggerUtils.logError(`Error al notificar insignia COLECCIONISTA: ${error.message}`);
+          }
+        }
+      }
     }
 
     if (assignedBadges.length > 0) {
@@ -150,11 +248,21 @@ async function checkGamificationOnOrderDelivered(order, options) {
     }
 
   } catch (error) {
+    console.log(`[DEBUG] Critical error in checkGamificationOnOrderDelivered: ${error.message}`);
     loggerUtils.logCriticalError(error, `💥 Error en hook de gamificación para Order ID ${order.order_id}`);
   }
 }
 
-exports.setupGamificationHooks = () => {
-  Order.addHook('afterUpdate', 'checkGamification', checkGamificationOnOrderDelivered);
+function setupGamificationHooks(badgeService, notificationManager) {
+  if (!badgeService || !notificationManager) {
+    throw new Error('badgeService and notificationManager are required');
+  }
+  Order.addHook('afterUpdate', 'checkGamification', (order, options) => 
+  checkGamificationOnOrderDelivered(order, options, badgeService, notificationManager));
   loggerUtils.logInfo('✅ Hooks de Gamificación registrados en el modelo Order.');
+}
+
+module.exports = {
+  setupGamificationHooks,
+  checkGamificationOnOrderDelivered,
 };

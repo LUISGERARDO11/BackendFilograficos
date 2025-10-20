@@ -1,5 +1,5 @@
 const { Op, fn, col, literal } = require('sequelize');
-const { Badge, BadgeCategory, User, UserBadge } = require('../models/Associations');
+const { Badge, BadgeCategory, User, UserBadge, Category } = require('../models/Associations');
 const { uploadBadgeIconToCloudinary, deleteFromCloudinary } = require('../services/cloudinaryService');
 const loggerUtils = require('../utils/loggerUtils');
 const sequelize = require('../config/dataBase');
@@ -30,7 +30,6 @@ class BadgeService {
 
         return activeBadges;
     }
-
 
     async getBadgeById(id, transaction = null) {
         const badge = await Badge.findByPk(id, {
@@ -162,7 +161,7 @@ class BadgeService {
         badge_category_id = null,
         start_date = null,
         end_date = null,
-        order = 'last_obtained_at:DESC', // Nuevo valor por defecto
+        order = 'last_obtained_at:DESC',
         page = 1,
         pageSize = 10
     } = {}, transaction = null) {
@@ -196,7 +195,6 @@ class BadgeService {
                 { name: { [Op.iLike]: `%${search}%` } },
                 { email: { [Op.iLike]: `%${search}%` } },
             ];
-            // Si la búsqueda es un número, incluye el user_id
             if (!isNaN(parseInt(search))) {
                 searchConditions.push({ user_id: parseInt(search) });
             }
@@ -204,7 +202,6 @@ class BadgeService {
         }
 
         // 3. Procesar ordenación para GROUP BY
-        // El ordenamiento debe ser sobre las columnas de agregación (COUNT, MAX(obtained_at)) o User
         let orderBy = [];
         if (order) {
             const [column, direction = 'DESC'] = order.split(':').map(s => s.trim().toUpperCase());
@@ -216,7 +213,6 @@ class BadgeService {
             } else if (column === 'USER_ID') {
                 orderBy.push(['user_id', direction]);
             } else {
-                // Orden por defecto si es inválido
                 orderBy.push([sequelize.literal('last_obtained_at'), 'DESC']);
             }
         } else {
@@ -226,16 +222,16 @@ class BadgeService {
         // 4. Consulta principal: Obtener usuarios únicos con filtros aplicados
         const options = {
             attributes: [
-                'user_id', // El campo principal para agrupar
+                'user_id',
                 [sequelize.fn('COUNT', sequelize.col('user_badge_id')), 'total_badges'],
                 [sequelize.fn('MAX', sequelize.col('UserBadges.obtained_at')), 'last_obtained_at']
             ],
             where: whereUser,
             include: [{
                 model: UserBadge,
-                attributes: [], // No necesitamos atributos de la tabla join en la consulta principal
+                attributes: [],
                 where: whereUserBadge,
-                required: true, // Sólo usuarios con al menos una insignia que coincida con los filtros
+                required: true,
                 include: [{
                     model: Badge,
                     attributes: [],
@@ -253,18 +249,15 @@ class BadgeService {
             order: orderBy,
             limit: pageSize,
             offset: offset,
-            subQuery: false, // Esencial para la paginación con GROUP BY
+            subQuery: false,
             distinct: true,
             transaction
         };
 
-        // Realizar la consulta para los usuarios paginados y su conteo total
         const { count: countUsers, rows: users } = await User.findAndCountAll(options);
-        
-        // Sequelize con GROUP BY devuelve un array de objetos con `count` para la paginación.
         const totalUsers = Array.isArray(countUsers) ? countUsers.length : countUsers;
 
-        // 5. Obtener las insignias detalladas para los usuarios paginados (una segunda consulta, más eficiente)
+        // 5. Obtener las insignias detalladas para los usuarios paginados
         const userIds = users.map(user => user.user_id);
 
         if (userIds.length === 0) {
@@ -274,11 +267,11 @@ class BadgeService {
         const detailedBadges = await UserBadge.findAll({
             where: { 
                 user_id: { [Op.in]: userIds },
-                ...whereUserBadge // Reaplicar filtros de fecha si existen
+                ...whereUserBadge
             },
-            order: [['obtained_at', 'DESC']], // Ordenar las insignias dentro de cada usuario
+            order: [['obtained_at', 'DESC']],
             include: [
-                { model: User, attributes: ['user_id', 'email', 'name'] }, // Necesario para el formato final
+                { model: User, attributes: ['user_id', 'email', 'name'] },
                 { 
                     model: Badge, 
                     attributes: ['badge_id', 'name', 'icon_url'], 
@@ -288,6 +281,11 @@ class BadgeService {
                         attributes: ['name'], 
                         where: whereBadgeCategory
                     }]
+                },
+                { // 🆕 Incluir Category
+                    model: Category,
+                    attributes: ['name'],
+                    required: false
                 }
             ],
             transaction
@@ -304,26 +302,26 @@ class BadgeService {
                     user_id: user_id,
                     user_email: item.User.email,
                     user_name: item.User.name,
-                    total_badges: 0, // Se actualizará en el siguiente paso
-                    last_obtained_at: null, // Se actualizará
+                    total_badges: 0,
+                    last_obtained_at: null,
                     badges: []
                 });
             }
 
             const userGroup = groupedHistoryMap.get(user_id);
             
-            // Agregar detalle de la insignia
             userGroup.badges.push({
                 user_badge_id: item.user_badge_id,
                 badge_id: item.Badge.badge_id,
                 badge_name: item.Badge.name,
-                badge_category: item.Badge.BadgeCategory ? item.Badge.BadgeCategory.name : 'N/A', 
+                badge_category: item.Badge.BadgeCategory ? item.Badge.BadgeCategory.name : 'N/A',
                 icon_url: item.Badge.icon_url,
-                obtained_at: item.obtained_at
+                obtained_at: item.obtained_at,
+                category_name: item.Badge.badge_id === 7 ? (item.Category ? item.Category.name : null) : null // 🆕 Solo para Coleccionista
             });
         });
 
-        // 7. Combinar datos de la primera consulta (totales/orden) con el detalle (segunda consulta)
+        // 7. Combinar datos de la primera consulta con el detalle
         const groupedHistory = users.map(user => {
             const userDetail = groupedHistoryMap.get(user.user_id) || {};
             
@@ -363,7 +361,7 @@ class BadgeService {
                 include: [{ model: BadgeCategory, attributes: ['name'] }]
             }],
             raw: true,
-            transaction,
+            transaction
         });
 
         const badgeDistribution = topBadges.map(item => ({
@@ -386,7 +384,6 @@ class BadgeService {
         const startDate = new Date();
         startDate.setDate(endDate.getDate() - days);
 
-        // Obtener el conteo real por día
         const results = await UserBadge.findAll({
             attributes: [
                 [sequelize.fn('DATE', sequelize.col('obtained_at')), 'date'],
@@ -400,17 +397,15 @@ class BadgeService {
             group: [sequelize.fn('DATE', sequelize.col('obtained_at'))],
             order: [[literal('date'), 'ASC']],
             raw: true,
-            transaction,
+            transaction
         });
 
-        // Convertir a un mapa (para poder rellenar días vacíos)
         const countByDate = new Map();
         results.forEach(item => {
-            const date = new Date(item.date).toISOString().slice(0, 10); // YYYY-MM-DD
+            const date = new Date(item.date).toISOString().slice(0, 10);
             countByDate.set(date, parseInt(item.count, 10));
         });
 
-        // Generar todos los días del rango (incluso si no hay registros)
         const trendData = [];
         for (let i = 0; i <= days; i++) {
             const currentDate = new Date(startDate);
@@ -426,7 +421,7 @@ class BadgeService {
         return trendData;
     }
 
-    async assignBadgeById(userId, badgeId, transaction = null) {
+    async assignBadgeById(userId, badgeId, transaction = null, options = {}) {
         const badge = await Badge.findOne({
             where: { badge_id: badgeId, is_active: true },
             attributes: ['badge_id'],
@@ -435,13 +430,38 @@ class BadgeService {
 
         if (!badge) return null;
 
+        // 🆕 Validar category_id si se proporciona (para Coleccionista)
+        if (options.category_id) {
+            const category = await Category.findOne({
+                where: { category_id: options.category_id, active: true },
+                transaction
+            });
+            if (!category) {
+                loggerUtils.logError(`Categoría con ID ${options.category_id} no encontrada o inactiva`);
+                return null;
+            }
+        }
+
         const [userBadge, created] = await UserBadge.findOrCreate({
-            where: { user_id: userId, badge_id: badgeId },
-            defaults: { user_id: userId, badge_id: badgeId },
+            where: { 
+                user_id: userId, 
+                badge_id: badgeId,
+                ...(options.category_id ? { category_id: options.category_id } : {}) // 🆕 Incluir category_id si se proporciona
+            },
+            defaults: { 
+                user_id: userId, 
+                badge_id: badgeId,
+                category_id: options.category_id || null, // 🆕
+                obtained_at: new Date()
+            },
             transaction
         });
 
-        return created ? userBadge : null;
+        if (created) {
+            loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${badgeId} asignada${options.category_id ? ` para categoría ${options.category_id}` : ''}`);
+            return userBadge;
+        }
+        return null;
     }
 }
 
