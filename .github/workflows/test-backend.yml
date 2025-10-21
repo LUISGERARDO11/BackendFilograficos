@@ -1,8 +1,6 @@
 # This GitHub Actions workflow is set up to run backend tests when code changes
 # are pushed to the `develop` or `main` branches, or when a pull request 
 # is opened targeting those branches. 
-
-#Here's a breakdown of what each part of the workflow does:
 name: Run Backend Tests
 
 on:
@@ -31,48 +29,70 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Create .env.test from secrets
+      # --- PASO ACTUALIZADO PARA CREAR .ENV.TEST (SOLO DB CON SSL) ---
+      # Creamos el archivo de entorno. Usaremos 'echo' para escribir el certificado SSL
+      # y forzar las nuevas líneas, evitando la corrupción del certificado.
+      - name: Create .env.test for DB and SSL config
         shell: bash
         run: |
           mkdir -p tests
           cat <<EOF > tests/.env.test
-          NODE_ENV=${{ secrets.NODE_ENV }}
-          BASE_URL=${{ secrets.BASE_URL }}
-          CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}
-          CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}
-          COMPANY_EMAIL=${{ secrets.COMPANY_EMAIL }}
-          CORS_WHITELIST=${{ secrets.CORS_WHITELIST }}
-          CSRF_SECRET_KEY=${{ secrets.CSRF_SECRET_KEY }}
           DB_HOST=${{ secrets.DB_HOST }}
           DB_NAME=${{ secrets.DB_NAME }}
           DB_PASSWORD=${{ secrets.DB_PASSWORD }}
           DB_PORT=${{ secrets.DB_PORT }}
           DB_USER=${{ secrets.DB_USER }}
-          EMAIL_FROM=${{ secrets.EMAIL_FROM }}
-          FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-          RECAPTCHA_SECRET_KEY=${{ secrets.RECAPTCHA_SECRET_KEY }}
-          SMTP_HOST=${{ secrets.SMTP_HOST }}
-          SMTP_PASS=${{ secrets.SMTP_PASS }}
-          SMTP_PORT=${{ secrets.SMTP_PORT }}
-          SMTP_REJECT_UNAUTHORIZED=${{ secrets.SMTP_REJECT_UNAUTHORIZED }}
-          SMTP_SECURE=${{ secrets.SMTP_SECURE }}
-          SMTP_USER=${{ secrets.SMTP_USER }}
-          URL_FRONTEND_ORDER_DETAIL=${{ secrets.URL_FRONTEND_ORDER_DETAIL }}
-          VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
-          VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}
-          VAPID_SUBJECT=${{ secrets.VAPID_SUBJECT }}
-          DB_SSL_CA=${{ secrets.DB_SSL_CA }}
+          # Las otras variables de DB que no son el certificado (p. ej. si son simples true/false)
+          # NOTA: DB_SSL_CA se maneja a continuación para preservar las nuevas líneas.
           EOF
+          
+          # Manejo especial para el certificado DB_SSL_CA
+          # 'echo -e' permite interpretar caracteres de escape (como \n para nueva línea).
+          # Usamos 'printf' para formatear la variable con el nombre y el valor.
+          # Reemplazamos las nuevas líneas literales del secret con el carácter de escape '\n'.
+          # Importante: Esto solo funciona si el secret está guardado con saltos de línea literales, 
+          # o si lo has guardado con los caracteres de escape '\n' en lugar de saltos de línea.
+          # El método más robusto es usar 'printf %b', pero por simplicidad, probemos esto:
+          echo "DB_SSL_CA=$(echo -e "${{ secrets.DB_SSL_CA }}")" >> tests/.env.test
+          
+          # Si el certificado está en una sola línea y contiene los '\n' para los saltos de línea:
+          # printf "DB_SSL_CA=%b\n" "${{ secrets.DB_SSL_CA }}" >> tests/.env.test
 
-      - name: Verify .env.test created
-        run: cat tests/.env.test | grep NODE_ENV || echo "env file created"
-        # Esto solo muestra la primera línea, no revela secretos
 
       - name: Run Jest tests
+        # Inyectamos el resto de variables directamente, incluyendo FIREBASE_SERVICE_ACCOUNT
+        # (que resolvió tu error anterior) y todas las que no son de DB con SSL.
         env:
+          # --- Variables de Entorno del Proyecto ---
           NODE_ENV: test
+          BASE_URL: ${{ secrets.BASE_URL }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          COMPANY_EMAIL: ${{ secrets.COMPANY_EMAIL }}
+          CORS_WHITELIST: ${{ secrets.CORS_WHITELIST }}
+          CSRF_SECRET_KEY: ${{ secrets.CSRF_SECRET_KEY }}
+          
+          # --- Variables de Servicios (Incluyendo Firebase) ---
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          RECAPTCHA_SECRET_KEY: ${{ secrets.RECAPTCHA_SECRET_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          
+          # --- Variables SMTP ---
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_REJECT_UNAUTHORIZED: ${{ secrets.SMTP_REJECT_UNAUTHORIZED }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          
+          # --- Otras Variables ---
+          URL_FRONTEND_ORDER_DETAIL: ${{ secrets.URL_FRONTEND_ORDER_DETAIL }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+          
         run: npm test
 
       - name: Upload coverage report
