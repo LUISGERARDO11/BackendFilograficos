@@ -15,6 +15,7 @@
 # Cobertura de tests
 /tests/coverage
 /coverage
+/tests/jest-results.json
 
 # Archivos generados por herramientas de análisis
 .scannerwork
