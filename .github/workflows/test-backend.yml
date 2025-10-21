@@ -32,40 +32,39 @@ jobs:
         run: npm ci
 
       - name: Create .env.test from secrets
+        shell: bash
         run: |
           mkdir -p tests
-          {
-            echo "NODE_ENV=${{ secrets.NODE_ENV }}"
-            echo "BASE_URL=${{ secrets.BASE_URL }}"
-            echo "CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}"
-            echo "CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}"
-            echo "CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}"
-            echo "COMPANY_EMAIL=${{ secrets.COMPANY_EMAIL }}"
-            echo "CORS_WHITELIST=${{ secrets.CORS_WHITELIST }}"
-            echo "CSRF_SECRET_KEY=${{ secrets.CSRF_SECRET_KEY }}"
-            echo "DB_HOST=${{ secrets.DB_HOST }}"
-            echo "DB_NAME=${{ secrets.DB_NAME }}"
-            echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}"
-            echo "DB_PORT=${{ secrets.DB_PORT }}"
-            echo "DB_USER=${{ secrets.DB_USER }}"
-            echo "EMAIL_FROM=${{ secrets.EMAIL_FROM }}"
-            echo "FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }}"
-            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}"
-            echo "RECAPTCHA_SECRET_KEY=${{ secrets.RECAPTCHA_SECRET_KEY }}"
-            echo "SMTP_HOST=${{ secrets.SMTP_HOST }}"
-            echo "SMTP_PASS=${{ secrets.SMTP_PASS }}"
-            echo "SMTP_PORT=${{ secrets.SMTP_PORT }}"
-            echo "SMTP_REJECT_UNAUTHORIZED=${{ secrets.SMTP_REJECT_UNAUTHORIZED }}"
-            echo "SMTP_SECURE=${{ secrets.SMTP_SECURE }}"
-            echo "SMTP_USER=${{ secrets.SMTP_USER }}"
-            echo "URL_FRONTEND_ORDER_DETAIL=${{ secrets.URL_FRONTEND_ORDER_DETAIL }}"
-            echo "VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}"
-            echo "VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}"
-            echo "VAPID_SUBJECT=${{ secrets.VAPID_SUBJECT }}"
-          } > tests/.env.test
-
-          # Manejo especial del certificado (multilínea)
-          printf "%s\n" "DB_SSL_CA=${{ secrets.DB_SSL_CA }}" >> tests/.env.test
+          cat <<EOF > tests/.env.test
+          NODE_ENV=${{ secrets.NODE_ENV }}
+          BASE_URL=${{ secrets.BASE_URL }}
+          CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}
+          CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          COMPANY_EMAIL=${{ secrets.COMPANY_EMAIL }}
+          CORS_WHITELIST=${{ secrets.CORS_WHITELIST }}
+          CSRF_SECRET_KEY=${{ secrets.CSRF_SECRET_KEY }}
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_NAME=${{ secrets.DB_NAME }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          DB_PORT=${{ secrets.DB_PORT }}
+          DB_USER=${{ secrets.DB_USER }}
+          EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+          FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          RECAPTCHA_SECRET_KEY=${{ secrets.RECAPTCHA_SECRET_KEY }}
+          SMTP_HOST=${{ secrets.SMTP_HOST }}
+          SMTP_PASS=${{ secrets.SMTP_PASS }}
+          SMTP_PORT=${{ secrets.SMTP_PORT }}
+          SMTP_REJECT_UNAUTHORIZED=${{ secrets.SMTP_REJECT_UNAUTHORIZED }}
+          SMTP_SECURE=${{ secrets.SMTP_SECURE }}
+          SMTP_USER=${{ secrets.SMTP_USER }}
+          URL_FRONTEND_ORDER_DETAIL=${{ secrets.URL_FRONTEND_ORDER_DETAIL }}
+          VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_SUBJECT=${{ secrets.VAPID_SUBJECT }}
+          DB_SSL_CA=${{ secrets.DB_SSL_CA }}
+          EOF
 
       - name: Verify .env.test created
         run: cat tests/.env.test | grep NODE_ENV || echo "env file created"
