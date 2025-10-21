@@ -19,11 +19,11 @@ async function startServer() {
         console.log('Conexión a la base de datos establecida correctamente.');
 
         // Sincronizar los modelos con la base de datos
-        if (process.env.NODE_ENV !== 'production') {
+        /*if (process.env.NODE_ENV !== 'production') {
             sequelize.sync({ alter: true }) // Solo en desarrollo
               .then(() => console.log('Base de datos sincronizada'))
               .catch(error => console.error('Error al sincronizar:', error));
-        }
+        }*/
         // Instanciar servicios
         const badgeService = new BadgeService();
         const notificationManager = new NotificationManager();

@@ -1,0 +1,76 @@
+name: Run Backend Tests
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create .env.test from secrets
+        run: |
+          mkdir -p tests
+          echo "NODE_ENV=${{ secrets.NODE_ENV }}" > tests/.env.test
+          echo "BASE_URL=${{ secrets.BASE_URL }}" >> tests/.env.test
+          echo "CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}" >> tests/.env.test
+          echo "CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}" >> tests/.env.test
+          echo "CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}" >> tests/.env.test
+          echo "COMPANY_EMAIL=${{ secrets.COMPANY_EMAIL }}" >> tests/.env.test
+          echo "CORS_WHITELIST=${{ secrets.CORS_WHITELIST }}" >> tests/.env.test
+          echo "CSRF_SECRET_KEY=${{ secrets.CSRF_SECRET_KEY }}" >> tests/.env.test
+          echo "DB_HOST=${{ secrets.DB_HOST }}" >> tests/.env.test
+          echo "DB_NAME=${{ secrets.DB_NAME }}" >> tests/.env.test
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> tests/.env.test
+          echo "DB_PORT=${{ secrets.DB_PORT }}" >> tests/.env.test
+          echo "DB_SSL_CA=${{ secrets.DB_SSL_CA }}" >> tests/.env.test
+          echo "DB_USER=${{ secrets.DB_USER }}" >> tests/.env.test
+          echo "EMAIL_FROM=${{ secrets.EMAIL_FROM }}" >> tests/.env.test
+          echo "FIREBASE_SERVICE_ACCOUNT=${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" >> tests/.env.test
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> tests/.env.test
+          echo "RECAPTCHA_SECRET_KEY=${{ secrets.RECAPTCHA_SECRET_KEY }}" >> tests/.env.test
+          echo "SMTP_HOST=${{ secrets.SMTP_HOST }}" >> tests/.env.test
+          echo "SMTP_PASS=${{ secrets.SMTP_PASS }}" >> tests/.env.test
+          echo "SMTP_PORT=${{ secrets.SMTP_PORT }}" >> tests/.env.test
+          echo "SMTP_REJECT_UNAUTHORIZED=${{ secrets.SMTP_REJECT_UNAUTHORIZED }}" >> tests/.env.test
+          echo "SMTP_SECURE=${{ secrets.SMTP_SECURE }}" >> tests/.env.test
+          echo "SMTP_USER=${{ secrets.SMTP_USER }}" >> tests/.env.test
+          echo "URL_FRONTEND_ORDER_DETAIL=${{ secrets.URL_FRONTEND_ORDER_DETAIL }}" >> tests/.env.test
+          echo "VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}" >> tests/.env.test
+          echo "VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}" >> tests/.env.test
+          echo "VAPID_SUBJECT=${{ secrets.VAPID_SUBJECT }}" >> tests/.env.test
+        shell: bash
+
+      - name: Verify .env.test created
+        run: cat tests/.env.test | grep NODE_ENV || echo "env file created"
+        # Esto solo muestra la primera línea, no revela secretos
+
+      - name: Run Jest tests
+        env:
+          NODE_ENV: test
+        run: npm test
+
+      - name: Upload coverage report
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: tests/coverage
