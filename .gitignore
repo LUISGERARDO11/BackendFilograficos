@@ -1,9 +1,32 @@
+# Dependencias
 /node_modules
+
+# Entornos
 .env
+/tests/.env.test
+
+# Logs y temporales
 /logs
+/temp/my.cnf
+/temp
+/temp/*
+*.log
+
+# Cobertura de tests
+/tests/coverage
+/coverage
+
+# Archivos generados por herramientas de análisis
 .scannerwork
 /scannerwork
 /.scannerwork
 /sonar-project.properties
 sonar-project.properties
-/temp/my.cnf
+*.lcov
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de configuración locales
+npm-debug.log*
