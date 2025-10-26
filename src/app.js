@@ -98,11 +98,12 @@ app.get('/api/csrf-token', (req, res) => {
 
 // Aplicar protección CSRF
 app.use((req, res, next) => {
-  // Excluir solicitudes de Alexa de la protección CSRF
+  // Excluir rutas que no requieren protección CSRF o que fallan al aplicarla (e.g., recomendaciones POST/GET)
   if (
     req.headers['x-alexa-request'] === 'true' ||
     req.path === '/api/auth/alexa/token' ||
-    req.path === '/api/order/webhook/mercado-pago' // Ruta completa montada
+    req.path === '/api/order/webhook/mercado-pago' ||
+    req.path.startsWith('/api/recommendations') // <-- EXCLUSIÓN CLAVE
   ) {
     return next();
   }
