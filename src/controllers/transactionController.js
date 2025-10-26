@@ -1,6 +1,342 @@
 const { Sequelize, Op } = require('sequelize');
-const { Order, OrderDetail, Product, ProductVariant, User, Address, Coupon, ShippingOption, Promotion, OrderHistory, Payment } = require('../models/Associations');
+const { 
+    Order, OrderDetail, Product, ProductVariant, User, Address, Coupon, ShippingOption, Promotion, OrderHistory, Payment,
+    Customization, UserBadge, Badge // <--- ¡Asegúrate de importar los nuevos modelos aquí!
+} = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
+
+const BADGE_IDS = {
+    CLIENTE_FIEL: 1,                    // 10 o más pedidos entregados
+    PRIMER_PERSONALIZADO: 3,            // Primer pedido entregado CON personalización
+    CINCO_PEDIDOS: 5                    // 5 o más pedidos entregados
+};
+const COMPLETED_STATUS = 'delivered';
+
+/**
+ * Función auxiliar para generar detalles de una sola orden de prueba.
+ * Simplificada para asegurar datos de prueba consistentes.
+ * Debe ser colocada ANTES del nuevo controller.
+ */
+async function generateOrderDetailsForTesting(orderId, validVariants) {
+    // Simplificamos la orden para la prueba de asignación de insignias.
+    const numDetails = 1; 
+    const detailsForOrder = [];
+    let totalSubtotal = 0;
+    let totalUrgentCost = 0;
+
+    for (let i = 0; i < numDetails; i++) {
+        // Seleccionar una variante al azar
+        const variant = validVariants[Math.floor(Math.random() * validVariants.length)];
+        if (variant.stock < 1) continue;
+
+        const quantity = 1; 
+        const isUrgent = false; 
+        const calculatedPrice = Number(variant.calculated_price) || 100.00;
+        const additionalCost = 0; 
+
+        if (Number.isNaN(calculatedPrice)) continue;
+
+        const subtotal = Number((quantity * calculatedPrice + additionalCost).toFixed(2));
+
+        detailsForOrder.push({
+            order_id: orderId,
+            variant_id: variant.variant_id,
+            option_id: null,
+            customization_id: null,
+            quantity,
+            unit_price: calculatedPrice,
+            subtotal,
+            unit_measure: 1.00,
+            discount_applied: 0.00,
+            is_urgent: isUrgent,
+            additional_cost: additionalCost,
+        });
+
+        totalSubtotal += subtotal;
+        totalUrgentCost += additionalCost;
+    }
+
+    return { detailsForOrder, totalSubtotal, totalUrgentCost };
+}
+
+
+// ⚡ NUEVO MÉTODO DEL CONTROLADOR PARA GENERAR ÓRDENES ESPECÍFICAS POR PORCENTAJE ⚡
+exports.generateTargetedBadgesOrders = async (req, res) => {
+    let t;
+    const CLIENTE_FIEL_PERCENTAGE = 0.20; // 20%
+    const CINCO_PEDIDOS_PERCENTAGE = 0.20; // 20%
+    const TARGET_FIEL_COUNT = 10;
+    const TARGET_CINCO_COUNT = 5;
+
+    try {
+        t = await Order.sequelize.transaction();
+
+        // 1. Obtener todos los IDs de usuarios elegibles
+        let allUsers = await User.findAll({
+            where: { user_type: 'cliente', status: 'activo' },
+            attributes: ['user_id'],
+            transaction: t
+        });
+        
+        if (allUsers.length === 0) {
+            await t.commit();
+            return res.status(200).json({ message: 'No se encontraron clientes activos.', generated_orders: 0 });
+        }
+
+        let userIds = allUsers.map(u => u.user_id);
+        const totalUsers = userIds.length;
+
+        // --- Obtener datos base para la orden (Simplificación) ---
+        const validVariants = await ProductVariant.findAll({
+            where: { is_deleted: false, stock: { [Op.gt]: 0 } },
+            attributes: ['variant_id', 'calculated_price', 'stock'],
+            transaction: t,
+        });
+
+        if (!validVariants.length) {
+            throw new Error('No se encontraron variantes de productos disponibles para generar órdenes.');
+        }
+        
+        const shippingOption = await ShippingOption.findOne({
+            where: { name: 'Entrega a Domicilio', status: 'active' },
+            attributes: ['base_cost'],
+            transaction: t,
+        });
+        const shippingCost = shippingOption ? Number(shippingOption.base_cost) || 50.00 : 50.00;
+        
+        // --- 2. Seleccionar Subconjuntos Aleatorios (Fisher-Yates Shuffle) ---
+        const shuffleArray = (array) => {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        };
+        
+        const shuffledUsers = shuffleArray([...userIds]);
+
+        // 20% para Cliente Fiel
+        const fielCount = Math.ceil(totalUsers * CLIENTE_FIEL_PERCENTAGE);
+        const fielUsers = shuffledUsers.slice(0, fielCount);
+
+        // 20% para Cinco Pedidos Únicos (tomado del siguiente segmento, evitando duplicados)
+        const cincoPedidosCount = Math.ceil(totalUsers * CINCO_PEDIDOS_PERCENTAGE);
+        const cincoPedidosUsers = shuffledUsers.slice(fielCount, fielCount + cincoPedidosCount);
+
+        let totalOrdersGenerated = 0;
+        const ordersToCreate = [];
+        const orderDetailsToCreate = [];
+        let newOrderId = await Order.max('order_id', { transaction: t }) + 1 || 1;
+
+
+        // --- 3. Procesar Usuarios Fieles (Target: 10) ---
+        for (const userId of fielUsers) {
+            const currentOrdersCount = await Order.count({
+                where: { user_id: userId, order_status: COMPLETED_STATUS },
+                transaction: t
+            });
+
+            const ordersNeeded = Math.max(0, TARGET_FIEL_COUNT - currentOrdersCount);
+
+            for (let i = 0; i < ordersNeeded; i++) {
+                const orderId = newOrderId++;
+                const { detailsForOrder, totalSubtotal, totalUrgentCost } = 
+                    await generateOrderDetailsForTesting(orderId, validVariants);
+                
+                if (detailsForOrder.length === 0) continue;
+
+                const total = Number((totalSubtotal + shippingCost + totalUrgentCost).toFixed(2));
+                
+                ordersToCreate.push({
+                    order_id: orderId,
+                    user_id: userId,
+                    // Simplificado: address_id, coupon_code son null para prueba rápida
+                    total: total,
+                    discount: 0.00,
+                    shipping_cost: shippingCost,
+                    payment_status: 'approved',
+                    payment_method: 'mercado_pago',
+                    order_status: COMPLETED_STATUS, // CLAVE: ENTREGADO
+                    estimated_delivery_date: new Date(),
+                    total_urgent_cost: totalUrgentCost,
+                    delivery_option: 'Entrega a Domicilio',
+                    created_at: new Date(),
+                    updated_at: new Date(),
+                });
+                
+                orderDetailsToCreate.push(...detailsForOrder);
+                totalOrdersGenerated++;
+            }
+        }
+
+
+        // --- 4. Procesar Usuarios Cinco Pedidos (Target: 5) ---
+        for (const userId of cincoPedidosUsers) {
+            const currentOrdersCount = await Order.count({
+                where: { user_id: userId, order_status: COMPLETED_STATUS },
+                transaction: t
+            });
+
+            const ordersNeeded = Math.max(0, TARGET_CINCO_COUNT - currentOrdersCount);
+
+            for (let i = 0; i < ordersNeeded; i++) {
+                const orderId = newOrderId++;
+                const { detailsForOrder, totalSubtotal, totalUrgentCost } = 
+                    await generateOrderDetailsForTesting(orderId, validVariants);
+
+                if (detailsForOrder.length === 0) continue;
+                
+                const total = Number((totalSubtotal + shippingCost + totalUrgentCost).toFixed(2));
+                
+                ordersToCreate.push({
+                    order_id: orderId,
+                    user_id: userId,
+                    // Simplificado: address_id, coupon_code son null para prueba rápida
+                    total: total,
+                    discount: 0.00,
+                    shipping_cost: shippingCost,
+                    payment_status: 'approved',
+                    payment_method: 'mercado_pago',
+                    order_status: COMPLETED_STATUS, // CLAVE: ENTREGADO
+                    estimated_delivery_date: new Date(),
+                    total_urgent_cost: totalUrgentCost,
+                    delivery_option: 'Entrega a Domicilio',
+                    created_at: new Date(),
+                    updated_at: new Date(),
+                });
+                
+                orderDetailsToCreate.push(...detailsForOrder);
+                totalOrdersGenerated++;
+            }
+        }
+
+
+        // --- 5. Inserción en Base de Datos ---
+        if (ordersToCreate.length > 0) {
+            await Order.bulkCreate(ordersToCreate, { transaction: t });
+        }
+        if (orderDetailsToCreate.length > 0) {
+            await OrderDetail.bulkCreate(orderDetailsToCreate, { transaction: t });
+        }
+
+        await t.commit();
+        res.status(201).json({ 
+            message: `Órdenes dirigidas generadas exitosamente. ${fielUsers.length} usuarios objetivo para Cliente Fiel y ${cincoPedidosUsers.length} para Cinco Pedidos Únicos. Total de órdenes creadas: ${totalOrdersGenerated}.`,
+            generated_orders: totalOrdersGenerated
+        });
+
+    } catch (error) {
+        if (t) await t.rollback();
+        loggerUtils.logCriticalError(error);
+        res.status(500).json({ message: 'Error al generar órdenes dirigidas.', error: error.message });
+    }
+};
+
+
+/**
+ * Función auxiliar para asignar o verificar la existencia de una insignia.
+ * Utiliza findOrCreate para asegurar que la asignación es única.
+ */
+async function assignBadge(userId, badgeId, transaction) {
+    try {
+        const [userBadge, created] = await UserBadge.findOrCreate({
+            where: { user_id: userId, badge_id: badgeId },
+            defaults: { 
+                user_id: userId, 
+                badge_id: badgeId, 
+                obtained_at: new Date() 
+            },
+            transaction: transaction
+        });
+
+        return created; // Devuelve true si fue creada, false si ya existía
+    } catch (error) {
+        // En un controlador real, puedes loggear esto pero no detener todo.
+        loggerUtils.logCriticalError(new Error(`[Badge Assignment Failed] User: ${userId}, Badge: ${badgeId}. Error: ${error.message}`));
+        return false;
+    }
+}
+
+// ⚡ NUEVO MÉTODO DEL CONTROLADOR ⚡
+exports.assignRetroactiveBadges = async (req, res) => {
+    let t;
+    let assignedCount = 0; // Contador de insignias asignadas en esta ejecución
+
+    try {
+        t = await Order.sequelize.transaction();
+        
+        // 1. Obtener todos los IDs de usuarios que son clientes y están activos
+        const users = await User.findAll({ 
+            where: { user_type: 'cliente', status: 'activo' },
+            attributes: ['user_id'],
+            transaction: t 
+        });
+
+        if (users.length === 0) {
+            await t.commit();
+            return res.status(200).json({ message: 'No se encontraron clientes activos para asignar insignias.', badges_assigned: 0 });
+        }
+
+        console.log(`Iniciando chequeo de ${users.length} usuarios para insignias retroactivas...`);
+
+        // 2. Procesar Insignias por Usuario
+        for (const user of users) {
+            const userId = user.user_id;
+
+            // a) Contar pedidos entregados
+            const completedOrdersCount = await Order.count({
+                where: {
+                    user_id: userId,
+                    order_status: COMPLETED_STATUS
+                },
+                transaction: t
+            });
+
+            // b) Verificar si tiene al menos UN pedido entregado CON personalización (Customization)
+            const hasCustomCompletedOrder = await Order.findOne({
+                where: {
+                    user_id: userId,
+                    order_status: COMPLETED_STATUS
+                },
+                include: [{
+                    model: Customization,
+                    required: true // INNER JOIN: Solo órdenes que tienen Customization
+                }],
+                transaction: t
+            });
+
+            // --- Lógica de Asignación ---
+
+            // Insignia: Cliente Fiel (ID 1)
+            if (completedOrdersCount >= 10) {
+                if (await assignBadge(userId, BADGE_IDS.CLIENTE_FIEL, t)) assignedCount++;
+            }
+
+            // Insignia: Cinco Pedidos Únicos (ID 5)
+            // Nota: Si tiene 10, automáticamente tiene 5, pero findOrCreate se encarga de la unicidad.
+            if (completedOrdersCount >= 5) {
+                if (await assignBadge(userId, BADGE_IDS.CINCO_PEDIDOS, t)) assignedCount++;
+            }
+
+            // Insignia: Primer Pedido Personalizado (ID 3)
+            // Nota: Solo se asigna si existe una orden con personalización.
+            if (hasCustomCompletedOrder) {
+                if (await assignBadge(userId, BADGE_IDS.PRIMER_PERSONALIZADO, t)) assignedCount++;
+            }
+        }
+
+        await t.commit();
+        res.status(200).json({ 
+            message: `Proceso retroactivo completado exitosamente. Total de insignias asignadas o encontradas: ${assignedCount}.`,
+            badges_assigned: assignedCount
+        });
+
+    } catch (error) {
+        if (t) await t.rollback();
+        loggerUtils.logCriticalError(error);
+        res.status(500).json({ message: 'Error al asignar insignias retroactivas. Transacción revertida.', error: error.message });
+    }
+};
 
 // Controlador para exportar transacciones a CSV
 exports.exportTransactions = async (req, res) => {

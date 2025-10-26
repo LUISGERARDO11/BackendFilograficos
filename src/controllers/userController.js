@@ -2,7 +2,7 @@
 administration in a Node.js application using Express and Sequelize ORM. Here is a summary of the
 functionalities: */
 const { body, validationResult } = require('express-validator');
-const { User, Account, Address, Session } = require('../models/Associations');
+const { User, Account, Address, Session, UserBadge, Badge, BadgeCategory, Category } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const sequelize = require('../config/dataBase');
 const userServices = require('../services/userServices');
@@ -95,31 +95,69 @@ exports.updateUserProfile = [
 ];
 
 exports.getProfile = async (req, res) => {
-  const userId = req.user.user_id;
-  try {
-    const user = await User.findByPk(userId, {
-      attributes: ['user_id', 'name', 'email', 'phone', 'status', 'user_type'],
-      include: [
-        { model: Address, where: { is_primary: true }, required: false },
-        { model: Account, attributes: ['profile_picture_url'] }
-      ]
-    });
-    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    const userId = req.user.user_id;
+    try {
+        const user = await User.findByPk(userId, {
+            attributes: ['user_id', 'name', 'email', 'phone', 'status', 'user_type'],
+            include: [
+                { model: Address, where: { is_primary: true }, required: false },
+                { model: Account, attributes: ['profile_picture_url'] },
+                {
+                    model: UserBadge,
+                    as: 'UserBadges',
+                    attributes: ['obtained_at', 'category_id'], // 🆕 Incluimos category_id
+                    required: false,
+                    include: [
+                        {
+                            model: Badge,
+                            as: 'Badge',
+                            attributes: ['badge_id', 'name', 'description', 'icon_url', 'public_id'],
+                            include: [{
+                                model: BadgeCategory,
+                                as: 'BadgeCategory',
+                                attributes: ['name']
+                            }]
+                        },
+                        {
+                            model: Category, // 🆕 Incluir modelo Category
+                            as: 'Category',
+                            attributes: ['name'],
+                            required: false
+                        }
+                    ]
+                }
+            ]
+        });
 
-    // Formatear la respuesta para incluir la URL de la imagen
-    res.status(200).json({
-      user_id: user.user_id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      status: user.status,
-      user_type: user.user_type,
-      address: user.Addresses ? user.Addresses[0] : null, // Cambiar a Addresses
-      profile_picture_url: user.Account?.profile_picture_url || null
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Error al obtener el perfil', error: error.message });
-  }
+        if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+
+        // Formatear el array de insignias
+        const badges = user.UserBadges ? user.UserBadges.map(userBadge => ({
+            id: userBadge.Badge.badge_id,
+            name: userBadge.Badge.name,
+            icon_url: userBadge.Badge.icon_url,
+            description: userBadge.Badge.description,
+            category: userBadge.Badge.BadgeCategory.name,
+            obtained_at: userBadge.obtained_at,
+            product_category: userBadge.Badge.badge_id === 7 ? (userBadge.Category ? userBadge.Category.name : null) : null // 🆕 Solo para Coleccionista
+        })) : [];
+
+        // Formatear la respuesta final
+        res.status(200).json({
+            user_id: user.user_id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            status: user.status,
+            user_type: user.user_type,
+            address: user.Addresses ? user.Addresses[0] : null,
+            profile_picture_url: user.Account?.profile_picture_url || null,
+            badges
+        });
+    } catch (error) {
+        console.error("Error al obtener el perfil con insignias:", error);
+        res.status(500).json({ message: 'Error al obtener el perfil', error: error.message });
+    }
 };
 
 exports.uploadProfilePicture = async (req, res) => {

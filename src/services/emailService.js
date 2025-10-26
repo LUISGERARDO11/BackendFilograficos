@@ -1,11 +1,9 @@
-/* The EmailService class handles sending various types of emails using templates and logging the email activities. */
 require('dotenv').config();
 const ejs = require('ejs');
 const transporter = require('../config/transporter');
 const loggerUtils = require('../utils/loggerUtils');
 
 class EmailService {
-  // Función auxiliar para obtener una plantilla de email
   async getEmailTemplate(templateCode) {
     const { EmailType, EmailTemplate } = require('../models/Associations');
     const emailType = await EmailType.findOne({ where: { token: templateCode } });
@@ -57,6 +55,22 @@ class EmailService {
       loggerUtils.logCriticalError(error);
       return { success: false, error: error.message };
     }
+  }
+
+  async sendBadgeNotification(userEmail, badgeToken, userName, badgeName, obtainedAt, badgeDescription, categoryName = null) {
+    const template = await this.getEmailTemplate(badgeToken);
+    const data = {
+      user_name: userName,
+      badge_name: badgeName,
+      obtained_at: obtainedAt,
+      badge_description: badgeDescription,
+      category_name: categoryName // 🆕 Para Coleccionista
+    };
+    const htmlContent = ejs.render(template.html_content, data);
+    const textContent = ejs.render(template.text_content, data);
+    const subject = ejs.render(template.subject, data);
+
+    return this.sendGenericEmail(userEmail, subject, htmlContent, textContent);
   }
 
   async sendVerificationEmail(destinatario, token) {

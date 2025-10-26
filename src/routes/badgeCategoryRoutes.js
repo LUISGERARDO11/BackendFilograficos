@@ -9,7 +9,9 @@ const authMiddleware = require('../middlewares/authMiddleware');
 const roleMiddleware = require('../middlewares/roleMiddleware');
 const tokenExpirationMiddleware = require('../middlewares/verifyTokenExpiration');
 
-// Obtener todas las categorías de insignias
+// --- Rutas de Consulta ---
+
+// Obtener todas las categorías de insignias (Consulta principal con filtros y paginación)
 router.get(
   '/',
   authMiddleware,
@@ -26,6 +28,19 @@ router.get(
   roleMiddleware(['administrador']),
   badgeCategoryController.getBadgeCategoryById
 );
+
+// --- Ruta de Reportes (¡NUEVA!) ---
+
+// Generar Reporte de Distribución de Insignias por Categoría
+router.get(
+  '/report/distribution', // Se recomienda una ruta más específica
+  authMiddleware,
+  tokenExpirationMiddleware.verifyTokenExpiration,
+  roleMiddleware(['administrador']),
+  badgeCategoryController.getBadgeDistributionReport
+);
+
+// --- Rutas CRUD ---
 
 // Crear una nueva categoría de insignias
 router.post(
