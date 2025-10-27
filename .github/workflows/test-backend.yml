@@ -1,17 +1,14 @@
-# This GitHub Actions workflow is set up to run backend tests when code changes
-# are pushed to the `develop` or `main` branches, or when a pull request 
-# is opened targeting those branches. 
-name: Run Backend Tests
+name: Backend CI/CD
 
 on:
   push:
     branches:
-      - develop
       - main
+      - develop
   pull_request:
     branches:
-      - develop
       - main
+      - develop
 
 jobs:
   test:
@@ -29,14 +26,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # --- PASO PARA CREAR .ENV.TEST (DB y SSL) ---
       - name: Create .env.test for DB and SSL config
         shell: bash
         run: |
           mkdir -p tests
           DB_FILE="tests/.env.test"
-          
-          # 1. Escribir variables de DB simples (sin saltos de línea)
           cat <<EOF > "$DB_FILE"
           DB_HOST=${{ secrets.DB_HOST }}
           DB_NAME=${{ secrets.DB_NAME }}
@@ -44,94 +38,53 @@ jobs:
           DB_PORT=${{ secrets.DB_PORT }}
           DB_USER=${{ secrets.DB_USER }}
           EOF
-          
-          # 2. Manejo especial para el certificado DB_SSL_CA (con saltos de línea)
           printf "DB_SSL_CA='%s'\n" '${{ secrets.DB_SSL_CA }}' >> "$DB_FILE"
 
-      # --- PASO DE PRUEBAS ACTUALIZADO PARA GENERAR JSON ---
       - name: Run Jest tests
         env:
-          # --- Variables de Entorno del Proyecto ---
           NODE_ENV: test
           BASE_URL: ${{ secrets.BASE_URL }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
-          COMPANY_EMAIL: ${{ secrets.COMPANY_EMAIL }}
-          CORS_WHITELIST: ${{ secrets.CORS_WHITELIST }}
-          CSRF_SECRET_KEY: ${{ secrets.CSRF_SECRET_KEY }}
-          
-          # --- Variables de Servicios (Incluyendo Firebase) ---
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          RECAPTCHA_SECRET_KEY: ${{ secrets.RECAPTCHA_SECRET_KEY }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          
-          # --- Variables SMTP ---
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_REJECT_UNAUTHORIZED: ${{ secrets.SMTP_REJECT_UNAUTHORIZED }}
-          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          
-          # --- Otras Variables ---
-          URL_FRONTEND_ORDER_DETAIL: ${{ secrets.URL_FRONTEND_ORDER_DETAIL }}
-          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
-          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
-          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
-          
-        # Se añaden argumentos de Jest para generar el reporte JSON
         run: npm test -- --json --outputFile=tests/jest-results.json
-        
-      # --- PASO NUEVO PARA GENERAR EL RESUMEN DE GITHUB ---
+
       - name: Generate Test Summary
-        # Se ejecuta siempre (incluso si fallan las pruebas) para mostrar los resultados
-        if: always() 
-        shell: bash # Única definición de 'shell'
-        env: # Única definición de 'env'
-          JQ_VERSION: 1.6 # La variable de entorno que definiste
-        run: | # Única definición de 'run'
-          # 1. Instalar jq (Necesario para parsear el JSON)
-          # Aunque ya está instalado en muchos runners de Ubuntu, lo garantizamos
+        if: always()
+        shell: bash
+        run: |
           sudo apt-get update && sudo apt-get install -y jq
-          
-          # 2. Script para generar el resumen
           RESULTS_FILE=tests/jest-results.json
-          
-          # Verifica si el archivo JSON existe (las pruebas pueden haber fallado antes de crearlo)
           if [ -f "$RESULTS_FILE" ]; then
-            # Lee el JSON y extrae las métricas clave
             PASSED=$(jq .numPassedTests "$RESULTS_FILE")
             FAILED=$(jq .numFailedTests "$RESULTS_FILE")
             TOTAL=$(jq .numTotalTests "$RESULTS_FILE")
-            # El tiempo está en milisegundos, lo dividimos por 1000 para obtener segundos y lo formateamos
             TIME=$(jq .testResults[0].perfStats.runtime "$RESULTS_FILE" | awk '{printf "%.1f", $1/1000}')
-            
-            # Formatea el resultado
             SUMMARY_ICON="✅"
-            if [ "$FAILED" -gt 0 ]; then
-              SUMMARY_ICON="❌"
-            fi
-            
-            SUMMARY_TEXT="$SUMMARY_ICON **$PASSED** tests passed — **$FAILED** failed — **$TOTAL** total — duration: **$TIME** s"
-            
-            # Escribe el resumen en el GitHub Actions summary panel
-            echo "$SUMMARY_TEXT" >> $GITHUB_STEP_SUMMARY
-            
-            # Opcional: Escribe un resumen más detallado si hay fallos
-            if [ "$FAILED" -gt 0 ]; then
-              echo "## Detalles de la Ejecución" >> $GITHUB_STEP_SUMMARY
-              echo "Puedes encontrar el reporte completo en los logs de la consola." >> $GITHUB_STEP_SUMMARY
-            fi
+            if [ "$FAILED" -gt 0 ]; then SUMMARY_ICON="❌"; fi
+            echo "$SUMMARY_ICON $PASSED passed — $FAILED failed — $TOTAL total — duration: $TIME s" >> $GITHUB_STEP_SUMMARY
           else
-            # Mensaje si el reporte JSON no fue generado
-            echo "⚠️ **Advertencia:** No se encontró el archivo de reporte JSON. Las pruebas fallaron en una etapa temprana." >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ No se encontró reporte JSON" >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Upload coverage report
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: tests/coverage
+  deploy:
+    name: Deploy to Vercel (only if tests pass in main)
+    needs: test
+    if: github.ref == 'refs/heads/main' && needs.test.result == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Link Vercel Project
+        run: |
+          npx vercel link \
+            --token ${{ secrets.VERCEL_TOKEN }} \
+            --yes
+
+      - name: Deploy to Production
+        run: |
+          npx vercel deploy --prod \
+            --token ${{ secrets.VERCEL_TOKEN }} \
+            --confirm
