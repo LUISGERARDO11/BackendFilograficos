@@ -1,0 +1,26 @@
+name: Deploy Backend to Vercel
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to Vercel (Production)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy with Vercel CLI
+        run: |
+          npx vercel --prod \
+            --token ${{ secrets.VERCEL_TOKEN }} \
+            --org ${{ secrets.VERCEL_ORG_ID }} \
+            --project ${{ secrets.VERCEL_PROJECT_ID }} \
+            --confirm
