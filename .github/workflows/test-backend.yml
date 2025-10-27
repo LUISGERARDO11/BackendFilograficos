@@ -44,6 +44,29 @@ jobs:
         env:
           NODE_ENV: test
           BASE_URL: ${{ secrets.BASE_URL }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          COMPANY_EMAIL: ${{ secrets.COMPANY_EMAIL }}
+          CORS_WHITELIST: ${{ secrets.CORS_WHITELIST }}
+          CSRF_SECRET_KEY: ${{ secrets.CSRF_SECRET_KEY }}
+
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          RECAPTCHA_SECRET_KEY: ${{ secrets.RECAPTCHA_SECRET_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_REJECT_UNAUTHORIZED: ${{ secrets.SMTP_REJECT_UNAUTHORIZED }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+
+          URL_FRONTEND_ORDER_DETAIL: ${{ secrets.URL_FRONTEND_ORDER_DETAIL }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
         run: npm test -- --json --outputFile=tests/jest-results.json
 
       - name: Generate Test Summary
