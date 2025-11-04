@@ -1,35 +1,30 @@
-// src/hooks/gamificationInitializer.js
-const { Order, Customization, OrderDetail, Product, Category, ProductVariant } = require('../models/Associations');
+const { Order, Customization, OrderDetail, Product, Category, ProductVariant, Review } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op, Sequelize } = require('sequelize');
-
 const BADGE_IDS = {
   PRIMER_PERSONALIZADO: 3, // Primer pedido personalizado
-  CINCO_PEDIDOS: 5,        // Cinco pedidos únicos
-  CLIENTE_FIEL: 1,         // Diez pedidos en total
-  COMPRADOR_EXPRESS: 6,    // Comprador exprés: 2 compras en el mismo día
-  COLECCIONISTA: 7         // Coleccionista: 3+ productos distintos en una categoría
+  CINCO_PEDIDOS: 5, // Cinco pedidos únicos
+  CLIENTE_FIEL: 1, // Diez pedidos en total
+  COMPRADOR_EXPRESS: 6, // Comprador exprés: 2 compras en el mismo día
+  COLECCIONISTA: 7, // Coleccionista: 3+ productos distintos en una categoría
+  PRIMER_RESENA: 8 // Primer Reseñador: Primera reseña (reemplaza 8 con el ID real de la insignia)
 };
 
 async function checkGamificationOnOrderDelivered(order, options, badgeService, notificationManager) {
+// ... (cuerpo de la función checkGamificationOnOrderDelivered sin cambios relevantes)
   loggerUtils.logInfo(`🔔 Hook de gamificación activado para Order ID: ${order.order_id}`);
-
   if (order.order_status !== 'delivered') {
     loggerUtils.logInfo(`⚠️ Pedido ${order.order_id} no está en estado 'delivered' (estado actual: ${order.order_status}). Hook no aplica.`);
     return;
   }
-
   if (order.previous('order_status') === 'delivered') {
-    loggerUtils.logInfo(`ℹ️ Pedido ${order.order_id} ya estaba entregado anteriormente. No se ejecutará nuevamente.`);
+    loggerUtils.logInfo(`Pedido ${order.order_id} ya estaba entregado anteriormente. No se ejecutará nuevamente.`);
     return;
   }
-
   const userId = order.user_id;
   const transaction = options.transaction;
   const assignedBadges = [];
-
   loggerUtils.logInfo(`🎯 Evaluando insignias para el usuario ${userId} (Order ID ${order.order_id})`);
-
   try {
     // 1️⃣ Contar pedidos completados
     const completedOrdersCount = await Order.count({
@@ -37,19 +32,16 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
       transaction
     });
     loggerUtils.logInfo(`📦 Total de pedidos completados del usuario ${userId}: ${completedOrdersCount}`);
-
     // 2️⃣ Validar compras por fecha para Comprador exprés
     const orderCreatedAt = order.created_at;
     if (!orderCreatedAt || isNaN(orderCreatedAt)) {
       loggerUtils.logError(`⚠️ Fecha inválida en created_at para Order ID ${order.order_id}`);
       return;
     }
-
     const startOfDay = new Date(orderCreatedAt);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(orderCreatedAt);
     endOfDay.setHours(23, 59, 59, 999);
-
     const dailyDeliveredOrders = await Order.count({
       where: {
         user_id: userId,
@@ -59,7 +51,6 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
       transaction
     });
     loggerUtils.logInfo(`📅 Pedidos entregados el día ${startOfDay.toDateString()} para usuario ${userId}: ${dailyDeliveredOrders}`);
-
     // 3️⃣ Verificar pedidos únicos (por variantes)
     const uniqueVariants = await Order.findAll({
       where: { user_id: userId, order_status: 'delivered' },
@@ -74,7 +65,6 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
     });
     const uniqueOrdersCount = uniqueVariants.length;
     loggerUtils.logInfo(`🧩 Pedidos únicos (variantes distintas) del usuario ${userId}: ${uniqueOrdersCount}`);
-
     // 4️⃣ Verificar si el pedido actual tiene personalización aprobada
     const hasCustomization = await Order.findOne({
       where: { order_id: order.order_id, order_status: 'delivered' },
@@ -87,7 +77,6 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
     });
     const hasApprovedCustomization = hasCustomization && hasCustomization.Customizations && hasCustomization.Customizations.length > 0;
     loggerUtils.logInfo(`🎨 Pedido ${order.order_id} ${hasApprovedCustomization ? 'tiene' : 'no tiene'} personalizaciones aprobadas.`);
-
     // 5️⃣ Verificar Coleccionista: 3+ productos distintos en la misma categoría
     const productsByCategory = await Order.findAll({
       where: { user_id: userId, order_status: 'delivered' },
@@ -110,7 +99,6 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
       raw: true,
       transaction
     });
-
     const categoryProductMap = new Map();
     productsByCategory.forEach(item => {
       const categoryId = item['OrderDetails.ProductVariant.Product.category_id'];
@@ -120,7 +108,6 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
       }
       categoryProductMap.get(categoryId).add(productId);
     });
-
     const eligibleCategories = [];
     for (const [categoryId, productIds] of categoryProductMap) {
       if (productIds.size >= 3) {
@@ -128,7 +115,6 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
       }
     }
     loggerUtils.logInfo(`🏆 Categorías elegibles para Coleccionista (3+ productos): ${eligibleCategories.join(', ')}`);
-
     // 6️⃣ Asignar insignias
     // Cliente Fiel (10 pedidos)
     if (completedOrdersCount === 10 && !assignedBadges.includes('CLIENTE_FIEL')) {
@@ -153,7 +139,6 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
     } else {
       loggerUtils.logInfo(`🚫 No se asignó 'CLIENTE_FIEL' (pedidos completados: ${completedOrdersCount}/10).`);
     }
-
     // Cinco Pedidos Únicos
     if (uniqueOrdersCount >= 5 && !assignedBadges.includes('CINCO_PEDIDOS')) {
       console.log(`[DEBUG] Attempting to assign CINCO_PEDIDOS for userId=${userId}`);
@@ -174,7 +159,6 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
     } else {
       loggerUtils.logInfo(`🚫 No se asignó 'CINCO_PEDIDOS' (únicos: ${uniqueOrdersCount}/5).`);
     }
-
     // Primer Pedido Personalizado
     if (completedOrdersCount === 1 && hasApprovedCustomization && !assignedBadges.includes('PRIMER_PERSONALIZADO')) {
       console.log(`[DEBUG] Attempting to assign PRIMER_PERSONALIZADO for userId=${userId}`);
@@ -197,7 +181,6 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
         `🚫 No se asignó 'PRIMER_PERSONALIZADO' (pedidos completados: ${completedOrdersCount}, tiene personalización: ${hasApprovedCustomization}).`
       );
     }
-
     // Comprador Exprés: 2+ pedidos en el mismo día
     if (dailyDeliveredOrders >= 2 && !assignedBadges.includes('COMPRADOR_EXPRESS')) {
       console.log(`[DEBUG] Attempting to assign COMPRADOR_EXPRESS for userId=${userId}`);
@@ -218,7 +201,6 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
     } else {
       loggerUtils.logInfo(`🚫 No se asignó 'COMPRADOR_EXPRESS' (pedidos del día: ${dailyDeliveredOrders}/2).`);
     }
-
     // Coleccionista: 3+ productos distintos en una categoría
     for (const categoryId of eligibleCategories) {
       if (!assignedBadges.includes(`COLECCIONISTA_${categoryId}`)) {
@@ -240,16 +222,51 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
         }
       }
     }
-
     if (assignedBadges.length > 0) {
       loggerUtils.logInfo(`🏅 Insignias asignadas al usuario ${userId}: ${assignedBadges.join(', ')}`);
     } else {
       loggerUtils.logInfo(`ℹ️ No se asignaron insignias nuevas al usuario ${userId}.`);
     }
-
   } catch (error) {
     console.log(`[DEBUG] Critical error in checkGamificationOnOrderDelivered: ${error.message}`);
     loggerUtils.logCriticalError(error, `💥 Error en hook de gamificación para Order ID ${order.order_id}`);
+  }
+}
+
+async function checkGamificationOnReviewCreate(review, options, badgeService, notificationManager) {
+  const transaction = options.transaction;
+  const userId = review.user_id;
+  try {
+    const count = await Review.count({
+      where: { user_id: userId },
+      transaction
+    });
+    if (count === 1) {
+      // CORRECCIÓN: Usar loggerUtils en lugar de console.log para que la prueba unitaria lo detecte
+      loggerUtils.logInfo(`Primera reseña detectada para userId=${userId}`);
+      const badgeId = BADGE_IDS.PRIMER_RESENA;
+      const userBadge = await badgeService.assignBadgeById(userId, badgeId, transaction);
+      console.log(`[DEBUG] userBadge for PRIMER_RESENA: ${JSON.stringify(userBadge)}`);
+      if (userBadge) {
+        console.log(`[DEBUG] Calling notifyBadgeAssignment for PRIMER_RESENA with userId=${userId}, badgeId=${badgeId}`);
+        try {
+          await notificationManager.notifyBadgeAssignment(userId, badgeId, transaction);
+          console.log(`[DEBUG] notifyBadgeAssignment for PRIMER_RESENA completed successfully`);
+          loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${badgeId} asignada`);
+        } catch (error) {
+          console.log(`[DEBUG] Error in notifyBadgeAssignment for PRIMER_RESENA: ${error.message}`);
+          loggerUtils.logError(`Error al notificar insignia PRIMER_RESENA: ${error.message}`);
+        }
+      } else {
+        console.log(`[DEBUG] No userBadge returned for PRIMER_RESENA`);
+        loggerUtils.logInfo(`🚫 No se asignó 'PRIMER_RESENA' porque userBadge es null`);
+      }
+    } else {
+      loggerUtils.logInfo(`🚫 No es la primera reseña (total: ${count}) para userId=${userId}`);
+    }
+  } catch (error) {
+    console.log(`[DEBUG] Critical error in checkGamificationOnReviewCreate: ${error.message}`);
+    loggerUtils.logCriticalError(error, `💥 Error en hook de gamificación para Review ID ${review.review_id}`);
   }
 }
 
@@ -257,12 +274,15 @@ function setupGamificationHooks(badgeService, notificationManager) {
   if (!badgeService || !notificationManager) {
     throw new Error('badgeService and notificationManager are required');
   }
-  Order.addHook('afterUpdate', 'checkGamification', (order, options) => 
-  checkGamificationOnOrderDelivered(order, options, badgeService, notificationManager));
-  loggerUtils.logInfo('✅ Hooks de Gamificación registrados en el modelo Order.');
+  Order.addHook('afterUpdate', 'checkGamification', (order, options) =>
+    checkGamificationOnOrderDelivered(order, options, badgeService, notificationManager));
+  Review.addHook('afterCreate', 'checkGamificationReview', (review, options) =>
+    checkGamificationOnReviewCreate(review, options, badgeService, notificationManager));
+  loggerUtils.logInfo('✅ Hooks de Gamificación registrados en los modelos Order y Review.');
 }
 
 module.exports = {
   setupGamificationHooks,
   checkGamificationOnOrderDelivered,
+  checkGamificationOnReviewCreate
 };
