@@ -7,11 +7,11 @@ const BADGE_IDS = {
   CLIENTE_FIEL: 1, // Diez pedidos en total
   COMPRADOR_EXPRESS: 6, // Comprador exprés: 2 compras en el mismo día
   COLECCIONISTA: 7, // Coleccionista: 3+ productos distintos en una categoría
-  PRIMER_RESENA: 8 // Primer Reseñador: Primera reseña (reemplaza 8 con el ID real de la insignia)
+  PRIMER_RESENA: 8, // Primer Reseñador: Primera reseña
+  RESENADOR_EXPERTO: 9 // Reseñador Experto: 10 reseñas en diferentes productos (reemplaza 9 con ID real)
 };
 
 async function checkGamificationOnOrderDelivered(order, options, badgeService, notificationManager) {
-// ... (cuerpo de la función checkGamificationOnOrderDelivered sin cambios relevantes)
   loggerUtils.logInfo(`🔔 Hook de gamificación activado para Order ID: ${order.order_id}`);
   if (order.order_status !== 'delivered') {
     loggerUtils.logInfo(`⚠️ Pedido ${order.order_id} no está en estado 'delivered' (estado actual: ${order.order_status}). Hook no aplica.`);
@@ -237,12 +237,19 @@ async function checkGamificationOnReviewCreate(review, options, badgeService, no
   const transaction = options.transaction;
   const userId = review.user_id;
   try {
-    const count = await Review.count({
+    const totalReviews = await Review.count({
       where: { user_id: userId },
       transaction
     });
-    if (count === 1) {
-      // CORRECCIÓN: Usar loggerUtils en lugar de console.log para que la prueba unitaria lo detecte
+    const uniqueProductsReviewed = await Review.count({
+      where: { user_id: userId },
+      distinct: true,
+      col: 'product_id',
+      transaction
+    });
+
+    // Primer Reseñador
+    if (totalReviews === 1) {
       loggerUtils.logInfo(`Primera reseña detectada para userId=${userId}`);
       const badgeId = BADGE_IDS.PRIMER_RESENA;
       const userBadge = await badgeService.assignBadgeById(userId, badgeId, transaction);
@@ -261,8 +268,30 @@ async function checkGamificationOnReviewCreate(review, options, badgeService, no
         console.log(`[DEBUG] No userBadge returned for PRIMER_RESENA`);
         loggerUtils.logInfo(`🚫 No se asignó 'PRIMER_RESENA' porque userBadge es null`);
       }
+    }
+
+    // Reseñador Experto (10 reseñas en diferentes productos)
+    if (uniqueProductsReviewed === 10) {
+      loggerUtils.logInfo(`10 reseñas únicas detectadas para userId=${userId}`);
+      const badgeId = BADGE_IDS.RESENADOR_EXPERTO;
+      const userBadge = await badgeService.assignBadgeById(userId, badgeId, transaction);
+      console.log(`[DEBUG] userBadge for RESENADOR_EXPERTO: ${JSON.stringify(userBadge)}`);
+      if (userBadge) {
+        console.log(`[DEBUG] Calling notifyBadgeAssignment for RESENADOR_EXPERTO with userId=${userId}, badgeId=${badgeId}`);
+        try {
+          await notificationManager.notifyBadgeAssignment(userId, badgeId, transaction);
+          console.log(`[DEBUG] notifyBadgeAssignment for RESENADOR_EXPERTO completed successfully`);
+          loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${badgeId} asignada`);
+        } catch (error) {
+          console.log(`[DEBUG] Error in notifyBadgeAssignment for RESENADOR_EXPERTO: ${error.message}`);
+          loggerUtils.logError(`Error al notificar insignia RESENADOR_EXPERTO: ${error.message}`);
+        }
+      } else {
+        console.log(`[DEBUG] No userBadge returned for RESENADOR_EXPERTO`);
+        loggerUtils.logInfo(`🚫 No se asignó 'RESENADOR_EXPERTO' porque userBadge es null`);
+      }
     } else {
-      loggerUtils.logInfo(`🚫 No es la primera reseña (total: ${count}) para userId=${userId}`);
+      loggerUtils.logInfo(`🚫 No aplica 'RESENADOR_EXPERTO' (reseñas únicas: ${uniqueProductsReviewed}/10) para userId=${userId}`);
     }
   } catch (error) {
     console.log(`[DEBUG] Critical error in checkGamificationOnReviewCreate: ${error.message}`);

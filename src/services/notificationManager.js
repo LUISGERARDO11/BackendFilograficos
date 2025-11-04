@@ -237,7 +237,8 @@ class NotificationManager {
       CLIENTE_FIEL: 1,
       COMPRADOR_EXPRESS: 6,
       COLECCIONISTA: 7,
-      PRIMER_RESENA: 8 // Reemplaza con ID real
+      PRIMER_RESENA: 8,
+      RESENADOR_EXPERTO: 9 // Nueva insignia
     };
     const BADGE_TOKEN_MAP = {
       [BADGE_IDS.PRIMER_PERSONALIZADO]: 'primer_pedido_personalizado',
@@ -245,7 +246,8 @@ class NotificationManager {
       [BADGE_IDS.CLIENTE_FIEL]: 'cliente_fiel',
       [BADGE_IDS.COMPRADOR_EXPRESS]: 'comprador_expres',
       [BADGE_IDS.COLECCIONISTA]: 'coleccionista',
-      [BADGE_IDS.PRIMER_RESENA]: 'primer_resena'
+      [BADGE_IDS.PRIMER_RESENA]: 'primer_resena',
+      [BADGE_IDS.RESENADOR_EXPERTO]: 'resenador_experto'
     };
 
     try {
