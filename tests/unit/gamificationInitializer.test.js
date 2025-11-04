@@ -1,5 +1,17 @@
-const { setupGamificationHooks, checkGamificationOnOrderDelivered } = require('../../src/hooks/gamificationInitializer');
-const { Order, Customization, OrderDetail, ProductVariant, Product, Category } = require('../../src/models/Associations');
+const { 
+  setupGamificationHooks, 
+  checkGamificationOnOrderDelivered,
+  checkGamificationOnReviewCreate 
+} = require('../../src/hooks/gamificationInitializer');
+const { 
+  Order, 
+  Customization, 
+  OrderDetail, 
+  ProductVariant, 
+  Product, 
+  Category, 
+  Review 
+} = require('../../src/models/Associations');
 const BadgeService = require('../../src/services/BadgeService');
 const NotificationManager = require('../../src/services/notificationManager');
 const loggerUtils = require('../../src/utils/loggerUtils');
@@ -31,6 +43,8 @@ describe('GamificationInitializer - Unit Tests', () => {
     Product.findAll = jest.fn();
     Category.findByPk = jest.fn();
     Customization.findAll = jest.fn();
+    Review.count = jest.fn();
+    Review.addHook = jest.fn();
 
     // Mock de loggerUtils
     loggerUtils.logInfo = jest.fn();
@@ -46,11 +60,14 @@ describe('GamificationInitializer - Unit Tests', () => {
     });
   });
 
-  it('debería registrar un hook en el modelo Order', () => {
+  it('debería registrar hooks en Order y Review', () => {
     Order.addHook = jest.fn();
+    Review.addHook = jest.fn();
     setupGamificationHooks(badgeService, notificationManager);
+    
     expect(Order.addHook).toHaveBeenCalledWith('afterUpdate', 'checkGamification', expect.any(Function));
-    expect(loggerUtils.logInfo).toHaveBeenCalledWith('✅ Hooks de Gamificación registrados en el modelo Order.');
+    expect(Review.addHook).toHaveBeenCalledWith('afterCreate', 'checkGamificationReview', expect.any(Function));
+    expect(loggerUtils.logInfo).toHaveBeenCalledWith('✅ Hooks de Gamificación registrados en los modelos Order y Review.');
   });
 
   it('no debería ejecutar el hook si el estado del pedido no es "delivered"', async () => {
@@ -77,7 +94,7 @@ describe('GamificationInitializer - Unit Tests', () => {
     };
 
     await checkGamificationOnOrderDelivered(order, { transaction: mockTransaction }, badgeService, notificationManager);
-    expect(loggerUtils.logInfo).toHaveBeenCalledWith(`ℹ️ Pedido ${order.order_id} ya estaba entregado anteriormente. No se ejecutará nuevamente.`);
+    expect(loggerUtils.logInfo).toHaveBeenCalledWith(`Pedido ${order.order_id} ya estaba entregado anteriormente. No se ejecutará nuevamente.`);
     expect(badgeService.assignBadgeById).not.toHaveBeenCalled();
   });
 
@@ -423,6 +440,101 @@ describe('GamificationInitializer - Unit Tests', () => {
       order.user_id,
       'assign_badge',
       'Insignia 5 asignada'
+    );
+  });
+
+  it('debería asignar la insignia "Primer Reseñador" al crear la primera reseña', async () => {
+    const review = {
+      review_id: 1,
+      user_id: 1,
+      rating: 5,
+      comment: '¡Excelente producto!'
+    };
+
+    // Simula que es la primera reseña del usuario
+    Review.count.mockResolvedValue(1);
+
+    // Simula que se asigna la insignia correctamente
+    const mockUserBadge = {
+      user_id: 1,
+      badge_id: 8,
+      obtained_at: new Date()
+    };
+    badgeService.assignBadgeById.mockResolvedValue(mockUserBadge);
+
+    await checkGamificationOnReviewCreate(review, { transaction: mockTransaction }, badgeService, notificationManager);
+
+    expect(Review.count).toHaveBeenCalledWith({
+      where: { user_id: review.user_id },
+      transaction: mockTransaction
+    });
+
+    expect(badgeService.assignBadgeById).toHaveBeenCalledWith(
+      review.user_id,
+      8, // BADGE_IDS.PRIMER_RESENA
+      mockTransaction
+    );
+
+    expect(notificationManager.notifyBadgeAssignment).toHaveBeenCalledWith(
+      review.user_id,
+      8,
+      mockTransaction
+    );
+
+    expect(loggerUtils.logUserActivity).toHaveBeenCalledWith(
+      review.user_id,
+      'assign_badge',
+      'Insignia 8 asignada'
+    );
+
+    // CORRECCIÓN 1.1: Ahora que el código de producción usa loggerUtils.logInfo, esta aserción funcionará.
+    expect(loggerUtils.logInfo).toHaveBeenCalledWith(
+      expect.stringContaining('Primera reseña detectada para userId=1')
+    );
+  });
+
+  it('NO debería asignar "Primer Reseñador" si el usuario ya tiene reseñas', async () => {
+    const review = {
+      review_id: 2,
+      user_id: 1
+    };
+
+    Review.count.mockResolvedValue(3); // Ya tiene 3 reseñas
+
+    await checkGamificationOnReviewCreate(review, { transaction: mockTransaction }, badgeService, notificationManager);
+
+    expect(Review.count).toHaveBeenCalled();
+    expect(badgeService.assignBadgeById).not.toHaveBeenCalled();
+    expect(notificationManager.notifyBadgeAssignment).not.toHaveBeenCalled();
+    // CORRECCIÓN 1.2: Agregar el emoji '🚫'
+    expect(loggerUtils.logInfo).toHaveBeenCalledWith(
+      '🚫 No es la primera reseña (total: 3) para userId=1'
+    );
+  });
+
+  it('debería manejar errores al contar reseñas y registrarlos', async () => {
+    const review = { review_id: 1, user_id: 1 };
+    const error = new Error('DB connection failed');
+    Review.count.mockRejectedValue(error);
+
+    await checkGamificationOnReviewCreate(review, { transaction: mockTransaction }, badgeService, notificationManager);
+
+    // CORRECCIÓN 1.3: Agregar el emoji '💥'
+    expect(loggerUtils.logCriticalError).toHaveBeenCalledWith(
+      error,
+      '💥 Error en hook de gamificación para Review ID 1'
+    );
+    expect(badgeService.assignBadgeById).not.toHaveBeenCalled();
+  });
+
+  it('debería registrar el hook en Review al llamar setupGamificationHooks', () => {
+    Review.addHook = jest.fn();
+    setupGamificationHooks(badgeService, notificationManager);
+
+    expect(Review.addHook).toHaveBeenCalledWith(
+      'afterCreate',
+      'checkGamificationReview',
+      expect.any(Function)
     );
   });
 });

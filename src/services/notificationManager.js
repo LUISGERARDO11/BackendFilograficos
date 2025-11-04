@@ -236,15 +236,16 @@ class NotificationManager {
       CINCO_PEDIDOS: 5,
       CLIENTE_FIEL: 1,
       COMPRADOR_EXPRESS: 6,
-      COLECCIONISTA: 7
+      COLECCIONISTA: 7,
+      PRIMER_RESENA: 8 // Reemplaza con ID real
     };
-
     const BADGE_TOKEN_MAP = {
       [BADGE_IDS.PRIMER_PERSONALIZADO]: 'primer_pedido_personalizado',
       [BADGE_IDS.CINCO_PEDIDOS]: 'cinco_pedidos_unicos',
       [BADGE_IDS.CLIENTE_FIEL]: 'cliente_fiel',
       [BADGE_IDS.COMPRADOR_EXPRESS]: 'comprador_expres',
-      [BADGE_IDS.COLECCIONISTA]: 'coleccionista'
+      [BADGE_IDS.COLECCIONISTA]: 'coleccionista',
+      [BADGE_IDS.PRIMER_RESENA]: 'primer_resena'
     };
 
     try {
@@ -253,7 +254,6 @@ class NotificationManager {
         loggerUtils.logCriticalError(new Error(`No se encontró token para badgeId ${badgeId}`));
         throw new Error(`Token de insignia no encontrado para badgeId ${badgeId}`);
       }
-
       const user = await User.findOne({
         where: { user_id: userId },
         attributes: ['email', 'name'],
@@ -263,7 +263,6 @@ class NotificationManager {
         loggerUtils.logCriticalError(new Error(`Usuario con ID ${userId} no encontrado`));
         throw new Error(`Usuario no encontrado`);
       }
-
       const badge = await Badge.findOne({
         where: { badge_id: badgeId },
         attributes: ['name', 'description'],
@@ -273,7 +272,6 @@ class NotificationManager {
         loggerUtils.logCriticalError(new Error(`Insignia con ID ${badgeId} no encontrada`));
         throw new Error(`Insignia no encontrada`);
       }
-
       const userBadge = await UserBadge.findOne({
         where: { user_id: userId, badge_id: badgeId },
         attributes: ['obtained_at'],
@@ -283,10 +281,8 @@ class NotificationManager {
         loggerUtils.logCriticalError(new Error(`Registro UserBadge no encontrado para userId ${userId} y badgeId ${badgeId}`));
         throw new Error(`Registro UserBadge no encontrado`);
       }
-
       // Extraer categoryName desde additionalData
       const categoryName = additionalData.categoryName || null;
-
       const result = await this.emailService.sendBadgeNotification(
         user.email,
         badgeToken,
@@ -296,9 +292,8 @@ class NotificationManager {
         badge.description || '',
         categoryName
       );
-
       if (result.success) {
-        loggerUtils.logUserActivity(userId, 'notify_badge_assignment', 
+        loggerUtils.logUserActivity(userId, 'notify_badge_assignment',
           `Notificación de insignia ${badge.name}${categoryName ? ` (${categoryName})` : ''} enviada a ${user.email}`);
       } else {
         loggerUtils.logCriticalError(new Error(`Fallo al enviar notificación de insignia a ${user.email}: ${result.error}`));
