@@ -48,6 +48,7 @@ const routes = [
   { path: '/api/badge-categories', router: require('./routes/badgeCategoryRoutes') },
   { path: '/api/badges', router: require('./routes/badgeRoutes') },
   { path: '/api/transactions', router: require('./routes/transactionRoutes') },
+  { path: '/api/vip', router: require('./routes/vip') },
 
   { path: '/api/models3d', router: require('./routes/models3dRoutes') },
 

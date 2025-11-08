@@ -130,7 +130,7 @@ async function getNextVersion(document_id) {
     const lastVersionNumber = lastVersion ? parseFloat(lastVersion.version) : 0;
     return (lastVersionNumber + 1.0).toFixed(1);
   } catch (error) {
-    loggerUtils.logError(error, { context: 'getNextVersion', document_id });
+    loggerUtils.logCriticalError(error, { context: 'getNextVersion', document_id });
     throw error;
   }
 }

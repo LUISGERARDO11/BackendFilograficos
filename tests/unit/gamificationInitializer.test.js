@@ -48,7 +48,7 @@ describe('GamificationInitializer - Unit Tests', () => {
 
     // Mock de loggerUtils
     loggerUtils.logInfo = jest.fn();
-    loggerUtils.logError = jest.fn();
+    loggerUtils.logCriticalError = jest.fn();
     loggerUtils.logCriticalError = jest.fn();
     loggerUtils.logUserActivity = jest.fn();
 

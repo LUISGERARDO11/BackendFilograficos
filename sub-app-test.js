@@ -16,22 +16,55 @@ const morgan = require('morgan');
 const { Sequelize } = require('sequelize');
 require('dotenv').config({ path: 'tests/.env.test' });
 
+// --- Definición de Mock Instance ---
+// Helper para simular una instancia de Sequelize con métodos de instancia
+const mockInstance = (data) => ({
+    // Propiedades de datos
+    ...data,
+    dataValues: data,
+    
+    // Métodos de instancia esenciales para el hook/tests de integración
+    // update: Usado por tests para cambiar el estado de Order
+    update: jest.fn(function(newValues) {
+        Object.assign(this.dataValues, newValues);
+        Object.assign(this, newValues);
+        return Promise.resolve(this);
+    }),
+    // previous: Usado por el hook checkGamificationOnOrderDelivered
+    previous: jest.fn(function(key) {
+        // En los tests de Order, asumimos que el estado anterior siempre era 'shipped'
+        if (this.order_status === 'delivered' && key === 'order_status') {
+             return 'shipped';
+        }
+        return undefined;
+    }),
+    get: jest.fn(function () { return this.dataValues || this; }),
+});
+
+
 // Crear una instancia mockeada de Sequelize
 const mockSequelize = {
   authenticate: jest.fn().mockResolvedValue(),
   sync: jest.fn().mockResolvedValue(),
   close: jest.fn().mockResolvedValue(),
+  
+  // --- CORRECCIÓN EN define: Añadimos bulkCreate y mejoramos create ---
   define: jest.fn((modelName, attributes, options) => ({
     modelName,
     attributes,
     options,
-    create: jest.fn().mockResolvedValue({}),
+    // create: Devuelve una instancia mockeada para que tenga el método .update()
+    create: jest.fn(function(data) {
+        return Promise.resolve(mockInstance(data));
+    }),
     findOne: jest.fn().mockResolvedValue(null),
     findByPk: jest.fn().mockResolvedValue(null),
     findAll: jest.fn().mockResolvedValue([]),
     update: jest.fn().mockResolvedValue([1]),
     destroy: jest.fn().mockResolvedValue(1),
     count: jest.fn().mockResolvedValue(0),
+    // bulkCreate: Simulado para que no falle el test de insignias
+    bulkCreate: jest.fn().mockResolvedValue([]), 
     belongsTo: jest.fn(),
     hasOne: jest.fn(),
     hasMany: jest.fn(),
@@ -101,9 +134,11 @@ jest.mock('./src/services/authService', () => ({
   extendSession: jest.fn().mockResolvedValue('mocked_token'),
 }));
 
-// Mockear middlewares de autenticación
+// --- CORRECCIÓN EN authMiddleware ---
+// Cambiamos el mock de 'administrador' a 'cliente' (user_id 1) 
+// para que el profile endpoint funcione con el token.
 jest.mock('./src/middlewares/authMiddleware', () => jest.fn((req, res, next) => {
-  req.user = { user_id: 1, user_type: 'administrador' };
+  req.user = { user_id: 1, user_type: 'cliente' };
   next();
 }));
 

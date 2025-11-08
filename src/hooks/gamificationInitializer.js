@@ -1,4 +1,4 @@
-const { Order, Customization, OrderDetail, Product, Category, ProductVariant, Review } = require('../models/Associations');
+const {User, UserBadge, Order, Customization, OrderDetail, Product, Category, ProductVariant, Review } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
 const { Op, Sequelize } = require('sequelize');
 const BADGE_IDS = {
@@ -13,17 +13,21 @@ const BADGE_IDS = {
 
 async function checkGamificationOnOrderDelivered(order, options, badgeService, notificationManager) {
   loggerUtils.logInfo(`🔔 Hook de gamificación activado para Order ID: ${order.order_id}`);
+  
   if (order.order_status !== 'delivered') {
     loggerUtils.logInfo(`⚠️ Pedido ${order.order_id} no está en estado 'delivered' (estado actual: ${order.order_status}). Hook no aplica.`);
     return;
   }
-  if (order.previous('order_status') === 'delivered') {
+  
+  if (order.previous && order.previous('order_status') === 'delivered') {
     loggerUtils.logInfo(`Pedido ${order.order_id} ya estaba entregado anteriormente. No se ejecutará nuevamente.`);
     return;
   }
+
   const userId = order.user_id;
   const transaction = options.transaction;
   const assignedBadges = [];
+  
   loggerUtils.logInfo(`🎯 Evaluando insignias para el usuario ${userId} (Order ID ${order.order_id})`);
   try {
     // 1️⃣ Contar pedidos completados
@@ -35,7 +39,7 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
     // 2️⃣ Validar compras por fecha para Comprador exprés
     const orderCreatedAt = order.created_at;
     if (!orderCreatedAt || isNaN(orderCreatedAt)) {
-      loggerUtils.logError(`⚠️ Fecha inválida en created_at para Order ID ${order.order_id}`);
+      loggerUtils.logCriticalError(`⚠️ Fecha inválida en created_at para Order ID ${order.order_id}`);
       return;
     }
     const startOfDay = new Date(orderCreatedAt);
@@ -130,7 +134,7 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
           loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${BADGE_IDS.CLIENTE_FIEL} asignada`);
         } catch (error) {
           console.log(`[DEBUG] Error in notifyBadgeAssignment for CLIENTE_FIEL: ${error.message}`);
-          loggerUtils.logError(`Error al notificar insignia CLIENTE_FIEL: ${error.message}`);
+          loggerUtils.logCriticalError(`Error al notificar insignia CLIENTE_FIEL: ${error.message}`);
         }
       } else {
         console.log(`[DEBUG] No userBadge returned for CLIENTE_FIEL`);
@@ -153,7 +157,7 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
           loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${BADGE_IDS.CINCO_PEDIDOS} asignada`);
         } catch (error) {
           console.log(`[DEBUG] Error in notifyBadgeAssignment for CINCO_PEDIDOS: ${error.message}`);
-          loggerUtils.logError(`Error al notificar insignia CINCO_PEDIDOS: ${error.message}`);
+          loggerUtils.logCriticalError(`Error al notificar insignia CINCO_PEDIDOS: ${error.message}`);
         }
       }
     } else {
@@ -173,7 +177,7 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
           loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${BADGE_IDS.PRIMER_PERSONALIZADO} asignada`);
         } catch (error) {
           console.log(`[DEBUG] Error in notifyBadgeAssignment for PRIMER_PERSONALIZADO: ${error.message}`);
-          loggerUtils.logError(`Error al notificar insignia PRIMER_PERSONALIZADO: ${error.message}`);
+          loggerUtils.logCriticalError(`Error al notificar insignia PRIMER_PERSONALIZADO: ${error.message}`);
         }
       }
     } else {
@@ -195,7 +199,7 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
           loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${BADGE_IDS.COMPRADOR_EXPRESS} asignada`);
         } catch (error) {
           console.log(`[DEBUG] Error in notifyBadgeAssignment for COMPRADOR_EXPRESS: ${error.message}`);
-          loggerUtils.logError(`Error al notificar insignia COMPRADOR_EXPRESS: ${error.message}`);
+          loggerUtils.logCriticalError(`Error al notificar insignia COMPRADOR_EXPRESS: ${error.message}`);
         }
       }
     } else {
@@ -217,7 +221,7 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
             loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${BADGE_IDS.COLECCIONISTA} asignada para categoría ${category?.name || categoryId}`);
           } catch (error) {
             console.log(`[DEBUG] Error in notifyBadgeAssignment for COLECCIONISTA: ${error.message}`);
-            loggerUtils.logError(`Error al notificar insignia COLECCIONISTA: ${error.message}`);
+            loggerUtils.logCriticalError(`Error al notificar insignia COLECCIONISTA: ${error.message}`);
           }
         }
       }
@@ -225,7 +229,74 @@ async function checkGamificationOnOrderDelivered(order, options, badgeService, n
     if (assignedBadges.length > 0) {
       loggerUtils.logInfo(`🏅 Insignias asignadas al usuario ${userId}: ${assignedBadges.join(', ')}`);
     } else {
-      loggerUtils.logInfo(`ℹ️ No se asignaron insignias nuevas al usuario ${userId}.`);
+      loggerUtils.logInfo(`No se asignaron insignias nuevas al usuario ${userId}.`);
+    }
+    try {
+      // 1. Pedidos completados
+      const orders = await Order.count({
+        where: { user_id: userId, order_status: 'delivered' },
+        transaction
+      });
+      console.log(`[DEBUG] Pedidos entregados para el usuario ${userId}: ${orders}`);
+
+      // 2. Contar insignias del usuario
+      const badges = await UserBadge.count({
+        where: { user_id: userId },
+        transaction
+      });
+      console.log(`[DEBUG] Insignias actuales del usuario ${userId}: ${badges}`);
+
+      // 3. Obtener pedidos únicos si no está definido
+      let uniqueOrdersCountValue = uniqueOrdersCount;
+      if (typeof uniqueOrdersCountValue === 'undefined') {
+        const uniqueVariants = await Order.findAll({
+          where: { user_id: userId, order_status: 'delivered' },
+          attributes: [],
+          include: [{
+            model: OrderDetail,
+            attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('variant_id')), 'variant_id']],
+            required: true
+          }],
+          raw: true,
+          transaction
+        });
+        uniqueOrdersCountValue = uniqueVariants.length;
+      }
+      console.log(`[DEBUG] uniqueOrdersCount: ${uniqueOrdersCountValue}`);
+
+      // 4. Calcular nuevo nivel VIP
+      let nuevoNivel = null;
+      if (orders >= 10 || badges >= 3) {
+        nuevoNivel = 'Oro';
+      } else if (orders >= 7 || uniqueOrdersCountValue >= 5) {
+        nuevoNivel = 'Plata';
+      }
+
+      console.log(`[DEBUG] Nivel VIP calculado para el usuario ${userId}: ${nuevoNivel || 'Sin cambio'}`);
+
+      // 5. Consultar nivel actual
+      const user = await User.findByPk(userId, { attributes: ['vip_level'], transaction });
+      console.log(`[DEBUG] Nivel VIP actual del usuario ${userId}: ${user?.vip_level || 'Ninguno'}`);
+
+      // 6. Actualizar si cambió
+      if (nuevoNivel && user.vip_level !== nuevoNivel) {
+        console.log(`[DEBUG] Actualizando nivel VIP del usuario ${userId} a ${nuevoNivel}...`);
+        await User.update(
+          { vip_level: nuevoNivel },
+          { where: { user_id: userId }, transaction }
+        );
+
+        console.log(`[DEBUG] Enviando notificación de nuevo nivel VIP: ${nuevoNivel}`);
+        await notificationManager.notifyVipLevel(userId, nuevoNivel, transaction);
+
+        loggerUtils.logInfo(`VIP ${userId} → ${nuevoNivel}`);
+        console.log(`[DEBUG] Nivel VIP actualizado exitosamente para el usuario ${userId}`);
+      } else {
+        console.log(`[DEBUG] No se requiere actualización de nivel VIP para el usuario ${userId}`);
+      }
+    } catch (vipError) {
+      console.log(`[DEBUG] Error en cálculo de nivel VIP: ${vipError.message}`);
+      loggerUtils.logCriticalError(`Error en cálculo VIP: ${vipError.message}`);
     }
   } catch (error) {
     console.log(`[DEBUG] Critical error in checkGamificationOnOrderDelivered: ${error.message}`);
@@ -262,7 +333,7 @@ async function checkGamificationOnReviewCreate(review, options, badgeService, no
           loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${badgeId} asignada`);
         } catch (error) {
           console.log(`[DEBUG] Error in notifyBadgeAssignment for PRIMER_RESENA: ${error.message}`);
-          loggerUtils.logError(`Error al notificar insignia PRIMER_RESENA: ${error.message}`);
+          loggerUtils.logCriticalError(`Error al notificar insignia PRIMER_RESENA: ${error.message}`);
         }
       } else {
         console.log(`[DEBUG] No userBadge returned for PRIMER_RESENA`);
@@ -284,7 +355,7 @@ async function checkGamificationOnReviewCreate(review, options, badgeService, no
           loggerUtils.logUserActivity(userId, 'assign_badge', `Insignia ${badgeId} asignada`);
         } catch (error) {
           console.log(`[DEBUG] Error in notifyBadgeAssignment for RESENADOR_EXPERTO: ${error.message}`);
-          loggerUtils.logError(`Error al notificar insignia RESENADOR_EXPERTO: ${error.message}`);
+          loggerUtils.logCriticalError(`Error al notificar insignia RESENADOR_EXPERTO: ${error.message}`);
         }
       } else {
         console.log(`[DEBUG] No userBadge returned for RESENADOR_EXPERTO`);

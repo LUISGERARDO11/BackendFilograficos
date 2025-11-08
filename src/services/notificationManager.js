@@ -305,6 +305,46 @@ class NotificationManager {
       throw error;
     }
   }
+
+  async notifyVipLevel(userId, newLevel, transaction) {
+    const { User, UserBadge, Order } = require('../models/Associations');
+
+    try {
+      const user = await User.findByPk(userId, { 
+        attributes: ['name', 'email'], 
+        transaction 
+      });
+      if (!user) throw new Error('Usuario no encontrado');
+
+      const [orders, badges] = await Promise.all([
+        Order.count({ where: { user_id: userId, order_status: 'delivered' }, transaction }),
+        UserBadge.count({ where: { user_id: userId }, transaction })
+      ]);
+
+      const benefits = {
+        Plata: 'Apareces en Top Clientes',
+        Oro: 'Visibilidad PREMIUM + soporte prioritario'
+      };
+
+      const emailData = {
+        user_name: user.name,
+        new_level: newLevel,
+        level_benefits: benefits[newLevel] || 'Beneficios exclusivos',
+        orders_count: orders,
+        badges_count: badges
+      };
+      
+      const result = await this.emailService.sendVipLevelEmail(user.email, emailData);
+
+      if (result.success) {
+        loggerUtils.logUserActivity(userId, 'vip_level_email', `Email VIP ${newLevel} enviado`);
+      } else {
+        loggerUtils.logCriticalError(`Fallo email VIP: ${result.error}`);
+      }
+    } catch (error) {
+      loggerUtils.logCriticalError(`Error notifyVipLevel: ${error.message}`);
+    }
+  }
 }
 
 module.exports = NotificationManager;
