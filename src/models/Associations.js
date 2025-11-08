@@ -1,6 +1,7 @@
 /* This code snippet is setting up associations between different models in a Node.js application using Sequelize, which is an ORM for Node.js. */
 const sequelize = require('../config/dataBase');
 
+const VipLevel = require('./VipLevel');
 const User = require('./Users');
 const Account = require('./Account');
 const Company = require('./Company');
@@ -105,6 +106,16 @@ AlexaAuthCode.belongsTo(User, { foreignKey: 'user_id' });
 
 User.hasMany(ClientCluster, { foreignKey: 'user_id' });
 ClientCluster.belongsTo(User, { foreignKey: 'user_id' });
+
+User.belongsTo(VipLevel, { 
+  foreignKey: 'vip_level', 
+  targetKey: 'name',
+  as: 'VipLevel'
+});
+VipLevel.hasMany(User, { 
+  foreignKey: 'vip_level', 
+  sourceKey: 'name'
+});
 
 // Relaciones de Cuentas
 Account.hasMany(TwoFactorConfig, { foreignKey: 'account_id' });
@@ -343,6 +354,7 @@ UserBadge.belongsTo(Category, { foreignKey: 'category_id' });
 // Exportación de Modelos
 module.exports = {
   sequelize,
+  VipLevel,
   User,
   Account,
   TwoFactorConfig,

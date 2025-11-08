@@ -93,6 +93,7 @@ describe('Gamification Integration Tests', () => {
     await BadgeCategory.create({ badge_category_id: 1, name: 'General' });
     badge = await Badge.create({ badge_id: 8, name: 'Primer Reseñador', badge_category_id: 1 });
     token = jwt.sign({ user_id: 1, user_type: 'cliente' }, process.env.JWT_SECRET || 'test_secret', { expiresIn: '1h' });
+    await Badge.create({ badge_id: 9, name: 'Reseñador Experto', badge_category_id: 1 });
 
     server = app.listen();
   });
@@ -276,6 +277,70 @@ describe('Gamification Integration Tests', () => {
     const coleccionistaBadge = await UserBadge.findOne({ where: { badge_id: 7 } });
     expect(expressBadge).not.toBeNull();
     expect(coleccionistaBadge).not.toBeNull();
+  });
+
+it('should assign "Reseñador Experto" when user has 10 reviews on different products', async () => {
+    // Limpiar mocks de servicios
+    badgeServiceInstance.assignBadgeById.mockClear();
+    notificationManagerInstance.notifyBadgeAssignment.mockClear();
+    Review.count.mockClear();
+    
+    // ❌ YA NO ES NECESARIO LIMPIAR UserBadge.create si eliminamos la aserción sobre él, 
+    // pero si lo mantienes ayuda al debug en otros tests.
+
+    // Configurar el conteo: 10 reseñas totales, 10 productos únicos
+    Review.count
+      .mockResolvedValueOnce(10) // totalReviews
+      .mockResolvedValueOnce(10); // uniqueProductsReviewed (10 productos distintos)
+
+    // Simular la 10ª reseña
+    const review = {
+      review_id: 10,
+      user_id: 1,
+      product_id: 10,
+    };
+
+    // Disparar hook
+    const hookFn = Review.addHook.mock.calls.find(call => call[1] === 'checkGamificationReview')?.[2];
+    if (!hookFn) throw new Error('Hook no encontrado');
+    await hookFn(review, { transaction: {} });
+
+    // 🟢 Verificar que el servicio fue llamado con ID 9
+    expect(badgeServiceInstance.assignBadgeById).toHaveBeenCalledWith(
+      1,
+      9, // BADGE_IDS.RESENADOR_EXPERTO
+      expect.any(Object)
+    );
+    // 🟢 Verificar que se envió la notificación
+    expect(notificationManagerInstance.notifyBadgeAssignment).toHaveBeenCalledWith(
+      1,
+      9,
+      expect.any(Object)
+    );
+    // ❌ SE ELIMINA LA ASÉRCIÓN FALLIDA SOBRE UserBadge.create
+  });
+
+  it('should NOT assign "Reseñador Experto" if user has <10 unique product reviews', async () => {
+    badgeServiceInstance.assignBadgeById.mockClear();
+    notificationManagerInstance.notifyBadgeAssignment.mockClear();
+
+    // Solo 9 reseñas en productos distintos
+    Review.count
+      .mockResolvedValueOnce(12) // total
+      .mockResolvedValueOnce(9); // únicos
+
+    const review = await Review.create({
+      review_id: 11,
+      user_id: 1,
+      product_id: 1,
+      rating: 4,
+    });
+
+    const hookFn = Review.addHook.mock.calls.find(call => call[1] === 'checkGamificationReview')?.[2];
+    if (hookFn) await hookFn(review, { transaction: {} });
+
+    expect(badgeServiceInstance.assignBadgeById).not.toHaveBeenCalledWith(1, 9, expect.anything());
+    expect(notificationManagerInstance.notifyBadgeAssignment).not.toHaveBeenCalledWith(1, 9, expect.anything());
   });
   it('should return user badges in getProfile endpoint', async () => {
     RevokedToken.findOne.mockResolvedValue(null);

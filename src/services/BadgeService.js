@@ -437,7 +437,7 @@ class BadgeService {
                 transaction
             });
             if (!category) {
-                loggerUtils.logError(`Categoría con ID ${options.category_id} no encontrada o inactiva`);
+                loggerUtils.logCriticalError(`Categoría con ID ${options.category_id} no encontrada o inactiva`);
                 return null;
             }
         }

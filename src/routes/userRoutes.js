@@ -47,4 +47,7 @@ router.get('/all-users', authMiddleware, tokenExpirationMiddleware.verifyTokenEx
 // Ruta para desactivar o bloquear una cuenta de usuario
 router.put('/deactivate-account/:user_id', authMiddleware, tokenExpirationMiddleware.verifyTokenExpiration, roleMiddleware(['administrador']), userController.deactivateAccount);
 
+// Al final del archivo de rutas
+router.get('/top-clients', userController.getTopClients);
+
 module.exports = router;

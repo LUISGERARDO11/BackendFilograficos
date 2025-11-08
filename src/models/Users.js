@@ -38,10 +38,16 @@ const User = sequelize.define('User', {
     defaultValue: false
   },
   email_verification_token: DataTypes.STRING(255),
-  email_verification_expiration: DataTypes.DATE
+  email_verification_expiration: DataTypes.DATE,
+  // NUEVO CAMPO VIP
+  vip_level: {
+    type: DataTypes.ENUM('Bronce', 'Plata', 'Oro'),
+    allowNull: true,
+    defaultValue: null
+  }
 }, {
   tableName: 'users',
-  timestamps: true, // Sequelize manejará automáticamente createdAt y updatedAt
+  timestamps: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at'
 });

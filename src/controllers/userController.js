@@ -2,8 +2,9 @@
 administration in a Node.js application using Express and Sequelize ORM. Here is a summary of the
 functionalities: */
 const { body, validationResult } = require('express-validator');
-const { User, Account, Address, Session, UserBadge, Badge, BadgeCategory, Category } = require('../models/Associations');
+const { User, Account, Address, Session, UserBadge, Badge, BadgeCategory, Category, Order } = require('../models/Associations');
 const loggerUtils = require('../utils/loggerUtils');
+const { Op, fn, col } = require('sequelize');
 const sequelize = require('../config/dataBase');
 const userServices = require('../services/userServices');
 const { uploadProfilePictureToCloudinary, deleteFromCloudinary } = require('../services/cloudinaryService');
@@ -98,7 +99,7 @@ exports.getProfile = async (req, res) => {
     const userId = req.user.user_id;
     try {
         const user = await User.findByPk(userId, {
-            attributes: ['user_id', 'name', 'email', 'phone', 'status', 'user_type'],
+            attributes: ['user_id', 'name', 'email', 'phone', 'status', 'user_type', 'vip_level'],
             include: [
                 { model: Address, where: { is_primary: true }, required: false },
                 { model: Account, attributes: ['profile_picture_url'] },
@@ -150,6 +151,7 @@ exports.getProfile = async (req, res) => {
             phone: user.phone,
             status: user.status,
             user_type: user.user_type,
+            vip_level: user.vip_level || null,  // NUEVA LÍNEA
             address: user.Addresses ? user.Addresses[0] : null,
             profile_picture_url: user.Account?.profile_picture_url || null,
             badges
@@ -362,3 +364,118 @@ exports.deactivateAccount = [
     }
   }
 ];
+
+//** VISTAS PÚBLICAS **
+exports.getTopClients = async (req, res) => {
+    // Definimos los límites solicitados
+    const ORO_LIMIT = 15;
+    const PLATA_LIMIT = 20;
+
+    try {
+        // --- 1. Definición de Subconsultas/Literales ---
+        
+        // Literal para contar Órdenes Completadas (usando la tabla 'orders')
+        const totalOrdersCompletedLiteral = sequelize.literal(`
+            (
+                SELECT
+                    COUNT(T2.order_id)
+                FROM
+                    orders AS T2
+                WHERE
+                    T2.user_id = \`User\`.\`user_id\` 
+                    AND T2.order_status IN ('delivered', 'shipped') -- Ajusta si es necesario
+            )
+        `);
+
+        // Literal para contar Insignias Obtenidas (usando la tabla 'user_badges')
+        const totalBadgesObtainedLiteral = sequelize.literal(`
+            (
+                SELECT
+                    COUNT(T3.user_badge_id)
+                FROM
+                    user_badges AS T3
+                WHERE
+                    T3.user_id = \`User\`.\`user_id\`
+            )
+        `);
+
+        // Atributos comunes para ambas consultas
+        const attributes = [
+            'user_id',
+            'name',
+            'email',
+            'vip_level',
+            // Agregar las agregaciones como nuevos campos
+            [totalOrdersCompletedLiteral, 'total_orders_completed'],
+            [totalBadgesObtainedLiteral, 'total_badges_obtained'],
+        ];
+
+        // Inclusión de la tabla Account
+        const include = [{ 
+            model: Account, 
+            attributes: ['profile_picture_url'],
+            required: true // Asegura que solo se traigan usuarios con registro en Account
+        }];
+
+        // Criterios de ordenación dentro de cada nivel (de mayor a menor rendimiento)
+        const orderCriteria = [
+            [sequelize.literal('total_orders_completed'), 'DESC'],
+            ['user_id', 'ASC'] // Desempate
+        ];
+
+
+        // --- 2. Consultas Separadas con Límite ---
+
+        // A. Obtener Top ORO (Máximo 15)
+        const oroClients = await User.findAll({
+            attributes,
+            include,
+            where: {
+                vip_level: 'Oro'
+            },
+            order: orderCriteria,
+            limit: ORO_LIMIT
+        });
+
+        // B. Obtener Top PLATA (Máximo 20)
+        const plataClients = await User.findAll({
+            attributes,
+            include,
+            where: {
+                vip_level: 'Plata'
+            },
+            order: orderCriteria,
+            limit: PLATA_LIMIT
+        });
+
+        // C. Combinar los resultados (Oro siempre va primero en la lista final)
+        const combinedClients = [...oroClients, ...plataClients];
+
+
+        // --- 3. Formateo y Respuesta ---
+
+        // Mapear y formatear la respuesta para aplanar la estructura del Account
+        const formattedClients = combinedClients.map(user => {
+            const data = user.get({ plain: true });
+            
+            return {
+                user_id: data.user_id,
+                customer_name: data.name,
+                email: data.email,
+                vip_level: data.vip_level,
+                profile_picture_url: data.Account ? data.Account.profile_picture_url : null,
+                total_orders_completed: parseInt(data.total_orders_completed, 10),
+                total_badges_obtained: parseInt(data.total_badges_obtained, 10)
+            };
+        });
+
+        res.status(200).json({
+            message: 'Lista de Top Clientes (VIP) con límites aplicados obtenida exitosamente.',
+            topClients: formattedClients
+        });
+
+    } catch (error) {
+        console.error("Error al obtener la lista de Top Clientes con Sequelize:", error);
+        res.status(500).json({ message: 'Error al obtener la lista de Top Clientes', error: error.message });
+    }
+};

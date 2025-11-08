@@ -48,7 +48,7 @@ describe('GamificationInitializer - Unit Tests', () => {
 
     // Mock de loggerUtils
     loggerUtils.logInfo = jest.fn();
-    loggerUtils.logError = jest.fn();
+    loggerUtils.logCriticalError = jest.fn();
     loggerUtils.logCriticalError = jest.fn();
     loggerUtils.logUserActivity = jest.fn();
 
@@ -508,7 +508,7 @@ describe('GamificationInitializer - Unit Tests', () => {
     expect(notificationManager.notifyBadgeAssignment).not.toHaveBeenCalled();
     // CORRECCIÓN 1.2: Agregar el emoji '🚫'
     expect(loggerUtils.logInfo).toHaveBeenCalledWith(
-      '🚫 No es la primera reseña (total: 3) para userId=1'
+      `🚫 No aplica 'RESENADOR_EXPERTO' (reseñas únicas: 3/10) para userId=${review.user_id}`
     );
   });
 
@@ -536,5 +536,38 @@ describe('GamificationInitializer - Unit Tests', () => {
       'checkGamificationReview',
       expect.any(Function)
     );
+  });
+
+    it('debería asignar "Reseñador Experto" al alcanzar 10 reseñas en productos distintos', async () => {
+    const review = { review_id: 10, user_id: 1, product_id: 10 };
+    Review.count
+      .mockResolvedValueOnce(10)           // totalReviews
+      .mockResolvedValueOnce(10);          // uniqueProductsReviewed
+    badgeService.assignBadgeById.mockResolvedValue({ user_badge_id: 1 });
+    await checkGamificationOnReviewCreate(review, { transaction: mockTransaction }, badgeService, notificationManager);
+
+    expect(badgeService.assignBadgeById).toHaveBeenCalledWith(1, 9, mockTransaction);
+    expect(notificationManager.notifyBadgeAssignment).toHaveBeenCalledWith(1, 9, mockTransaction);
+    expect(loggerUtils.logInfo).toHaveBeenCalledWith('10 reseñas únicas detectadas para userId=1');
+  });
+
+  it('NO debería asignar "Reseñador Experto" si faltan reseñas únicas', async () => {
+    const review = { review_id: 9, user_id: 1, product_id: 9 };
+    Review.count
+      .mockResolvedValueOnce(12)
+      .mockResolvedValueOnce(9);
+    await checkGamificationOnReviewCreate(review, { transaction: mockTransaction }, badgeService, notificationManager);
+
+    expect(badgeService.assignBadgeById).not.toHaveBeenCalledWith(1, 9, mockTransaction);
+    expect(loggerUtils.logInfo).toHaveBeenCalledWith(expect.stringContaining('No aplica \'RESENADOR_EXPERTO\' (reseñas únicas: 9/10)'));
+  });
+
+  it('debería manejar error al contar reseñas únicas', async () => {
+    const review = { review_id: 1, user_id: 1 };
+    const err = new Error('DB fail');
+    Review.count.mockRejectedValue(err);
+    await checkGamificationOnReviewCreate(review, { transaction: mockTransaction }, badgeService, notificationManager);
+
+    expect(loggerUtils.logCriticalError).toHaveBeenCalledWith(err, expect.stringContaining('Error en hook de gamificación para Review ID 1'));
   });
 });
