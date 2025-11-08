@@ -237,7 +237,8 @@ class NotificationManager {
       CLIENTE_FIEL: 1,
       COMPRADOR_EXPRESS: 6,
       COLECCIONISTA: 7,
-      PRIMER_RESENA: 8 // Reemplaza con ID real
+      PRIMER_RESENA: 8,
+      RESENADOR_EXPERTO: 9 // Nueva insignia
     };
     const BADGE_TOKEN_MAP = {
       [BADGE_IDS.PRIMER_PERSONALIZADO]: 'primer_pedido_personalizado',
@@ -245,7 +246,8 @@ class NotificationManager {
       [BADGE_IDS.CLIENTE_FIEL]: 'cliente_fiel',
       [BADGE_IDS.COMPRADOR_EXPRESS]: 'comprador_expres',
       [BADGE_IDS.COLECCIONISTA]: 'coleccionista',
-      [BADGE_IDS.PRIMER_RESENA]: 'primer_resena'
+      [BADGE_IDS.PRIMER_RESENA]: 'primer_resena',
+      [BADGE_IDS.RESENADOR_EXPERTO]: 'resenador_experto'
     };
 
     try {
@@ -301,6 +303,46 @@ class NotificationManager {
     } catch (error) {
       loggerUtils.logCriticalError(error, `Error al notificar insignia para userId ${userId}, badgeId ${badgeId}`);
       throw error;
+    }
+  }
+
+  async notifyVipLevel(userId, newLevel, transaction) {
+    const { User, UserBadge, Order } = require('../models/Associations');
+
+    try {
+      const user = await User.findByPk(userId, { 
+        attributes: ['name', 'email'], 
+        transaction 
+      });
+      if (!user) throw new Error('Usuario no encontrado');
+
+      const [orders, badges] = await Promise.all([
+        Order.count({ where: { user_id: userId, order_status: 'delivered' }, transaction }),
+        UserBadge.count({ where: { user_id: userId }, transaction })
+      ]);
+
+      const benefits = {
+        Plata: 'Apareces en Top Clientes',
+        Oro: 'Visibilidad PREMIUM + soporte prioritario'
+      };
+
+      const emailData = {
+        user_name: user.name,
+        new_level: newLevel,
+        level_benefits: benefits[newLevel] || 'Beneficios exclusivos',
+        orders_count: orders,
+        badges_count: badges
+      };
+      
+      const result = await this.emailService.sendVipLevelEmail(user.email, emailData);
+
+      if (result.success) {
+        loggerUtils.logUserActivity(userId, 'vip_level_email', `Email VIP ${newLevel} enviado`);
+      } else {
+        loggerUtils.logCriticalError(`Fallo email VIP: ${result.error}`);
+      }
+    } catch (error) {
+      loggerUtils.logCriticalError(`Error notifyVipLevel: ${error.message}`);
     }
   }
 }

@@ -133,6 +133,14 @@ class EmailService {
 
     return this.sendGenericEmail(to, template.subject, htmlContent, textContent);
   }
+  
+  async sendVipLevelEmail(userEmail, data) {
+    const template = await this.getEmailTemplate('VIP_LEVEL_UP');
+    const html = ejs.render(template.html_content, data);
+    const text = ejs.render(template.text_content, data);
+    const subject = ejs.render(template.subject, data);
+    return this.sendGenericEmail(userEmail, subject, html, text);
+  }
 }
 
 module.exports = EmailService;
